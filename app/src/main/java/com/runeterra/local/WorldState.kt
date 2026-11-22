@@ -2674,7 +2674,7 @@ private fun craftBonus(region:String):Int = when(region) {
         // are not lost behind routine cognition turns while the world clock advances rapidly.
         val urgentIndex=active.indexOfFirst { candidate ->
             val opportunity=candidate.memory.lastOrNull { it.contains("【历史事件接驳机会") }
-            val opportunityDay=opportunity?.let { Regex("""第(\\d+)日""").find(it)?.groupValues?.getOrNull(1)?.toLongOrNull() } ?: -1L
+            val opportunityDay=opportunity?.let { Regex("""第([0-9]+)日""").find(it)?.groupValues?.getOrNull(1)?.toLongOrNull() } ?: -1L
             opportunityDay>candidate.lastThoughtDay
         }
         val selectedIndex=if(urgentIndex>=0) urgentIndex else cursor
