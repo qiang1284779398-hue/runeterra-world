@@ -391,11 +391,18 @@ object WorldEngine {
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
                 if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
-                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(2+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(12+rng.nextInt(9)+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
                     "护卫" -> {r.coins++;if(rng.nextInt(100)<4)r.health=(r.health-3).coerceAtLeast(0)}
-                    else -> {if(r.coins>0)r.coins--;if(rng.nextInt(100)<20)r.food++}
+                    else -> {r.coins++;if(rng.nextInt(100)<20)r.food++}
+                }
+                if(r.food<=2) {
+                    val market=markets[r.region]
+                    if(market!=null && market.food>0 && r.coins>0) {
+                        val bought=minOf(3-r.food,market.food,r.coins)
+                        if(bought>0) { market.food-=bought; r.food+=bought; r.coins-=bought; market.wealth+=bought }
+                    }
                 }
                 if(day%360L==0L) r.age++
                 if(day%90L==0L && r.alive && r.skill>=10 && r.job=="学徒") {
@@ -463,9 +470,8 @@ object WorldEngine {
             }
             pop.addAll(newborns)
             regions.forEach { region ->
-                val regionalPopulation=pop.count { it.alive && it.region==region }
                 val market=markets[region]
-                if(market!=null) market.food=(market.food-regionalPopulation/4).coerceAtLeast(0)
+                if(market!=null) market.food=market.food.coerceAtLeast(0)
             }
             if(day%30L==0L) {
                 regions.forEach { region ->
