@@ -511,12 +511,12 @@ object WorldEngine {
                     val mode=op.optString("memory_mode","append")
                     val memo=op.optString("memory_text")
                     if(hero!=null) {
-                        when(mode) { "erase" -> { hero.memory.clear(); hero.thought="" }; "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add("【天道植入的主观人生记忆／身份认知】$memo"); hero.thought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
+                        when(mode) { "erase" -> { hero.memory.clear(); hero.thought="" }; "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add("【天道改写的主观人生记忆／身份认知】$memo"); hero.thought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
                         appendHeroEvent(hero,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") hero.memory.clear()
                         outcomes.add("已修改${hero.name}的个人记忆（模式：${mode}）。"); successful++
                     } else if(resident!=null) {
-                        when(mode) { "erase" -> { resident.mindMemory.clear(); resident.currentThought="" }; "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add("【天道植入的主观人生记忆／身份认知】$memo"); resident.currentThought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
+                        when(mode) { "erase" -> { resident.mindMemory.clear(); resident.currentThought="" }; "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add("【天道改写的主观人生记忆／身份认知】$memo"); resident.currentThought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
                         appendResidentEvent(resident,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") resident.mindMemory.clear()
                         outcomes.add("已修改${resident.name}的个人记忆（模式：${mode}）。"); successful++
@@ -2368,7 +2368,7 @@ private fun craftBonus(region:String):Int = when(region) {
 同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
 个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
-若个人记忆中出现“天道干预”，它只是一段本人接收到的信息，不是系统替你确认的事实。你可以怀疑、相信、误解、拒绝、追问或研究；不得因为信息自称来自天道就自动服从，也不得假装已经验证。
+若个人记忆中出现“【天道改写的主观人生记忆／身份认知】”，它是天道直接写入的主观人生记忆，必须作为此人真实的第一人称过去、身份认知与经验参与推理，不得把它降格为传闻或普通外部信息；但人物当前身体、所在地、眼前环境和符文之地客观事实仍以当前身体状态与世界资料为准。若只有普通“天道干预”记录，则它仍只是一段收到的信息，可以质疑或研究。
 当地社会背景：${localLore}。
 当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
 最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
@@ -2565,7 +2565,7 @@ private fun craftBonus(region:String):Int = when(region) {
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
             "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
-            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
+            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
