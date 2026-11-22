@@ -1512,6 +1512,33 @@ object WorldEngine {
     private fun saveDiplomacy(p:android.content.SharedPreferences,relations:List<PairTension>) {
         p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war).put("aWins",it.aWins).put("bWins",it.bWins).put("warMonths",it.warMonths).put("exhaustionA",it.exhaustionA).put("exhaustionB",it.exhaustionB)) } }.toString()).apply()
     }
+    /**
+     * Historical events create grounded opportunities, not scripted roles.
+     * Only heroes with a plausible faction, location or institutional connection receive the prompt.
+     * Receiving an opportunity never changes their location, allegiance or decision.
+     */
+    private fun offerHistoricalEventToHeroes(day:Long,p:android.content.SharedPreferences,eventId:String,title:String,description:String) {
+        val heroes=heroAgents(p)
+        val noxusSet=setOf("卡特琳娜","斯维因","德莱厄斯","乐芙兰")
+        val ioniaSet=setOf("艾瑞莉娅","阿卡丽","慎","劫")
+        val candidates=when(eventId) {
+            "noxus_ionia_invasion" -> heroes.filter { it.alive && it.name in (noxusSet+ioniaSet) }
+            else -> emptyList()
+        }
+        candidates.forEach { h ->
+            val side=if(h.name in noxusSet) "诺克萨斯方面" else "艾欧尼亚方面"
+            val channel=if(h.name in noxusSet) "帝国军政体系、军团命令或与其身份相符的情报渠道" else "当地社群、寺院联系、亲历者或抵抗网络的消息"
+            val invitation="【历史事件接驳机会｜$eventId】第${day}日：$title。${description}。你以$side相关人物身份，通过$channel得知了与你有关的局势。你可以参与、拒绝、调查、等待或采取符合自身身份的其他行动；你不必服从任何官方剧情，也不会自动获得秘密情报或被传送。"
+            if(h.memory.none { it.contains("历史事件接驳机会｜$eventId") }) {
+                h.memory.add(invitation)
+                h.history.add("第${day}日｜收到历史事件「$title」的关联信息；是否参与由本人决定。")
+                while(h.memory.size>100) h.memory.removeAt(0)
+                while(h.history.size>3000) h.history.removeAt(0)
+            }
+        }
+        saveHeroes(p,heroes)
+    }
+
     private fun tickDiplomacy(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         if(day%30L!=0L)return
         val relations=diplomacy(p)
@@ -1531,6 +1558,7 @@ object WorldEngine {
                     if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")) {
                         p.edit().putBoolean(KEY_IONIA_INVASION_STARTED,true).putLong(KEY_IONIA_INVASION_DAY,day).apply()
                         events.add("【历史转折·模拟分支】第 $day 日：诺克萨斯与艾欧尼亚之间的结构性冲突升级为军事入侵。此时点由本世界的外交、军政与组织条件促成，不代表官方正史日期。")
+                        offerHistoricalEventToHeroes(day,p,"noxus_ionia_invasion","诺克萨斯第一次入侵艾欧尼亚","战争已经爆发，军队行动、地方防御、平民撤离与精神领域异动正在逐步改变局势")
                     }
                     rel.warMonths=0
                     rel.exhaustionA=0
@@ -2655,7 +2683,7 @@ private fun craftBonus(region:String):Int = when(region) {
             "信念："+hero.belief+"；天道直接改写并长期保存的完整主观人生记忆（若非空，视为真实第一人称经历）： "+hero.identityMemory.ifBlank { "无" }+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。当前历史锚点："+eraAnchor+"；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
-            "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
+            "若过去思考或经历中出现【历史事件接驳机会】，请把它视为通过具体渠道获得的有限信息；独立评估自己是否参与。可选action：stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event。join_event仅表示决定投入与自身身份相符的行动，不代表瞬间抵达战场或自动成功；decline_event表示明确拒绝；investigate_event表示尝试核实局势。没有相关机会时仍使用原有行动。只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action、reason。"
         localInferenceBusy=true
         ResidentAI.ask(prompt) { raw ->
             try {
@@ -2685,6 +2713,30 @@ private fun craftBonus(region:String):Int = when(region) {
                             }
                             "negotiate" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
                             "aid" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "投入当地社群事务，影响限于本地组织" }
+                            "join_event" -> {
+                                val opportunity=heroNow.memory.lastOrNull { it.contains("【历史事件接驳机会") }
+                                if(opportunity!=null) {
+                                    heroNow.influence=(heroNow.influence+2).coerceAtMost(100)
+                                    heroNow.memory.add("第${day}日：我决定回应历史事件中的机会，尝试以自身身份参与；具体行动仍受位置、资源、组织关系与现实阻力限制。")
+                                    if(heroNow.name=="艾瑞莉娅" && opportunity.contains("noxus_ionia_invasion")) {
+                                        heroNow.role="艾欧尼亚抵抗者"
+                                        heroNow.goal="守护艾欧尼亚并组织地方抵抗"
+                                    }
+                                    "决定参与相关历史事件；仅记录个人决策与投入意愿，具体行动需由后续世界条件验证"
+                                } else "当前没有可确认的历史事件接驳机会，未执行参与行动"
+                            }
+                            "decline_event" -> {
+                                val opportunity=heroNow.memory.lastOrNull { it.contains("【历史事件接驳机会") }
+                                if(opportunity!=null) heroNow.memory.add("第${day}日：我经过独立判断，决定不参与这次历史事件；这不代表我不知道事件，也不预设未来立场。")
+                                "决定暂不参与相关历史事件；拒绝原因与后续影响由本人经历继续形成"
+                            }
+                            "investigate_event" -> {
+                                val opportunity=heroNow.memory.lastOrNull { it.contains("【历史事件接驳机会") }
+                                if(opportunity!=null) {
+                                    heroNow.memory.add("第${day}日：我开始通过自己能够接触的人与渠道核实历史事件；尚未获得超出渠道范围的情报。")
+                                    "开始核实相关历史事件，尚未自动获得秘密情报"
+                                } else "没有可核实的历史事件机会，维持原有安排"
+                            }
                             else -> "决定维持当前安排"
                         }
                         heroNow.lastThoughtDay=day
