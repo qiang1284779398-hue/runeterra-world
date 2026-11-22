@@ -13,6 +13,12 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.EditText
+import android.net.Uri
+import java.io.File
+import java.io.FileOutputStream
+import com.hazratbilal.aikit.core.AiKitEngine
+import com.hazratbilal.aikit.chat.AiKitChat
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
@@ -52,16 +58,72 @@ class MainActivity : Activity() {
         val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
         val caravans = Button(this).apply { text = "商队 / 贸易 / 地区市场"; setOnClickListener { showCaravanDirectory() } }
         val households = Button(this).apply { text = "家庭 / 家庭成员 / 共同资产档案"; setOnClickListener { showHouseholdDirectory() } }
+        val localModel = Button(this).apply { text = "加载本地 AI 模型（GGUF）"; setOnClickListener { pickLocalModel() } }
+        val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
         val biographies = Button(this).apply {
             text = "居民传记导出 / 查看居民人生（点击进入）"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, biographies, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, testAI, biographies, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun pickLocalModel() {
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        startActivityForResult(intent, 8101)
+    }
+
+    @Deprecated("Legacy activity result used for simple SAF picker")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if(requestCode!=8101 || resultCode!=RESULT_OK || data?.data==null) return
+        val uri=data.data!!
+        Toast.makeText(this,"正在复制模型到本地存储，请保持应用打开…",Toast.LENGTH_LONG).show()
+        Thread {
+            try {
+                val modelsDir=File(filesDir,"models").apply { mkdirs() }
+                val modelFile=File(modelsDir,"resident-model.gguf")
+                contentResolver.openInputStream(uri)?.use { input ->
+                    FileOutputStream(modelFile).use { output -> input.copyTo(output, 1024*1024) }
+                } ?: throw IllegalStateException("无法读取所选文件")
+                runOnUiThread {
+                    Toast.makeText(this,"模型已复制，开始加载本地推理引擎…",Toast.LENGTH_LONG).show()
+                    ResidentAI.load(this,modelFile.absolutePath) { error ->
+                        runOnUiThread {
+                            Toast.makeText(this, if(error==null) "本地模型加载成功！居民AI引擎已就绪" else "模型加载失败：$error",Toast.LENGTH_LONG).show()
+                        }
+                    }
+            } catch(e:Throwable) {
+                runOnUiThread { Toast.makeText(this,"模型导入失败：${e.message}",Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    private fun testLocalAI() {
+        if(!ResidentAI.isLoaded()) {
+            AlertDialog.Builder(this).setTitle("本地 AI 尚未加载")
+                .setMessage("请先选择 GGUF 模型文件并等待加载完成。")
+                .setPositiveButton("知道了",null).show()
+            return
+        }
+        val input=EditText(this).apply { hint="输入测试问题" }
+        AlertDialog.Builder(this).setTitle("本地模型推理测试").setView(input)
+            .setPositiveButton("发送") { _,_ ->
+                val question=input.text.toString().trim()
+                if(question.isNotEmpty()) {
+                    Toast.makeText(this,"正在本机生成回答…",Toast.LENGTH_SHORT).show()
+                    ResidentAI.ask(question) { answer ->
+                        runOnUiThread { AlertDialog.Builder(this).setTitle("本地模型回答").setMessage(answer).setPositiveButton("关闭",null).show() }
+                    }
+                }
+            }.setNegativeButton("取消",null).show()
     }
 
     private fun showHeroDirectory() {
