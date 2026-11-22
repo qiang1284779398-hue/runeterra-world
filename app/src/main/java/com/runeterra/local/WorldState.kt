@@ -2823,7 +2823,7 @@ private fun craftBonus(region:String):Int = when(region) {
             prompt,
             maxTokens=176,
             systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
-        ) { raw ->
+        ) rawCallback@{ raw ->
             synchronized(WorldEngine) {
             fun recordResidentInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
@@ -2835,7 +2835,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 val result=extractCharacterJson(raw)
                 if(result==null) {
                     recordResidentInferenceIssue(characterOutputFailure(raw))
-                    return@askStructured
+                    return@rawCallback
                 }
                 run {
                     val latest=people(p).firstOrNull { it.id==r.id && it.alive }
@@ -3049,7 +3049,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             prompt,
             maxTokens=176,
             systemPrompt="你是人物的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
-        ) { raw ->
+        ) rawCallback@{ raw ->
             synchronized(WorldEngine) {
             fun recordInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
@@ -3061,10 +3061,10 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                 val result=extractCharacterJson(raw)
                 if(result==null) {
                     recordInferenceIssue(characterOutputFailure(raw))
-                    return@askStructured
+                    return@rawCallback
                 }
                 run {
-                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: run { inferenceResult="推理期间人物档案已变化"; return@askStructured }
+                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: run { inferenceResult="推理期间人物档案已变化"; return@rawCallback }
                     val thought=result.optString("thought").trim().take(420)
                     if(thought.isNotBlank() && !isMetaCharacterThought(thought)) {
                         heroNow.thought=thought
