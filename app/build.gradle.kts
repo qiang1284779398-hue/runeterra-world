@@ -24,6 +24,11 @@ android {
 }
 
 
+configurations.configureEach {
+    resolutionStrategy.force("androidx.core:core:1.15.0")
+}
+
 dependencies {
+    // AiKit bundles llama.cpp JNI and runs GGUF inference fully on-device.
     implementation("io.github.its-hazratbilal:android-ai-kit-chat:1.0.0")
 }
