@@ -1719,6 +1719,14 @@ private fun craftBonus(region:String):Int = when(region) {
             tickFauna(day,p,ecology,pop,events,rng,fauna)
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
+                // Capture the real before-state so biographies can record meaningful transitions,
+                // rather than inventing routine diary entries or sampling random bystanders.
+                val biographyBeforeSkill=r.skill
+                val biographyBeforeCoins=r.coins
+                val biographyBeforeHealth=r.health
+                val biographyBeforeFood=r.food
+                val biographyBeforeRegion=r.region
+                val biographyBeforeJob=r.job
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) {
                     val household=households.firstOrNull { it.id==r.householdId }
@@ -1849,6 +1857,22 @@ private fun craftBonus(region:String):Int = when(region) {
                 }
                 if(r.alive && r.food==0 && rng.nextInt(100)<3) events.add("第 $day 日：${r.name}在${r.region}遭遇食物短缺，健康恶化。")
                 if(r.alive && rng.nextInt(1000)<2) { recordLife(r,day,"实现阶段目标「${r.goal}」，开始追寻新的方向。");events.add("第 $day 日：${r.name}在${r.region}达成「${r.goal}」，开始追寻新的方向。") }
+
+                // Biography milestones are written only when the simulation actually crosses
+                // a consequential threshold. Ordinary daily work and small numerical drift stay out.
+                if(biographyBeforeSkill<10 && r.skill>=10) recordLife(r,day,"长期工作与练习初见成效，掌握了职业基础技能。")
+                if(biographyBeforeSkill<25 && r.skill>=25) recordLife(r,day,"技能积累达到新的阶段，已能独立处理较复杂的工作。")
+                if(biographyBeforeSkill<50 && r.skill>=50) recordLife(r,day,"多年经验使其成为熟练从业者，开始拥有更大的职业选择空间。")
+                if(biographyBeforeSkill<75 && r.skill>=75) recordLife(r,day,"技艺达到资深水准，在当地同行中具备较强经验。")
+                if(biographyBeforeSkill<100 && r.skill>=100) recordLife(r,day,"职业技能臻于当前模拟体系的顶点，成为当地极有经验的从业者。")
+                if(biographyBeforeCoins<25 && r.coins>=25) recordLife(r,day,"积蓄首次达到25枚，开始拥有应对短期意外的经济余地。")
+                if(biographyBeforeCoins<75 && r.coins>=75) recordLife(r,day,"个人积蓄达到75枚，具备改善居住或生产条件的可能。")
+                if(biographyBeforeCoins>=25 && r.coins<10) recordLife(r,day,"积蓄大幅消耗，经济状况转为脆弱，日常生计更依赖市场与互助。")
+                if(biographyBeforeFood>1 && r.food<=1 && r.alive) recordLife(r,day,"个人粮食储备降至危险水平，必须尽快购买、采集或寻求家庭互助。")
+                if(biographyBeforeHealth>=70 && r.health<40 && r.alive) recordLife(r,day,"健康状况明显恶化，已影响正常生活与劳动能力。")
+                if(biographyBeforeHealth<40 && r.health>=70 && r.alive) recordLife(r,day,"身体状况从严重虚弱中恢复，重新具备较稳定的劳动能力。")
+                if(biographyBeforeRegion!=r.region && r.alive && r.travelDaysRemaining<=0) recordLife(r,day,"生活地点发生变化：从${biographyBeforeRegion}转至${r.region}，开始适应新的社会与生计环境。")
+                if(biographyBeforeJob!=r.job && r.alive) recordLife(r,day,"职业身份发生变化：由${biographyBeforeJob}转为${r.job}，生活方式与谋生技能随之改变。")
             }
             pop.addAll(newborns)
             if(day%30L==0L) {
