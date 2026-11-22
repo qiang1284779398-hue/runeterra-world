@@ -311,7 +311,8 @@ object WorldEngine {
                         h.status="保护祖安街区与萤火社区"
                     }
                     "奇亚娜" -> {
-                        groups.firstOrNull { it.id=="ixtal_council" }?.let { it.internalTension=(it.publicSupport+1).coerceAtMost(100) }
+                        groups.firstOrNull { it.id=="ixtal_council" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
+                        factions["以绪塔尔"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
                         h.status="争取王族继承权并挑战以绪塔尔既有权力秩序"
                     }
                     "俄洛伊" -> {
