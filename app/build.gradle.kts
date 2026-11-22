@@ -26,6 +26,6 @@ android {
 
 dependencies {
     // Prebuilt llama.cpp JNI engine; GGUF inference runs entirely on-device.
-    implementation("dev.ffmpegkit-maintained:llama-android:0.1.1")
+    implementation(files("libs/llama-android-fixed.aar"))
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }
