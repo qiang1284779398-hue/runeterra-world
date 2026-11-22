@@ -305,6 +305,17 @@ object WorldEngine {
                 recordLife(recruit,day,"加入组织「"+group.name+"」，开始参与其活动。")
                 events.add("【组织活动·模拟】第 "+day+" 日："+recruit.name+"加入"+group.name+"。")
             }
+            // Membership is voluntary and can end; organizations should not accumulate immortal, permanent rosters.
+            val departureChance=if(group.resources<=5 || group.publicSupport<20)18 else if(group.publicSupport<35)7 else 1
+            if(group.members.isNotEmpty() && rng.nextInt(100)<departureChance) {
+                val leavingId=group.members.randomOrNull()
+                val leaving=pop.firstOrNull { it.id==leavingId && it.alive }
+                if(leavingId!=null) group.members.remove(leavingId)
+                if(leaving!=null) {
+                    recordLife(leaving,day,"退出组织「"+group.name+"」，不再参与其活动。")
+                    events.add("【组织变动·模拟】第 "+day+" 日："+leaving.name+"退出"+group.name+"。")
+                }
+            }
             group.resources=(group.resources+(livingMembers.size/8)+(if(group.kind.contains("商业")||group.kind.contains("帮派"))rng.nextInt(4) else 0)-rng.nextInt(3)).coerceIn(0,100)
             group.publicSupport=(group.publicSupport+(if(group.resources<15)-1 else if(group.agenda.contains("保护")||group.agenda.contains("团结"))1 else 0)+rng.nextInt(3)-1).coerceIn(0,100)
             val supportShift=if(group.publicSupport>=75)1 else if(group.publicSupport<=25)-1 else 0
