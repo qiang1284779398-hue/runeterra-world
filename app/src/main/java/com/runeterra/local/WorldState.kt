@@ -590,7 +590,8 @@ object WorldEngine {
     private fun goodPrice(market:Market,good:String):Int {
         val stock=if(good=="粮食")market.food else market.stock[good]?:0
         val base=when(good){"海克斯器件"->8;"魔法材料"->7;"工具"->4;"矿石"->3;"药材"->3;"木材"->2;else->1}
-        return (base*(100.0/(stock+50).coerceAtLeast(1))).toInt().coerceIn(1,base*4)
+        val scarcityFactor=150.0/(stock+50).coerceAtLeast(1)
+        return (base*scarcityFactor).toInt().coerceIn(1,base*4)
     }
     private fun ensureGoods(market:Market,region:String) {
         goods.forEach { good -> market.stock.putIfAbsent(good,if(good=="粮食")market.food else 25+regionalGoods(region).getOrDefault(good,0)*5) }
@@ -677,7 +678,10 @@ private fun craftBonus(region:String):Int = when(region) {
                 ensureGoods(market,region);map[region]=market
             }
             if(map.isNotEmpty()) {
-                regions.filter { it !in map }.forEach { region -> map[region]=Market(300+Random(region.hashCode().toLong()).nextInt(250),1000) }
+                regions.filter { it !in map }.forEach { region ->
+                    val market=Market(300+Random(region.hashCode().toLong()).nextInt(250),1000)
+                    ensureGoods(market,region);map[region]=market
+                }
                 saveMarkets(p,map)
                 return map
             }
@@ -706,9 +710,10 @@ private fun craftBonus(region:String):Int = when(region) {
             if(caravan.daysRemaining<=0) {
                 val destination=markets[caravan.to]
                 if(destination!=null) {
+                    val settlementCost=caravan.cargo*goodPrice(destination,caravan.good)
                     if(caravan.good=="粮食") destination.food+=caravan.cargo
                     else destination.stock[caravan.good]=(destination.stock[caravan.good]?:0)+caravan.cargo
-                    destination.wealth=(destination.wealth-caravan.cargo*goodPrice(destination,caravan.good)).coerceAtLeast(0)
+                    destination.wealth=(destination.wealth-settlementCost).coerceAtLeast(0)
                     events.add("【商队抵达·模拟】第 $day 日：${caravan.owner}从${caravan.from}运抵${caravan.to}，交付${caravan.cargo}单位${caravan.good}。")
                 }
                 caravan.alive=false
@@ -833,8 +838,8 @@ private fun craftBonus(region:String):Int = when(region) {
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
-                if(tickTravel(r,day,events,rng)) return@forEach
-                if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
+                val traveling=tickTravel(r,day,events,rng)
+                if(!traveling && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
                     "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(12+rng.nextInt(9)+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
@@ -849,17 +854,17 @@ private fun craftBonus(region:String):Int = when(region) {
                     }
                 }
                 if(day%360L==0L) r.age++
-                if(day%90L==0L && r.alive && r.skill>=10 && r.job=="学徒") {
+                if(day%90L==0L && r.alive && !traveling && r.skill>=10 && r.job=="学徒") {
                     r.job="工匠"
                     recordLife(r,day,"在${r.region}完成学徒阶段，成为工匠。")
                     events.add("第 $day 日：${r.name}在${r.region}完成学徒阶段，成为工匠。")
                 }
-                if(day%90L==0L && r.alive && r.skill>=25 && r.job=="旅人") {
+                if(day%90L==0L && r.alive && !traveling && r.skill>=25 && r.job=="旅人") {
                     r.job="护卫"
                     recordLife(r,day,"在${r.region}积累经验，转为护卫。")
                     events.add("第 $day 日：${r.name}在${r.region}积累经验，转为护卫。")
                 }
-                if(day%90L==0L && r.alive && r.skill>=50 && r.job=="采集者") {
+                if(day%90L==0L && r.alive && !traveling && r.skill>=50 && r.job=="采集者") {
                     r.job="商贩"
                     recordLife(r,day,"在${r.region}凭经验开始经营贸易。")
                     events.add("第 $day 日：${r.name}在${r.region}凭经验开始经营贸易。")
