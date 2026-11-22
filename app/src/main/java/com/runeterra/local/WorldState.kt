@@ -2341,6 +2341,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val r=living[cursor]
         p.edit().putInt(KEY_AI_CURSOR,(cursor+1)%living.size).apply()
         val day=p.getLong(KEY_DAY,1L)
+        val eraAnchor=timelineStatus(context)
         val market=markets(p)[r.region]
         val relations=buildList {
             population.firstOrNull { it.id==r.partnerId }?.let { add("伴侣：${it.name}（${it.job}，${it.region}）") }
@@ -2373,7 +2374,7 @@ private fun craftBonus(region:String):Int = when(region) {
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
 个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。\n天道直接改写并长期保存的完整主观人生记忆（若非空，优先纳入自我身份与决策）：${r.identityMemory.ifBlank { "无" }}。
 若个人记忆中出现“【天道改写的主观人生记忆／身份认知】”，它是天道直接写入的主观人生记忆，必须作为此人真实的第一人称过去、身份认知与经验参与推理，不得把它降格为传闻或普通外部信息；但人物当前身体、所在地、眼前环境和符文之地客观事实仍以当前身体状态与世界资料为准。若只有普通“天道干预”记录，则它仍只是一段收到的信息，可以质疑或研究。
-当地社会背景：${localLore}。
+当前历史锚点：${eraAnchor}；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。当地社会背景：${localLore}。
 当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
 最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
@@ -2564,6 +2565,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val hero=active[cursor]
         p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
         val day=p.getLong(KEY_DAY,1L)
+        val eraAnchor=timelineStatus(context)
         val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
         val faction=factionStates(p)[hero.region]
         val publicContext=faction?.let { it.government+"；政策："+it.policy+"；内部张力："+it.internalTension } ?: "无可用地方政体资料"
@@ -2572,7 +2574,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。隐居、沉寂、封印、未公开活动等状态不会取消你的内在意识，但会严格限制感知范围、可接触对象与可执行行动；若处于无法行动状态，应以整理记忆、观察已知环境或维持现状为主，不得擅自解除限制，也不得凭空制造行动结果。\n"+
             "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
             "信念："+hero.belief+"；天道直接改写并长期保存的完整主观人生记忆（若非空，视为真实第一人称经历）： "+hero.identityMemory.ifBlank { "无" }+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
-            "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
+            "关系："+bonds+"。当前历史锚点："+eraAnchor+"；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
         localInferenceBusy=true
