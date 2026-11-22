@@ -17,8 +17,6 @@ import android.widget.EditText
 import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
-import com.hazratbilal.aikit.core.AiKitEngine
-import com.hazratbilal.aikit.chat.AiKitChat
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
