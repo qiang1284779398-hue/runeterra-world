@@ -900,6 +900,25 @@ private fun craftBonus(region:String):Int = when(region) {
             "【${f.name}地区政治格局】\n政治形态：${f.government}\n主要权力结构：${f.rulingBloc}\n内部异议与竞争力量：${f.opposition}\n当前治理议题：${f.policy}\n主要领袖/机构：${f.leader}\n模拟治理指标：力量${f.military}｜资源${f.treasury}｜社会稳定${f.stability}｜内部张力${f.internalTension}\n涉及地区：${f.territory.joinToString("、")}\n说明：这里描述的是地区政治生态的抽象指标，不代表该地区必然是单一国家或统一政府。艾欧尼亚、弗雷尔卓德、巨神峰、比尔吉沃特、班德尔城与暗影岛尤其不能被视作普通中央集权国家。\n（所有数值变化属于模拟历史分支，不代表官方剧情。）"
         }
     }
+    fun caravanDirectory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val active=caravans(p).filter { it.alive }
+        val marketMap=markets(p)
+        val rows=active.map {
+            "${it.owner}｜${it.from} → ${it.to}｜粮食 ${it.cargo}｜剩余 ${it.daysRemaining} 日"
+        }.toMutableList()
+        rows.add(0,"在途商队：${active.size} 支")
+        rows.addAll(marketMap.entries.sortedBy { it.key }.map { (region,m) ->
+            val price=when {
+                m.food<60 -> "高"
+                m.food<140 -> "偏高"
+                m.food>350 -> "低"
+                else -> "平稳"
+            }
+            "${region}｜粮食库存 ${m.food}｜市场财富 ${m.wealth}｜粮价：${price}"
+        })
+        return rows
+    }
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age}).map {
