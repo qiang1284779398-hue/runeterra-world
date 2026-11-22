@@ -21,7 +21,9 @@ class WorldService : Service() {
             // 目标模拟速度：现实每秒推进 200 个世界日。
             val state = WorldEngine.advance(this@WorldService, DAYS_PER_SECOND)
             // One resident at a time receives a private local-model reasoning turn.
-            WorldEngine.requestLocalResidentThinking(this@WorldService)
+            // Alternate the single local model between ordinary residents and canon characters.
+            if (ticks % 2L == 0L) WorldEngine.requestLocalResidentThinking(this@WorldService)
+            else WorldEngine.requestLocalHeroThinking(this@WorldService)
             ticks++
             if (ticks % NOTIFICATION_INTERVAL_TICKS == 0L) {
                 updateNotification(state.day)
