@@ -780,7 +780,7 @@ object WorldEngine {
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\n所在领域：${it.region}\n族类／本质：${heroLineage(it.name)}\n身份：${it.role}\n当前状态：${it.status}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\n所在领域：${it.region}\n族类／本质：${heroLineage(it.name)}\n身份：${it.role}\n当前状态：${it.status}\n性别：${it.gender}；外貌：${it.appearance.ifBlank { "未特别记录" }}；能力：${it.abilities.ifBlank { "依既有设定" }}；存在状态：${if(it.alive) "存续" else "已被抹杀/死亡"}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
         }
     }
     fun heroBiographyExport(context:Context,name:String):String? {
@@ -789,7 +789,7 @@ object WorldEngine {
         return buildString {
             append("符文之地 · 重要人物自主经历档案\n")
             append("人物：${h.name}\n领域：${h.region}\n族类／本质：${heroLineage(h.name)}\n身份：${h.role}\n")
-            append("当前状态：${h.status}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
+            append("当前状态：${h.status}\n性别：${h.gender}\n外貌：${h.appearance}\n能力：${h.abilities}\n存在状态：${if(h.alive) "存续" else "已被抹杀/死亡"}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
             append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\n\n")
             append("【自主思考与记忆】\n")
             h.memory.forEach { append(it).append('\n') }
@@ -809,6 +809,7 @@ object WorldEngine {
         val groups=organizations(p)
         val factions=factionStates(p)
         agents.forEach { h ->
+            if(!h.alive) return@forEach
             if(h.name=="阿兹尔" || h.name=="泽拉斯") {
                 if(h.status.startsWith("沉寂") || h.status.startsWith("古代恕瑞玛") || h.status.startsWith("古代飞升者")) return@forEach
             }
@@ -2232,7 +2233,7 @@ private fun craftBonus(region:String):Int = when(region) {
         }.getOrDefault("")
         val publicInstitutions=localFaction?.let { "当地公开政治结构：${it.government}；当前公共议题：${it.policy}；公开领袖或机构：${it.leader}" } ?: "当地没有可用的公开政体细节"
         val prompt="""你是符文之地中一名有自身经历、局限知识、关系和利益的居民的个人认知引擎。你不是旁白，不是游戏角色，不知道全世界发生的事。只能依据此人的亲历、可信记忆和当前可观察信息判断；不得替别人决定，也不得捏造对话、事件或知识。
-人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
+人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；性别：${r.gender}；外貌：${r.appearance.ifBlank { "未特别记录" }}；能力：${r.abilities.ifBlank { "依职业与既有设定" }}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
 人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
 已知关系：${relations}。
 同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
@@ -2244,6 +2245,7 @@ private fun craftBonus(region:String):Int = when(region) {
 最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
+当前生效的天道规则：${activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }}。
 请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
 行动选择应体现这个人自己的长期兴趣和处境，而不只是生存：可以维持现状、寻找食物、求职或转行、向可信亲友求助、练习现有职业技能，或主动结识同一聚落中真实存在的人。不要为了制造剧情而强行选择社交或成长。
 如果个人记忆中有天道干预、异常信息或关于世界本质的疑问，可以自主选择investigate_world来整理假说、观察现象并寻找证据，或选择discuss_world与真实可接触的亲友交流；没有研究条件时也可以暂缓。
@@ -2420,7 +2422,7 @@ private fun craftBonus(region:String):Int = when(region) {
         if(!ResidentAI.isLoaded() || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
-        val active=all.filter { h -> h.region!="虚空" && h.status!="隐居" &&
+        val active=all.filter { h -> h.alive && h.region!="虚空" && h.status!="隐居" &&
             !(h.name in setOf("阿兹尔","泽拉斯") && (h.status.startsWith("沉寂") || h.status.contains("尚未进入本模拟当代活动") || h.status.contains("尚未在当前世界公开活动"))) }
         if(active.isEmpty()) return
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
@@ -2433,9 +2435,9 @@ private fun craftBonus(region:String):Int = when(region) {
         val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
-            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；目标："+hero.goal+"。\n"+
+            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
             "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
-            "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。日期："+day+"。\n"+
+            "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
         localInferenceBusy=true
@@ -2986,7 +2988,7 @@ private fun craftBonus(region:String):Int = when(region) {
         return buildString {
             append("符文之地 · 居民完整人生档案\n档案编号：${r.id}｜姓名：${r.name}\n")
             append("档案用途：供长篇小说创作使用的模拟事实素材。只记录真实保存的状态和事件，不补写未发生的对白、动作或心理活动。\n\n")
-            append("【人物基础资料】\n生命类别：${r.lineage}\n年龄：${r.age}岁\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n")
+            append("【人物基础资料】\n生命类别：${r.lineage}\n年龄：${r.age}岁\n性别：${r.gender}\n外貌：${r.appearance}\n能力：${r.abilities}\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n")
             append("当前地区：${r.region}\n当前聚落：${r.settlement.ifBlank { "未记录" }}\n当前职业：${r.job}\n")
             append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
             append("\n【个人认知状态】\n说明：带有“本地模型推理”标记的思考来自已加载的 GGUF 本地模型；其他旧记录可能来自世界模拟规则。\n人格倾向值：${r.mindTrait}/100\n当前信念：${r.belief}\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\n当前意图：${r.intent}\n认知记忆：${r.mindMemory.size}条\n")
