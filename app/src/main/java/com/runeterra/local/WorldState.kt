@@ -66,13 +66,13 @@ object WorldEngine {
     private data class RegionalLore(val name:String,val political:String,val magic:String,val forces:String,val boundary:String)
     // Official setting anchors; future simulation is a branch history, not a rewrite of canon.
     private val regionalLore=listOf(
-        RegionalLore("德玛西亚","王室君主制与贵族家族、边境领主并存","禁魔制度与禁魔石影响魔法的公开使用，不代表当地没有魔法","王室、冕卫、搜魔人、法师社群；嘉文三世死后的继承危机","禁魔石抑制魔法，不是消灭世界中的魔法"),
-        RegionalLore("诺克萨斯","跨地域扩张帝国，由崔法利议会统治","帝国倾向于利用魔法作为力量，具体政策服务于军政目标","崔法利议会、军团、地方总督、黑色玫瑰与被征服地区","诺克萨斯不是单一民族国家，征服与吸纳并存"),
-        RegionalLore("艾欧尼亚","众多省地、社群与传统构成的群岛，没有统一中央政权","物质领域与精神领域边界较薄，灵性、自然与魔法交织","地方自治、均衡教派、影流、抵抗者与战争创伤","不能写成高度集权的单一国家"),
+        RegionalLore("德玛西亚","王室君主制与贵族家族、边境领主并存","禁魔制度与禁魔石影响魔法的公开使用，不代表当地没有魔法","嘉文三世在位；王室、冕卫、搜魔人、贵族与法师社群围绕秩序和魔法管制互动","禁魔石抑制魔法，不是消灭世界中的魔法"),
+        RegionalLore("诺克萨斯","由皇帝博拉姆·达克威尔统治的跨地域扩张帝国；军方、宫廷与秘密势力角力","帝国倾向于利用魔法作为力量，具体政策服务于军政目标","皇帝宫廷、诺克萨斯军团、旧贵族、地方总督与黑色玫瑰","诺克萨斯不是单一民族国家，征服与吸纳并存；崔法利议会尚未建立"),
+        RegionalLore("艾欧尼亚","众多省地、社群与传统构成的群岛，没有统一中央政权","物质领域与精神领域边界较薄，灵性、自然与魔法交织","地方自治、均衡教派、寺院、地方领袖与各地传统","不能写成高度集权的单一国家；诺克萨斯入侵尚未发生"),
         RegionalLore("皮尔特沃夫","议会、贸易家族与精英阶层主导的城邦","海克斯科技将魔法水晶与技术结合，不等同普通法术","议会、贸易家族、发明家、工坊与上层城市秩序","与祖安是相连的双城社会，不是互不相关的国家"),
         RegionalLore("祖安","位于皮尔特沃夫下方的地下城邦，企业、帮派与社区并立","炼金与化学科技塑造城市生活，污染和资源不平等长期存在","化学男爵、萤火、独立发明家、工人社区与底层居民","不能简化成只有反派帮派的城市"),
         RegionalLore("弗雷尔卓德","严酷冰原上的部族世界，联盟与战母权威不断变化","古老冰霜力量、冰裔、真冰与远古存在交织","阿瓦罗萨、凛冬之爪、霜卫、三姐妹传说与旧神信仰","不是统一王国；真冰稀有，部族会迁徙"),
-        RegionalLore("恕瑞玛","古代帝国遗产、复兴力量与独立绿洲城邦并存","飞升者、太阳圆盘、古代遗迹与虚空历史影响魔法格局","阿兹尔复兴势力、泽拉斯势力、城邦、商路与水源争夺","不能把整个沙漠视为阿兹尔直接统治的领土"),
+        RegionalLore("恕瑞玛","古代帝国遗产、独立绿洲城邦与商路网络并存","飞升者、太阳圆盘、古代遗迹与虚空历史影响魔法格局","地方城邦、绿洲统治者、商路、古代遗迹守望者与沉睡的飞升者遗产","当前开局不视为阿兹尔已经复兴；不能把整个沙漠视为统一帝国"),
         RegionalLore("巨神峰","山地部族、朝圣者与宗教传统构成的区域","星界力量、星灵化身与登峰试炼影响少数人的命运","烈阳、皎月、拉阔尔人与登峰者","星灵不是普通地方官僚，登峰不是日常活动"),
         RegionalLore("比尔吉沃特","蓝焰群岛的港口城市，没有稳定中央政府","海怪、古老海洋信仰与布胡鲁传统影响沿海生活","船长、海盗、悬赏猎人、港口帮派与厄运小姐的权力格局","权力随船长和帮派斗争变化，不是常规王国"),
         RegionalLore("以绪塔尔","以绪奥肯为核心、长期对外隐匿的文明","元素魔法是知识、教育和社会秩序的核心","云塔（Yun Tal）、元素法师、边境居民与隐秘政策","不能写成普通魔法学院或公开贸易国家"),
@@ -164,15 +164,15 @@ object WorldEngine {
     // Relationship baselines reflect established character lore; numeric values are simulation state, not canon facts.
     private val heroBondSeeds=listOf(
         HeroBond("盖伦","拉克丝","姐弟；共同面对德玛西亚禁魔制度与家族责任",92,18),
-        HeroBond("斯维因","德莱厄斯","崔法利议会共同执政者；政治合作",78,24),
+        HeroBond("斯维因","德莱厄斯","诺克萨斯军政体系中的两名重要人物，未来可能形成合作",58,24),
         HeroBond("斯维因","乐芙兰","帝国权力斗争；彼此提防的长期暗战",18,88),
-        HeroBond("慎","劫","曾同属均衡教派；理念分歧导致决裂",22,82),
-        HeroBond("艾希","瑟庄妮","弗雷尔卓德统一道路相冲突的战母",12,90),
+        HeroBond("慎","劫","均衡教派中的师兄弟与理念差异；此时尚未发生影流分裂",72,18),
+        HeroBond("艾希","瑟庄妮","弗雷尔卓德部族出身与未来道路存在差异；尚未发展为战母间的全面竞争",48,28),
         HeroBond("阿兹尔","泽拉斯","昔日主仆与友人；飞升仪式背叛造成宿敌关系",3,98),
         HeroBond("蕾欧娜","黛安娜","烈阳与皎月信仰冲突及个人历史",20,84),
         HeroBond("凯特琳","蔚","皮尔特沃夫执法搭档；彼此信任但行事方式不同",86,22),
         HeroBond("蔚","金克丝","姐妹关系；创伤与分离造成复杂情感",48,72),
-        HeroBond("艾瑞莉娅","斯维因","艾欧尼亚抵抗者与诺克萨斯统治者的战争对立",8,94),
+        HeroBond("艾瑞莉娅","斯维因","诺克萨斯入侵前双方尚无直接战争对立；关系将随历史事件演化",50,8),
         HeroBond("瑟庄妮","丽桑卓","凛冬之爪与霜卫之间的历史性敌意",10,92),
         HeroBond("阿卡丽","慎","师承与理念分歧；阿卡丽选择独立道路",42,48),
         HeroBond("艾克","金克丝","祖安旧日同伴；如今走上不同道路",38,58),
@@ -191,10 +191,10 @@ object WorldEngine {
         HeroAgent("德莱厄斯","诺克萨斯","军团统帅","军事行动","以诺克萨斯军团推进帝国利益",76),
         HeroAgent("乐芙兰","诺克萨斯","秘密结社领袖","暗中布局","通过黑色玫瑰操纵帝国深层权力",82),
         HeroAgent("艾瑞莉娅","艾欧尼亚","艾欧尼亚地方居民与舞者","生活于家乡，尚未成为战争中的抵抗象征","守护家人与故乡的文化传统",45),
-        HeroAgent("阿卡丽","艾欧尼亚","刺客","游走","追寻自己的道路",65),
-        HeroAgent("慎","艾欧尼亚","均衡教派首领","维持均衡","守护物质领域与精神领域之间的均衡",68),
-        HeroAgent("劫","艾欧尼亚","影流领袖","扩张影流影响","以自己的道路守护艾欧尼亚",72),
-        HeroAgent("厄运小姐","比尔吉沃特","船长","掌权","掌控港口与海上势力",70),
+        HeroAgent("阿卡丽","艾欧尼亚","均衡教派年轻弟子","接受教派训练，尚未离开均衡教派独立行动","保护家园并学习忍术",42),
+        HeroAgent("慎","艾欧尼亚","均衡教派继承人","在父亲与教派长者指导下修行，尚未继任暮光之眼","守护物质领域与精神领域之间的均衡",55),
+        HeroAgent("劫","艾欧尼亚","均衡教派年轻弟子","在均衡教派中修行，尚未创建影流","学习力量并守护艾欧尼亚",48),
+        HeroAgent("厄运小姐","比尔吉沃特","年轻赏金猎人与船员","尚未成为掌控港口的船长","在海港谋生并追查家族仇敌",42),
         HeroAgent("俄洛伊","比尔吉沃特","布胡鲁大祭司","履行信仰使命","传播娜迦卡波洛丝的意志并考验灵魂",68),
         HeroAgent("瑟庄妮","弗雷尔卓德","凛冬之爪部族成员（尚未确立战母地位）","在严酷冰原中磨炼生存与领导能力","维护部族生存与独立",48),
         HeroAgent("艾希","弗雷尔卓德","阿瓦罗萨部族成员（尚未成为战母）","在部族传统与未来道路之间成长","寻求部族间更稳定的生存与合作",48),
@@ -371,7 +371,7 @@ object WorldEngine {
                         } else h.status="生活于艾欧尼亚地方社群；尚未因诺克萨斯入侵而成为抵抗运动领袖"
                     }
                     "阿卡丽" -> {
-                        h.status="独立行动；不受均衡教派或影流直接指挥"
+                        h.status=if(p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) "在战争与教派分歧中逐渐形成独立判断" else "接受均衡教派训练，尚未离开教派独立行动"
                     }
                     "厄运小姐" -> {
                         group?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
@@ -415,11 +415,16 @@ object WorldEngine {
                     }
                     "慎" -> {
                         groups.firstOrNull { it.id=="ionia_kinkou" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
-                        h.status="调停物质领域与精神领域之间的失衡"
+                        h.status="在教派长者指导下修行，承担均衡教派的重要职责；尚未继任暮光之眼"
                     }
                     "劫" -> {
-                        groups.firstOrNull { it.id=="ionia_shadow_order" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.resources=(it.resources+1).coerceAtMost(100) }
-                        h.status="扩展影流行动网络并守护艾欧尼亚"
+                        if(p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                            val shadow=groups.firstOrNull { it.id=="ionia_shadow_order" }
+                            if(shadow!=null && shadow.status=="尚未形成") { shadow.status="形成初期"; shadow.influence=24; shadow.resources=18; shadow.publicSupport=20 }
+                            h.role="影流创建者"
+                            h.goal="以自己的道路守护艾欧尼亚"
+                            h.status="战争与理念冲突推动其脱离旧有道路，影流开始形成"
+                        } else h.status="仍在均衡教派中修行；尚未创建影流"
                     }
                     "艾希" -> {
                         h.status="在阿瓦罗萨部族传统中成长；尚未以战母身份建立联盟"
@@ -521,9 +526,9 @@ object WorldEngine {
     )
     // Lore-grounded institutional identities. Simulated political changes are alternate history, not canon.
     private val factionLore=mapOf(
-        "德玛西亚" to FactionLore("王国君主制；王位继承处于政治动荡","王室与各大贵族家族","法师社群、改革派贵族与反禁魔者","王位继承、贵族认可与魔法管制共同影响王国秩序","王子嘉文四世（继承尚未获贵族一致认可）"),
-        "诺克萨斯" to FactionLore("扩张型帝国；崔法利议会主导","崔法利议会与诺克萨斯军方","地方总督、旧贵族及反扩张势力","以力量与功绩晋升，持续争夺边境与影响力","崔法利议会"),
-        "艾欧尼亚" to FactionLore("多地灵性传统并存；无统一中央政权","地方长老、寺院与抵抗组织","亲诺克萨斯合作者、地方割据者与路线分歧派","守护土地与精神传统，同时处理战争创伤和自治分歧","地方议会与长老"),
+        "德玛西亚" to FactionLore("王国君主制；嘉文三世在位，王室与贵族共同维持秩序","王室、冕卫家族与各大贵族","法师社群、改革派贵族与反禁魔者","王室权威、贵族义务与魔法管制共同影响王国秩序","国王嘉文三世"),
+        "诺克萨斯" to FactionLore("扩张型帝国；皇帝博拉姆·达克威尔统治，军方与宫廷争夺影响","皇帝宫廷、军团统帅与地方总督","旧贵族、黑色玫瑰与军政派系","维持帝国秩序、扩张边境并处理军政权力竞争","皇帝博拉姆·达克威尔及其宫廷"),
+        "艾欧尼亚" to FactionLore("多地灵性传统并存；无统一中央政权","地方长老、寺院与自治社群","地方领袖之间的理念分歧与资源争议","守护土地、精神传统与地方自治；外部入侵尚未成为当前现实","地方议会与长老"),
         "皮尔特沃夫" to FactionLore("城邦议会与精英家族影响","议会、贸易家族与工坊巨头","底层工人、改革派与反垄断团体","推动海克斯科技、贸易和城市秩序，承受阶层压力","皮尔特沃夫议会"),
         "祖安" to FactionLore("地下城邦；工坊、帮派与企业势力并立","化学男爵及大型工坊势力","工人社区、独立发明家与反企业组织","争夺资源、空气与生存空间，科技繁荣伴随污染和剥削","化学男爵议会"),
         "弗雷尔卓德" to FactionLore("部族联盟与氏族政治","各部族首领及联盟","敌对部族、流亡者与争夺资源的氏族","在严酷环境中争夺生存资源、盟约与部族领导权","部族首领议会"),
@@ -608,18 +613,18 @@ object WorldEngine {
         Organization("demacia_crownguard","冕卫家族","德玛西亚","贵族家族","维护家族地位、军事传统与王国影响力",mutableListOf("demacia_mage_seekers"),mutableListOf("demacia_crown"),"冕卫家族长",62,72,55),
         Organization("demacia_mage_seekers","搜魔人组织","德玛西亚","国家组织","执行针对非法魔法活动的搜查与管制",mutableListOf("demacia_crownguard"),mutableListOf("demacia_crown"),"搜魔人高阶官员",55,65,48),
         Organization("demacia_vanguard","无畏先锋","德玛西亚","军事组织","保卫德玛西亚并承担高风险军事任务",mutableListOf(),mutableListOf("demacia_crown","demacia_crownguard"),"无畏先锋军官",68,70,76),
-        Organization("noxus_trifarix","崔法利议会","诺克萨斯","最高统治机构","以力量、远见与狡诈的权力原则统治帝国",mutableListOf("noxus_black_rose"),mutableListOf("noxus_legions"),"三人议会",90,95,65),
+        Organization("noxus_trifarix","诺克萨斯帝国宫廷","诺克萨斯","最高统治机构","维护皇帝博拉姆·达克威尔的帝国统治与军政秩序",mutableListOf("noxus_black_rose"),mutableListOf("noxus_legions"),"皇帝宫廷与军政官员",82,90,64),
         Organization("noxus_legions","诺克萨斯军团","诺克萨斯","军事组织","扩张帝国疆域并维持军事控制",mutableListOf(),mutableListOf("noxus_trifarix"),"军团统帅",82,90,70),
         Organization("noxus_black_rose","黑色玫瑰","诺克萨斯","秘密结社","通过秘密网络与古老力量影响权力格局",mutableListOf("noxus_trifarix"),mutableListOf(),"秘密议会",76,82,20),
         Organization("ionia_kinkou","均衡教派","艾欧尼亚","宗教与武术组织","维护精神领域与物质领域之间的均衡",mutableListOf("ionia_shadow_order"),mutableListOf(),"教派长老",62,45,60),
-        Organization("ionia_shadow_order","影流","艾欧尼亚","武装组织","以激进手段守护艾欧尼亚并追求力量",mutableListOf("ionia_kinkou"),mutableListOf(),"影流领袖",58,58,35),
+        Organization("ionia_shadow_order","影流（尚未形成）","艾欧尼亚","武装组织","尚未形成独立组织；未来可能因战争创伤与理念冲突出现分裂",mutableListOf("ionia_kinkou"),mutableListOf(),"尚无组织领袖",0,0,0,"尚未形成"),
         Organization("freljord_avarosan","阿瓦罗萨部族联盟","弗雷尔卓德","部族联盟","团结部族并争取和平与生存空间",mutableListOf("freljord_winter_claw"),mutableListOf(),"部族联盟领袖",64,50,65),
         Organization("freljord_winter_claw","凛冬之爪","弗雷尔卓德","部族联盟","以强硬的生存法则与征战维系部族",mutableListOf("freljord_avarosan"),mutableListOf(),"战母",61,55,54),
         Organization("zaun_chem_barons","祖安化学男爵势力","祖安","商业与帮派联盟","控制工业、炼金资源与地下贸易网络",mutableListOf("zaun_firelights"),mutableListOf(),"化学男爵议会",75,88,32),
         Organization("zaun_firelights","萤火","祖安","地下抵抗组织","保护社区并反抗压迫与环境破坏",mutableListOf("zaun_chem_barons"),mutableListOf(),"社区行动者",42,28,68),
         Organization("piltover_council","皮尔特沃夫议会与贸易家族","皮尔特沃夫","政治与商业联盟","维护城邦贸易、海克斯科技与精英秩序",mutableListOf(),mutableListOf(),"议会代表",78,92,62),
         Organization("bilgewater_captains","比尔吉沃特船长与港口势力","比尔吉沃特","港口联盟","争夺港口、航线、悬赏与海上贸易",mutableListOf(),mutableListOf(),"港口头目",60,62,45),
-        Organization("shurima_sun_disc","恕瑞玛复兴势力","恕瑞玛","帝国复兴运动","争夺古代遗产、绿洲与帝国合法性",mutableListOf(),mutableListOf(),"复兴派代表",58,52,48),
+        Organization("shurima_sun_disc","太阳圆盘遗产守望者","恕瑞玛","古代遗产与宗教社群","守护太阳圆盘遗迹、古代知识与复兴传说；尚未建立统一帝国",mutableListOf(),mutableListOf(),"遗迹守望者（模拟）",48,44,42),
         Organization("targon_solari","烈阳教派","巨神峰","宗教组织","维护烈阳信仰与相关宗教秩序",mutableListOf("targon_lunari"),mutableListOf(),"烈阳教长",57,45,55),
         Organization("targon_lunari","皎月教派","巨神峰","宗教组织","守护皎月信仰与其信徒",mutableListOf("targon_solari"),mutableListOf(),"皎月教派代表",45,30,35),
         Organization("ixtal_council","云塔（Yun Tal）","以绪塔尔","统治阶层","维护元素知识、以绪奥肯秩序与对外隔绝",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70),
@@ -666,6 +671,12 @@ object WorldEngine {
         if(day%30L!=0L)return
         val groups=organizations(p)
         groups.forEach { group ->
+            if(group.status=="尚未形成") {
+                if(group.id=="ionia_shadow_order" && p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                    group.status="形成初期"; group.influence=24; group.resources=18; group.publicSupport=20
+                    events.add("【组织形成·模拟分支】第 $day 日：战争创伤与理念分歧推动艾欧尼亚影流开始形成；其发展仍取决于人物选择与地方局势。")
+                } else return@forEach
+            }
             val livingMembers=group.members.mapNotNull { id -> pop.firstOrNull { it.id==id && it.alive } }
             group.members.retainAll(livingMembers.map { it.id }.toSet())
             if(group.kind=="非人种族社群" || group.kind=="超自然威胁网络") {
@@ -761,7 +772,11 @@ object WorldEngine {
             if(!rel.war) {
                 val structuralPressure=((sideA?.internalTension?:20)+(sideB?.internalTension?:20))/35
                 rel.tension=(rel.tension+rng.nextInt(7)-3+(if(structuralPressure>=4)1 else 0)).coerceIn(0,100)
-                if(rel.tension>=85 && rng.nextInt(100)<18) {
+                val isNoxusIonia=setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")
+                val noxus=factions["诺克萨斯"]
+                val legions=organizations(p).firstOrNull { it.id=="noxus_legions" }
+                val invasionReady=!isNoxusIonia || (noxus!=null && noxus.military>=60 && noxus.treasury>=250 && noxus.stability>=35 && (legions?.influence?:0)>=50)
+                if(rel.tension>=85 && invasionReady && rng.nextInt(100)<18) {
                     rel.war=true
                     if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")) {
                         p.edit().putBoolean(KEY_IONIA_INVASION_STARTED,true).apply()
