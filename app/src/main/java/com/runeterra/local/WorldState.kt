@@ -51,7 +51,7 @@ private data class Resident(
 object WorldEngine {
     private const val PREFS="runeterra_world"
     // Versioned factual life packets: snapshots, event classification and contemporaneous relationship state.
-    private fun recordLife(r:Resident,day:Long,detail:String){
+    private fun recordLife(r:Resident,day:Long,detail:String,role:String="individual_transition"){
         r.history.add("第${day}日：${detail}")
         val type=when {
             detail.contains("出生") || detail.contains("孩子") || detail.contains("家庭") || detail.contains("伴侣") || detail.contains("父母") || detail.contains("子女") -> "家庭与关系"
@@ -73,7 +73,7 @@ object WorldEngine {
             .put("sequence",sequence).put("day",day).put("age",r.age).put("lifeStage",stage).put("eventType",type)
             .put("region",r.region).put("settlement",r.settlement).put("job",r.job)
             .put("health",r.health).put("skill",r.skill).put("coins",r.coins).put("food",r.food).put("alive",r.alive)
-            .put("detail",detail).put("travelOrigin",r.travelOrigin).put("travelDestination",r.travelDestination)
+            .put("detail",detail).put("residentRole",role).put("travelOrigin",r.travelOrigin).put("travelDestination",r.travelDestination)
             .put("travelDaysRemaining",r.travelDaysRemaining).put("travelPurpose",r.travelPurpose)
             .put("relationships",relations)
             .put("cause","由模拟状态变化或已记录的世界事件触发；具体因果未保存时不得自行补全")
@@ -84,7 +84,7 @@ object WorldEngine {
     // No random bystander sampling: every resident whose region and livelihood match a regional impact receives the record.
     private fun recordLocalStory(pop:List<Resident>,day:Long,region:String,detail:String,rng:Random,limit:Int=3,roles:Set<String> = emptySet()) {
         pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
-            .forEach { recordLife(it,day,detail) }
+            .forEach { recordLife(it,day,detail,if(roles.isEmpty()) "regional_context_affected" else "livelihood_affected") }
     }
     private const val KEY_DAY="day"
     private const val KEY_RNG_STATE="world_rng_state"
