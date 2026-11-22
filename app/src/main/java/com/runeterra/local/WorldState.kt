@@ -1819,6 +1819,15 @@ private fun craftBonus(region:String):Int = when(region) {
                 }
                 if(day%360L==0L) {
                     r.age++
+                    if(r.alive && r.age in setOf(18,30,50,70)) {
+                        val milestone=when(r.age) {
+                            18 -> "成年阶段开始"
+                            30 -> "进入人生三十岁阶段"
+                            50 -> "进入人生中年阶段"
+                            else -> "进入晚年阶段"
+                        }
+                        recordLife(r,day,"年岁增长至${r.age}岁，${milestone}；当时职业为${r.job}，居住于${r.region}。")
+                    }
                     if(r.alive && r.age in 18..25 && r.partnerId<0 && r.householdId>=0 &&
                         rng.nextInt(100)<12 &&
                         (r.coins>=8 || r.skill>=30) &&
@@ -1907,6 +1916,25 @@ private fun craftBonus(region:String):Int = when(region) {
                     r.alive=false
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
+                    // Death is recorded as a relationship event for surviving relatives and close ties too.
+                    // This links separate biographies without inventing grief, dialogue or private thoughts.
+                    pop.filter { it.alive && it.id in r.childIds }.forEach { child ->
+                        recordLife(child,day,"父母之一${r.name}（居民编号${r.id}）离世；其家庭关系与成长环境发生变化。")
+                    }
+                    pop.filter { it.alive && it.id in r.parentIds }.forEach { parent ->
+                        recordLife(parent,day,"子女${r.name}（居民编号${r.id}）离世；其家庭关系发生变化。")
+                    }
+                    pop.filter { it.alive && it.id in r.friendIds }.forEach { friend ->
+                        recordLife(friend,day,"友人${r.name}（居民编号${r.id}）离世；既有友谊因死亡而终止。")
+                    }
+                    pop.filter { it.alive && it.mentorId==r.id }.forEach { student ->
+                        recordLife(student,day,"师长${r.name}（居民编号${r.id}）离世；原有师徒关系终止，后续学习需要另寻途径。")
+                        student.mentorId=-1
+                    }
+                    pop.filter { it.alive && r.id in it.studentIds }.forEach { teacher ->
+                        recordLife(teacher,day,"学生${r.name}（居民编号${r.id}）离世；其指导关系因死亡而结束。")
+                        teacher.studentIds.remove(r.id)
+                    }
                     if(r.partnerId>=0) {
                         val formerPartner=pop.firstOrNull { it.id==r.partnerId }
                         if(formerPartner!=null) {
