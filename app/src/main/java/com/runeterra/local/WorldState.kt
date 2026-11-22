@@ -995,16 +995,104 @@ object WorldEngine {
         goods.forEach { good -> market.stock.putIfAbsent(good,if(good=="粮食")market.food else 25+regionalGoods(region).getOrDefault(good,0)*5) }
     }
     // Regional specializations are simulation modifiers inspired by lore, not canonical game stats.
-    private fun foodBonus(region:String):Int = when(region) {
-        "德玛西亚" -> 1
-        "弗雷尔卓德" -> 0
-        "恕瑞玛" -> -1
-        "比尔吉沃特" -> -1
-        "以绪塔尔" -> 1
-        "暗影岛" -> -2
-        "班德尔城" -> 0
-        else -> 0
+    private const val KEY_ECOLOGY="regional_ecology_state"
+    private data class Ecology(
+        val region:String,val climate:String,var temperature:Int,var water:Int,
+        var vegetation:Int,var soil:Int,var wildlife:Int,var pollution:Int
+    ) {
+        fun json()=JSONObject().put("region",region).put("climate",climate)
+            .put("temperature",temperature).put("water",water).put("vegetation",vegetation)
+            .put("soil",soil).put("wildlife",wildlife).put("pollution",pollution)
     }
+    // Environmental baselines are simulation abstractions, not official numeric geography.
+    private fun ecologySeeds():Map<String,Ecology> = listOf(
+        Ecology("德玛西亚","温带丘陵与农耕地",58,68,72,76,62,12),
+        Ecology("诺克萨斯","多样化温带大陆与边境",52,58,55,60,55,20),
+        Ecology("艾欧尼亚","群岛森林、湿地与灵性自然",62,78,88,74,84,8),
+        Ecology("皮尔特沃夫","沿海高密度城市",66,52,28,38,30,34),
+        Ecology("祖安","地下城层与工业污染环境",48,34,18,25,22,82),
+        Ecology("弗雷尔卓德","寒冷苔原、冰原与短暂夏季",12,42,26,35,58,5),
+        Ecology("恕瑞玛","干旱沙漠与绿洲",82,18,20,28,38,10),
+        Ecology("巨神峰","高海拔山地",24,48,42,46,56,4),
+        Ecology("比尔吉沃特","热带海岛与沿海生态",78,76,68,52,82,24),
+        Ecology("以绪塔尔","热带雨林与元素环境",80,88,94,82,92,7),
+        Ecology("班德尔城","精神领域特殊生态",60,70,80,70,80,0),
+        Ecology("暗影岛","黑雾侵蚀的诅咒生态",30,5,2,4,8,100)
+    ).associateBy{it.region}
+    private fun ecologyState(p:android.content.SharedPreferences):MutableMap<String,Ecology>{
+        val loaded=runCatching{
+            val a=JSONArray(p.getString(KEY_ECOLOGY,"[]"))
+            (0 until a.length()).map{ i ->
+                val j=a.getJSONObject(i); val region=j.optString("region")
+                Ecology(region,j.optString("climate","未知环境"),j.optInt("temperature",50),
+                    j.optInt("water",50),j.optInt("vegetation",50),j.optInt("soil",50),
+                    j.optInt("wildlife",50),j.optInt("pollution",0))
+            }.associateBy{it.region}.toMutableMap()
+        }.getOrDefault(mutableMapOf())
+        ecologySeeds().forEach{(region,seed)->if(!loaded.containsKey(region))loaded[region]=seed.copy()}
+        return loaded
+    }
+    private fun saveEcology(p:android.content.SharedPreferences,state:Map<String,Ecology>){
+        p.edit().putString(KEY_ECOLOGY,JSONArray().apply{state.values.forEach{put(it.json())}}.toString()).apply()
+    }
+    private fun tickEcology(day:Long,p:android.content.SharedPreferences,pop:List<Resident>,events:MutableList<String>,rng:Random,state:MutableMap<String,Ecology>){
+        if(day%30L!=0L)return
+        state.values.forEach{e->
+            val residents=pop.count{it.alive&&it.region==e.region}
+            val pressure=(residents/45).coerceIn(0,5)
+            val season=when(((day/90L)%4L).toInt()){0->-2;1->2;2->3;else->-3}
+            val temperatureShift=when(e.region){"弗雷尔卓德"->season*2;"恕瑞玛"->season;"比尔吉沃特","以绪塔尔"->season/2;else->season}
+            e.temperature=(e.temperature+temperatureShift+rng.nextInt(3)-1).coerceIn(0,100)
+            val waterShift=when(e.region){
+                "恕瑞玛"->-1+(if(day%360L in 90L..179L)2 else 0)
+                "弗雷尔卓德"->if(day%360L in 90L..179L)2 else -1
+                "以绪塔尔","艾欧尼亚","比尔吉沃特"->1
+                "祖安"->-1
+                else->0
+            }
+            e.water=(e.water+waterShift-pressure/2+rng.nextInt(3)-1).coerceIn(0,100)
+            val plantRecovery=when(e.region){"以绪塔尔","艾欧尼亚"->2;"德玛西亚","比尔吉沃特"->1;else->0}
+            e.vegetation=(e.vegetation+plantRecovery-pressure+rng.nextInt(3)-1).coerceIn(0,100)
+            e.soil=(e.soil+(if(e.water>45&&e.vegetation>40)1 else 0)-if(pressure>=3)1 else 0).coerceIn(0,100)
+            e.wildlife=(e.wildlife+(if(e.vegetation>55&&e.water>35)1 else 0)-if(pressure>=3)1 else 0).coerceIn(0,100)
+            val pollutionChange=when(e.region){
+                "祖安"->if(rng.nextInt(100)<35)1 else 0
+                "皮尔特沃夫"->if(rng.nextInt(100)<18)1 else 0
+                "比尔吉沃特"->if(rng.nextInt(100)<12)1 else 0
+                "艾欧尼亚","以绪塔尔","弗雷尔卓德"->if(rng.nextInt(100)<30)-1 else 0
+                else->0
+            }
+            e.pollution=(e.pollution+pollutionChange).coerceIn(0,100)
+            if(e.region=="暗影岛"){e.vegetation=0;e.wildlife=0;e.pollution=100}
+            if(e.region=="班德尔城"){e.pollution=0}
+            if(day%360L==0L && (e.water<20||e.vegetation<20||e.pollution>75)){
+                val cause=when{e.pollution>75->"污染累积";e.water<20->"水源压力";else->"植被衰退"}
+                events.add("【生态变化·模拟】第 "+day+" 日："+e.region+"出现"+cause+"，可能影响当地生计、健康与迁徙选择。")
+            }
+        }
+        saveEcology(p,state)
+    }
+    private fun foodBonus(region:String,ecology:Map<String,Ecology>):Int {
+        val base=when(region) {
+            "德玛西亚"->1;"弗雷尔卓德"->0;"恕瑞玛","比尔吉沃特"->-1
+            "以绪塔尔"->1;"暗影岛"->-2;else->0
+        }
+        val e=ecology[region]?:return base
+        val environmental=(e.water+e.vegetation+e.soil)/3
+        val modifier=when{environmental>=75->2;environmental>=60->1;environmental<20->-2;environmental<35->-1;else->0}
+        return (base+modifier-if(e.pollution>=75)1 else 0).coerceIn(-3,3)
+    }
+    fun ecologyDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val state=ecologyState(p)
+        val all=people(p)
+        return state.values.sortedBy{it.region}.map{e->
+            val population=all.count{it.alive&&it.region==e.region}
+            val harvest=when{(e.water+e.vegetation+e.soil)/3>=75->"自然条件较好";(e.water+e.vegetation+e.soil)/3<30->"自然条件严峻";else->"自然条件中等"}
+            "【"+e.region+" · "+e.climate+"】\\n温度环境指数："+e.temperature+"/100\\n水源条件："+e.water+"/100\\n植被覆盖："+e.vegetation+"/100\\n土壤状况："+e.soil+"/100\\n野生生物承载："+e.wildlife+"/100\\n污染压力："+e.pollution+"/100\\n模拟普通居民："+population+"人\\n综合判断："+harvest+"\\n说明：指数仅用于模拟环境变化，不是官方地理测量；班德尔城与暗影岛属于特殊生态，不参与普通农耕逻辑。"
+        }
+    }
+
     
     // Approximate inter-region travel graph; values are simulation days, not canonical measurements.
     private val routeLinks=mapOf(
@@ -1279,6 +1367,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val pop=people(p)
         val households=householdStates(p,pop)
         val markets=markets(p)
+        val ecology=ecologyState(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
         var nextHouseholdId=(households.maxOfOrNull { it.id } ?: -1)+1
@@ -1295,6 +1384,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickHeroBonds(day,p,events,rng)
             tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
+            tickEcology(day,p,pop,events,rng,ecology)
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
@@ -1307,7 +1397,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 }
                 val traveling=tickTravel(r,day,events,rng)
                 if(!traveling && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
-                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
+                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region,ecology)).coerceAtLeast(1);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
                     "伐木工","矿工","药师","魔法材料采集者","海克斯技师" -> {r.coins+=1+if(r.job=="海克斯技师")craftBonus(r.region).coerceAtLeast(0) else 0;r.skill=(r.skill+1).coerceAtMost(100)}
