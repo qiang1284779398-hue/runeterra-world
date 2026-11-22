@@ -47,6 +47,7 @@ class MainActivity : Activity() {
         val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
         val lore = Button(this).apply { text = "符文之地 / 官方世界观设定"; setOnClickListener { showRegionalLoreDirectory() } }
         val timeline = Button(this).apply { text = "历史时间线 / 时代档案"; setOnClickListener { showTimelineDirectory() } }
+        val heavenly = Button(this).apply { text = "天道系统 / 观察与干预"; setOnClickListener { showHeavenlySystem() } }
         val heroes = Button(this).apply { text = "英雄 / 半神 / 超自然存在档案"; setOnClickListener { showHeroDirectory() } }
         val lineages = Button(this).apply { text = "生命体系 / 种族与族群档案"; setOnClickListener { showLineageDirectory() } }
         val ecology = Button(this).apply { text = "自然生态 / 气候 / 水源 / 植被档案"; setOnClickListener { showEcologyDirectory() } }
@@ -71,7 +72,7 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, unloadAI, testAI, biographies, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, unloadAI, testAI, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
@@ -124,6 +125,77 @@ class MainActivity : Activity() {
                     }
                 }
             }.setNegativeButton("取消",null).show()
+    }
+
+
+    private fun showHeavenlySystem() {
+        val statusLines=WorldEngine.heavenlyStatus(this)
+        val choices=arrayOf("向全世界发布神谕","向指定居民传达","向指定英雄传达","查看天道干预记录","查看天道系统状态")
+        AlertDialog.Builder(this)
+            .setTitle("天道系统 · 外部观察与干预")
+            .setItems(choices) { _, which ->
+                when(which) {
+                    0 -> chooseHeavenlyMode("全世界",-1,"")
+                    1 -> {
+                        val residents=WorldEngine.residentDirectory(this).filter { it.contains("｜在世") || it.contains("｜") }
+                        AlertDialog.Builder(this).setTitle("选择接收神谕的居民")
+                            .setItems(residents.toTypedArray()) { _, index ->
+                                val id=residents[index].substringBefore("｜").toIntOrNull() ?: return@setItems
+                                val name=residents[index].substringAfter("｜").substringBefore("｜")
+                                chooseHeavenlyMode("指定居民",id,name)
+                            }.setNegativeButton("取消",null).show()
+                    }
+                    2 -> {
+                        val heroes=WorldEngine.heroDirectory(this).mapNotNull { row ->
+                            row.substringAfter("【","").substringBefore("】").takeIf { it.isNotBlank() }
+                        }.distinct()
+                        AlertDialog.Builder(this).setTitle("选择接收神谕的英雄")
+                            .setItems(heroes.toTypedArray()) { _, index -> chooseHeavenlyMode("指定英雄",-1,heroes[index]) }
+                            .setNegativeButton("取消",null).show()
+                    }
+                    3 -> {
+                        val history=WorldEngine.heavenlyInterventionHistory(this)
+                        AlertDialog.Builder(this).setTitle("天道干预历史")
+                            .setMessage(history.joinToString("\\n\\n").ifBlank { "尚无天道干预记录。" })
+                            .setPositiveButton("关闭",null).show()
+                    }
+                    4 -> AlertDialog.Builder(this).setTitle("天道系统状态")
+                        .setMessage(statusLines.joinToString("\\n\\n"))
+                        .setPositiveButton("关闭",null).show()
+                }
+            }
+            .setNegativeButton("关闭",null)
+            .show()
+    }
+
+    private fun chooseHeavenlyMode(scope:String,targetId:Int,targetName:String) {
+        val modes=arrayOf("神谕（直接传达文字）","梦境启示（以梦境记忆传达）","显现（明确感知到外部存在）")
+        AlertDialog.Builder(this).setTitle("选择天道显现方式")
+            .setItems(modes) { _, which ->
+                val mode=when(which) { 1 -> "梦境启示"; 2 -> "显现"; else -> "神谕" }
+                composeHeavenlyMessage(scope,targetId,targetName,mode)
+            }.setNegativeButton("取消",null).show()
+    }
+
+    private fun composeHeavenlyMessage(scope:String,targetId:Int,targetName:String,mode:String) {
+        val input=EditText(this).apply {
+            hint="输入你要传达的信息，例如：你们所处的世界并非唯一真实的世界……"
+            minLines=4
+            maxLines=8
+            setSingleLine(false)
+            setPadding(28,20,28,20)
+        }
+        AlertDialog.Builder(this).setTitle("天道干预 · "+mode)
+            .setMessage(if(scope=="全世界") "信息将写入所有在世居民与已登记英雄的个人记忆。" else "接收对象："+targetName)
+            .setView(input)
+            .setPositiveButton("传达") { _, _ ->
+                val result=WorldEngine.heavenlyIntervene(this,scope,targetId,targetName,mode,input.text.toString())
+                AlertDialog.Builder(this).setTitle("天道干预结果").setMessage(result)
+                    .setPositiveButton("确定",null).show()
+                refresh()
+            }
+            .setNegativeButton("取消",null)
+            .show()
     }
 
     private fun showHeroDirectory() {
