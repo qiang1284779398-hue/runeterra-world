@@ -233,18 +233,35 @@ object WorldEngine {
         Organization("shurima_sun_disc","恕瑞玛复兴势力","恕瑞玛","帝国复兴运动","争夺古代遗产、绿洲与帝国合法性",mutableListOf(),mutableListOf(),"复兴派代表",58,52,48),
         Organization("targon_solari","烈阳教派","巨神峰","宗教组织","维护烈阳信仰与相关宗教秩序",mutableListOf("targon_lunari"),mutableListOf(),"烈阳教长",57,45,55),
         Organization("targon_lunari","皎月教派","巨神峰","宗教组织","守护皎月信仰与其信徒",mutableListOf("targon_solari"),mutableListOf(),"皎月教派代表",45,30,35),
-        Organization("ixtal_council","云塔（Yun Tal）","以绪塔尔","统治阶层","维护元素知识、以绪奥肯秩序与对外隔绝",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70)
+        Organization("ixtal_council","云塔（Yun Tal）","以绪塔尔","统治阶层","维护元素知识、以绪奥肯秩序与对外隔绝",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70),
+        Organization("demacia_mage_resistance","德玛西亚法师与反抗网络","德玛西亚","地下社群","保护受禁魔制度影响的法师及其家人，争取生存与自由",mutableListOf("demacia_mage_seekers"),mutableListOf(),"地方联络者",48,35,58),
+        Organization("freljord_frostguard","霜卫部族","弗雷尔卓德","古老部族与守望者","守护古老秘密、监视冰封威胁并维持霜卫传统",mutableListOf(),mutableListOf(),"霜卫领袖",58,52,34),
+        Organization("bilgewater_buhru","布胡鲁信仰共同体","比尔吉沃特","宗教与地方社群","遵循娜迦卡波洛丝信仰与仪式，维系群岛本土传统",mutableListOf(),mutableListOf(),"祭司与神庙守护者",52,38,50),
+        Organization("bilgewater_sailors","比尔吉沃特船员与赏金网络","比尔吉沃特","海上松散网络","争夺航线、悬赏、船只与港口生计",mutableListOf(),mutableListOf("bilgewater_captains"),"船长与悬赏掮客",55,48,45),
+        Organization("shurima_city_leagues","恕瑞玛绿洲城邦与商路联盟","恕瑞玛","城邦与商贸网络","维护水源、商路与城邦自治，防止帝国势力垄断地方生活",mutableListOf(),mutableListOf(),"城邦代表（模拟）",50,54,58),
+        Organization("shurima_xerath_followers","泽拉斯追随者网络","恕瑞玛","秘密政治与魔法势力","扩大泽拉斯在恕瑞玛的影响并挑战阿兹尔复兴秩序",mutableListOf("shurima_sun_disc"),mutableListOf(),"秘密代理人",42,46,18),
+        Organization("targon_rakkor","拉阔尔部族社群","巨神峰","山地部族社群","维护拉阔尔传统、山地生活与朝圣道路",mutableListOf(),mutableListOf(),"部族长者",46,42,48),
+        Organization("zaun_independent_inventors","祖安独立发明家与工坊","祖安","技术社群","在化学男爵控制之外维持实验、交易与社区技术网络",mutableListOf("zaun_chem_barons"),mutableListOf("zaun_firelights"),"工坊代表",44,36,50),
+        Organization("piltover_academy","皮尔特沃夫科学与发明社群","皮尔特沃夫","学术与技术社群","推动科学、海克斯科技研究与知识传播",mutableListOf(),mutableListOf("piltover_council"),"学者与发明家代表",58,62,57),
+        Organization("bandle_yordle_communities","班德尔城约德尔社群","班德尔城","非人种族社群","维系班德尔城社群、班德尔树与通往物质世界的入口联系",mutableListOf(),mutableListOf(),"约德尔社群长者（模拟）",68,64,72),
+        Organization("shadow_black_mist","黑雾与亡灵势力","暗影岛","超自然威胁网络","黑雾侵蚀、束缚灵魂并向外扩散；不是具有正常成员制度的政治组织",mutableListOf(),mutableListOf(),"无统一领袖",92,90,0)
     )
     private fun organizations(p:android.content.SharedPreferences):MutableList<Organization>{
         val raw=p.getString(KEY_ORGANIZATIONS,null)
         if(raw!=null) runCatching {
             val a=JSONArray(raw)
-            return (0 until a.length()).map { i ->
+            val loaded=(0 until a.length()).map { i ->
                 val j=a.getJSONObject(i)
                 fun strings(key:String)= (0 until (j.optJSONArray(key)?.length()?:0)).map { j.getJSONArray(key).getString(it) }.toMutableList()
                 val members=(0 until (j.optJSONArray("members")?.length()?:0)).map { j.getJSONArray("members").getInt(it) }.toMutableList()
                 Organization(j.optString("id"),j.optString("name"),j.optString("region"),j.optString("kind"),j.optString("agenda"),strings("rivals"),strings("allies"),j.optString("leader"),j.optInt("influence",30),j.optInt("resources",20),j.optInt("publicSupport",30),j.optString("status","活跃"),members)
             }.toMutableList()
+            val known=loaded.map { it.id }.toSet()
+            organizationSeeds.filter { it.id !in known }.forEach { seed ->
+                loaded.add(seed.copy(rivals=seed.rivals.toMutableList(),allies=seed.allies.toMutableList(),members=mutableListOf()))
+            }
+            saveOrganizations(p,loaded)
+            return loaded
         }
         return organizationSeeds.map { it.copy(rivals=it.rivals.toMutableList(),allies=it.allies.toMutableList(),members=mutableListOf()) }.toMutableList().also { saveOrganizations(p,it) }
     }
