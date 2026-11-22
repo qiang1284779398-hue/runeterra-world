@@ -23,7 +23,7 @@ object ResidentAI {
  @Volatile private var loaded=false
  @Volatile private var path:String?=null
  private val incoming=Messenger(Handler(Looper.getMainLooper()){msg->
-  if(msg.what==RESULT){val b=msg.data;val id=b.getLong("id");val cb=pending.remove(id);if(b.getBoolean("loadFinished")){loading=false;loaded=b.getBoolean("ok")};if(b.getBoolean("unloaded"))loaded=false;cb?.invoke(b.getBoolean("ok"),b.getString("result")?:"")}
+  if(msg.what==RESULT){val b=msg.data;val id=b.getLong("id");val cb=pending.remove(id);if(b.getBoolean("loadFinished")){loading=false;loaded=b.getBoolean("ok");record(if(loaded) "模型加载成功；"+(b.getString("result")?:"无校验信息") else "模型加载失败；"+(b.getString("result")?:"未知错误"))};if(b.getBoolean("unloaded"))loaded=false;cb?.invoke(b.getBoolean("ok"),b.getString("result")?:"")}
   true
  })
  private fun failPending(reason:String){val callbacks=pending.values.toList();pending.clear();callbacks.forEach{try{it(false,reason)}catch(_:Throwable){}}}
