@@ -31,6 +31,41 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_DIPLO="diplomacy"
+    private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false)
+    private val factionRegions=mapOf("德玛西亚" to "德玛西亚","诺克萨斯" to "诺克萨斯","艾欧尼亚" to "艾欧尼亚","皮尔特沃夫" to "皮尔特沃夫","祖安" to "祖安","弗雷尔卓德" to "弗雷尔卓德","恕瑞玛" to "恕瑞玛","巨神峰" to "巨神峰","比尔吉沃特" to "比尔吉沃特","以绪塔尔" to "以绪塔尔")
+    private fun diplomacy(p:android.content.SharedPreferences):MutableList<PairTension> {
+        val raw=p.getString(KEY_DIPLO,null)
+        if(raw!=null) runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { PairTension(it.optString("a"),it.optString("b"),it.optInt("tension",10),it.optBoolean("war",false)) }.toMutableList() } }.getOrNull()?.let { if(it.isNotEmpty()) return it }
+        return mutableListOf(PairTension("诺克萨斯","艾欧尼亚",72),PairTension("诺克萨斯","德玛西亚",58),PairTension("皮尔特沃夫","祖安",65),PairTension("弗雷尔卓德","诺克萨斯",32),PairTension("恕瑞玛","诺克萨斯",28),PairTension("比尔吉沃特","诺克萨斯",24)).also { saveDiplomacy(p,it) }
+    }
+    private fun saveDiplomacy(p:android.content.SharedPreferences,relations:List<PairTension>) {
+        p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war)) } }.toString()).apply()
+    }
+    private fun tickDiplomacy(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
+        if(day%30L!=0L)return
+        val relations=diplomacy(p)
+        relations.forEach { rel ->
+            if(!rel.war) rel.tension=(rel.tension+(rng.nextInt(7)-3)).coerceIn(0,100)
+            if(!rel.war && rel.tension>=85 && rng.nextInt(100)<18) {
+                rel.war=true
+                events.add("【模拟外交】第 $day 日：${rel.a}与${rel.b}冲突升级为战争。")
+            } else if(rel.war && rng.nextInt(100)<4) {
+                rel.war=false; rel.tension=(rel.tension-35).coerceAtLeast(20)
+                events.add("【模拟外交】第 $day 日：${rel.a}与${rel.b}暂时停战，局势仍不稳定。")
+            }
+            if(rel.war && rng.nextInt(100)<20) {
+                val regionA=factionRegions[rel.a] ?: rel.a; val regionB=factionRegions[rel.b] ?: rel.b
+                listOf(regionA,regionB).forEach { region ->
+                    val victims=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(4))
+                    victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0) }
+                    markets[region]?.let { it.food=(it.food-15-rng.nextInt(30)).coerceAtLeast(0) }
+                    if(victims.isNotEmpty()) events.add("【战争损害】第 $day 日：${region}遭冲突波及，${victims.size}名居民受伤，粮食储备下降。")
+                }
+            }
+        }
+        saveDiplomacy(p,relations)
+    }
     private const val KEY_LORE="lore_triggers"
     private data class LorePulse(val id:String,val day:Long,val title:String,val description:String,val region:String,val foodLoss:Int,val healthLoss:Int)
     // Official lore inspirations; dates are simulation milestones, not canon chronology.
@@ -149,6 +184,7 @@ object WorldEngine {
             val rng=Random(day*7919L+17L)
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
+            tickDiplomacy(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
