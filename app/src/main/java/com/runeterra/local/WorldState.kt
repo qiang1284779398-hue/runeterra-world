@@ -64,7 +64,7 @@ object WorldEngine {
             detail.contains("职业") || detail.contains("工匠") || detail.contains("学徒") || detail.contains("转行") || detail.contains("谋生") -> "职业与技能"
             detail.contains("战争") || detail.contains("战线") || detail.contains("停战") || detail.contains("入侵") -> "战争与政治"
             detail.contains("粮食") || detail.contains("口粮") || detail.contains("市场") || detail.contains("积蓄") || detail.contains("经济") -> "生计与经济"
-            detail.contains("天道干预") || detail.contains("外部信息") -> "天道干预与世界本体"
+            detail.contains("天道") || detail.contains("外部信息") -> "天道干预与世界本体"
             detail.contains("魔法") || detail.contains("灵性") || detail.contains("黑雾") || detail.contains("星界") -> "魔法与超自然"
             detail.contains("生态") || detail.contains("污染") || detail.contains("水源") || detail.contains("植被") -> "环境与生态"
             detail.contains("英雄") || detail.contains("交集") -> "英雄交集与个人经历"
@@ -239,7 +239,7 @@ object WorldEngine {
         return (0 until archive.length()).mapNotNull { i ->
             runCatching {
                 val item=JSONObject(archive.getString(i))
-                "第${item.optLong("day")}日｜${item.optString("mode")}｜${item.optString("scope")}｜接收者：${item.optString("recipients")}\n${item.optString("message")}\n结果：接收信息已写入相关人物记忆；是否相信及后续行动尚未预设。"
+                "第${item.optLong("day")}日｜${item.optString("mode")}｜${item.optString("scope")}｜接收者：${item.optString("recipients")}\n${item.optString("message")}\n结果："+(item.optJSONArray("outcomes")?.let { a -> (0 until a.length()).joinToString("；") { a.optString(it) } } ?: "接收信息已写入相关人物记忆；是否相信及后续行动尚未预设。")
             }.getOrNull()
         }.asReversed()
     }
