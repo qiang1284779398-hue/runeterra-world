@@ -54,6 +54,7 @@ object WorldEngine {
     private const val KEY_ERA="world_era"
     private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
     private const val KEY_IONIA_WAR_ENDED="ionia_war_ended"
+    private const val KEY_IONIA_PLACIDIUM="ionia_placidium_front"
     private const val KEY_SWAIN_COUP="noxus_swain_coup"
     private const val KEY_LORE_TRIGGER_DAYS="lore_trigger_days"
     private const val ERA_PRE_IONIA="pre_ionia_invasion"
@@ -69,7 +70,7 @@ object WorldEngine {
     private val regionalLore=listOf(
         RegionalLore("德玛西亚","王室君主制与贵族家族、边境领主并存","禁魔制度与禁魔石影响魔法的公开使用，不代表当地没有魔法","嘉文三世在位；王室、冕卫、搜魔人、贵族与法师社群围绕秩序和魔法管制互动","禁魔石抑制魔法，不是消灭世界中的魔法"),
         RegionalLore("诺克萨斯","由皇帝博拉姆·达克威尔统治的跨地域扩张帝国；军方、宫廷与秘密势力角力","帝国倾向于利用魔法作为力量，具体政策服务于军政目标","皇帝宫廷、诺克萨斯军团、旧贵族、地方总督与黑色玫瑰","诺克萨斯不是单一民族国家，征服与吸纳并存；崔法利议会尚未建立"),
-        RegionalLore("艾欧尼亚","众多省地、社群与传统构成的群岛，没有统一中央政权","物质领域与精神领域边界较薄，灵性、自然与魔法交织","地方自治、均衡教派、寺院、地方领袖与各地传统","不能写成高度集权的单一国家；诺克萨斯入侵尚未发生"),
+        RegionalLore("艾欧尼亚","众多省地、社群与传统构成的群岛，没有统一中央政权","物质领域与精神领域边界较薄，灵性、自然与魔法交织","地方自治、武道寺院、各省民兵、均衡教派与地方领袖","不能写成高度集权的单一国家；诺克萨斯入侵尚未发生"),
         RegionalLore("皮尔特沃夫","议会、贸易家族与精英阶层主导的城邦","海克斯科技将魔法水晶与技术结合，不等同普通法术","议会、贸易家族、发明家、工坊与上层城市秩序","与祖安是相连的双城社会，不是互不相关的国家"),
         RegionalLore("祖安","位于皮尔特沃夫下方的地下城邦，企业、帮派与社区并立","炼金与化学科技塑造城市生活，污染和资源不平等长期存在","化学男爵、萤火、独立发明家、工人社区与底层居民","不能简化成只有反派帮派的城市"),
         RegionalLore("弗雷尔卓德","严酷冰原上的部族世界，联盟与战母权威不断变化","古老冰霜力量、冰裔、真冰与远古存在交织","阿瓦罗萨、凛冬之爪、霜卫、三姐妹传说与旧神信仰","不是统一王国；真冰稀有，部族会迁徙"),
@@ -629,6 +630,8 @@ object WorldEngine {
         Organization("noxus_legions","诺克萨斯军团","诺克萨斯","军事组织","扩张帝国疆域并维持军事控制",mutableListOf(),mutableListOf("noxus_trifarix"),"军团统帅",82,90,70),
         Organization("noxus_black_rose","黑色玫瑰","诺克萨斯","秘密结社","通过秘密网络与古老力量影响权力格局",mutableListOf("noxus_trifarix"),mutableListOf(),"秘密议会",76,82,20),
         Organization("ionia_kinkou","均衡教派","艾欧尼亚","宗教与武术组织","维护精神领域与物质领域之间的均衡",mutableListOf("ionia_shadow_order"),mutableListOf(),"教派长老",62,45,60),
+        Organization("ionia_provincial_militias","艾欧尼亚各省民兵与地方守卫","艾欧尼亚","军事组织","保护各自省地的村镇、道路与居民；不存在统一中央军队",mutableListOf(),mutableListOf("ionia_kinkou"),"各省地方领袖",52,42,58),
+        Organization("ionia_monasteries","艾欧尼亚武道寺院与僧侣社群","艾欧尼亚","宗教与武术组织","守护寺院、灵性传统与地方居民，不隶属于统一军队",mutableListOf(),mutableListOf("ionia_kinkou"),"寺院长老",48,35,62),
         Organization("ionia_shadow_order","影流（尚未形成）","艾欧尼亚","武装组织","尚未形成独立组织；未来可能因战争创伤与理念冲突出现分裂",mutableListOf("ionia_kinkou"),mutableListOf(),"尚无组织领袖",0,0,0,"尚未形成"),
         Organization("freljord_avarosan","阿瓦罗萨部族联盟","弗雷尔卓德","部族联盟","团结部族并争取和平与生存空间",mutableListOf("freljord_winter_claw"),mutableListOf(),"部族联盟领袖",64,50,65),
         Organization("freljord_winter_claw","凛冬之爪","弗雷尔卓德","部族联盟","以强硬的生存法则与征战维系部族",mutableListOf("freljord_avarosan"),mutableListOf(),"战母",61,55,54),
@@ -820,9 +823,12 @@ object WorldEngine {
                 sideB.stability=(sideB.stability-(if(rel.exhaustionB>60)2 else 1)).coerceAtLeast(0)
                 val regionA=factionRegions[rel.a]?:rel.a
                 val regionB=factionRegions[rel.b]?:rel.b
-                if(rng.nextInt(100)<38) {
-                    val region=if(rng.nextBoolean())regionA else regionB
-                    val victims=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(1+rng.nextInt(2))
+                val isNoxusIonia=setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")
+                val warImpactChance=if(isNoxusIonia)55 else 38
+                if(rng.nextInt(100)<warImpactChance) {
+                    val region=if(isNoxusIonia) { if(rng.nextInt(100)<70) "艾欧尼亚" else "诺克萨斯" } else if(rng.nextBoolean())regionA else regionB
+                    val victimCount=if(isNoxusIonia) 2+rng.nextInt(4) else 1+rng.nextInt(2)
+                    val victims=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(victimCount)
                     victims.forEach{r->
                         r.health=(r.health-2-rng.nextInt(7)).coerceAtLeast(0)
                         recordLife(r,day,"战争持续影响${region}，遭遇冲突、征用或补给中断。")
@@ -830,11 +836,22 @@ object WorldEngine {
                     markets[region]?.let{it.food=(it.food-5-rng.nextInt(16)).coerceAtLeast(0);it.wealth=(it.wealth-2-rng.nextInt(8)).coerceAtLeast(0)}
                     if(victims.isNotEmpty())events.add("【战争与平民生活·模拟】第 $day 日：${region}的战事与征用影响${victims.size}名居民，地方市场补给承压。")
                 }
+                if(isNoxusIonia && rel.warMonths>=6 && !p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
+                    val militias=organizations(p).firstOrNull { it.id=="ionia_provincial_militias" }
+                    val localReadiness=(militias?.influence?:0)>=55 || (sideB.stability<=65)
+                    if(localReadiness && rng.nextInt(100)<30) {
+                        militias?.let { it.influence=(it.influence+8).coerceAtMost(100); it.publicSupport=(it.publicSupport+8).coerceAtMost(100) }
+                        events.add("【普雷西典战线·模拟分支】第 $day 日：诺克萨斯军团的推进威胁到艾欧尼亚重要圣地与省地交通；地方民兵、武道寺院和居民开始更广泛地组织抵抗。战局结果仍由后续资源、动员与军事行动决定。")
+                        p.edit().putBoolean(KEY_IONIA_PLACIDIUM,true).apply()
+                        militias?.let { saveOrganizations(p,organizations(p)) }
+                    }
+                }
                 if(rel.warMonths%3==0)events.add("【战争进程·模拟】第 $day 日：${rel.a}与${rel.b}的战争已持续${rel.warMonths}个月；双方军力、财政与社会稳定持续消耗。")
                 val exhaustion=rel.exhaustionA+rel.exhaustionB
                 val domesticCrisis=sideA.stability<25 || sideB.stability<25 || sideA.treasury<35 || sideB.treasury<35
+                val minimumWarMonths=if(isNoxusIonia)24 else 3
                 val negotiationChance=when{
-                    rel.warMonths<3 -> 0
+                    rel.warMonths<minimumWarMonths -> 0
                     exhaustion>=130 || domesticCrisis -> 35
                     exhaustion>=95 -> 22
                     exhaustion>=70 -> 12
