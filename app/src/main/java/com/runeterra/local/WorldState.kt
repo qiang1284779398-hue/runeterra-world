@@ -448,17 +448,21 @@ object WorldEngine {
                     if(destination.isBlank()) { outcomes.add("未执行：传送目的地为空。"); continue }
                     val region=op.optString("region").ifBlank { destination }
                     if(hero!=null) {
-                        val before=hero.region
-                        impactRegions.add(before); impactRegions.add(region)
-                        hero.region=region
+                        val before=hero.region+"·"+hero.location
+                        val targetRegion=op.optString("region").ifBlank { if(destination in regions) destination else hero.region }
+                        impactRegions.add(hero.region); impactRegions.add(targetRegion)
+                        hero.region=targetRegion
+                        hero.location=destination
                         hero.status="已被天道瞬间传送至${destination}"
                         appendHeroEvent(hero,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
                         outcomes.add("已将${hero.name}从${before}传送至${destination}。"); successful++
                     } else if(resident!=null) {
                         val before=resident.region+"·"+resident.settlement
-                        impactRegions.add(resident.region); impactRegions.add(region)
-                        resident.region=region
-                        resident.settlement=destination
+                        val targetRegion=op.optString("region").ifBlank { if(destination in regions) destination else resident.region }
+                        val targetPlace=if(destination in regions) defaultSettlement(targetRegion,resident.id) else destination
+                        impactRegions.add(resident.region); impactRegions.add(targetRegion)
+                        resident.region=targetRegion
+                        resident.settlement=targetPlace
                         resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""
                         appendResidentEvent(resident,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
                         outcomes.add("已将${resident.name}传送至${destination}。"); successful++
@@ -687,7 +691,7 @@ object WorldEngine {
         var belief:String="尚未记录稳定的个人信念", var thought:String="", var intent:String="",
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
         var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true,
-        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String=""
+        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String=""
     )
     private fun canonicalGender(name:String):String = when(name) {
         "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
@@ -754,7 +758,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -763,7 +767,7 @@ object WorldEngine {
         return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
@@ -840,7 +844,7 @@ object WorldEngine {
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\n所在领域：${it.region}\n族类／本质：${it.lineage.ifBlank { heroLineage(it.name) }}\n身份：${it.role}\n当前状态：${it.status}\n性别：${it.gender}；年龄：${if(it.age>=0) it.age.toString()+"岁" else "未记录"}；外貌：${it.appearance.ifBlank { "未特别记录" }}；能力：${it.abilities.ifBlank { "依既有设定" }}；存在状态：${if(it.alive) "存续" else "已被抹杀/死亡"}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\n所在领域：${it.region}\n当前地点：${it.location}\n族类／本质：${it.lineage.ifBlank { heroLineage(it.name) }}\n身份：${it.role}\n当前状态：${it.status}\n性别：${it.gender}；年龄：${if(it.age>=0) it.age.toString()+"岁" else "未记录"}；外貌：${it.appearance.ifBlank { "未特别记录" }}；能力：${it.abilities.ifBlank { "依既有设定" }}；存在状态：${if(it.alive) "存续" else "已被抹杀/死亡"}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
         }
     }
     fun heroBiographyExport(context:Context,name:String):String? {
@@ -848,7 +852,7 @@ object WorldEngine {
         val h=heroAgents(p).firstOrNull { it.name==name } ?: return null
         return buildString {
             append("符文之地 · 重要人物自主经历档案\n")
-            append("人物：${h.name}\n领域：${h.region}\n族类／本质：${h.lineage.ifBlank { heroLineage(h.name) }}\n身份：${h.role}\n")
+            append("人物：${h.name}\n领域：${h.region}\n当前地点：${h.location}\n族类／本质：${h.lineage.ifBlank { heroLineage(h.name) }}\n身份：${h.role}\n")
             append("当前状态：${h.status}\n性别：${h.gender}\n外貌：${h.appearance}\n能力：${h.abilities}\n存在状态：${if(h.alive) "存续" else "已被抹杀/死亡"}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
             append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\n\n")
             append("【自主思考与记忆】\n")
