@@ -160,10 +160,26 @@ class MainActivity : Activity() {
             .create()
 
         fun showSelected() {
-            if(selectedKey.isBlank()) {
-                output.text=if(kind=="世界事件" || kind=="人物互动") "当前筛选暂无已保存记录。" else "当前类别没有可观察的人物。"
+            val nextText = if(selectedKey.isBlank()) {
+                if(kind=="世界事件" || kind=="人物互动") "当前筛选暂无已保存记录。" else "当前类别没有可观察的人物。"
             } else {
-                output.text=WorldEngine.observationText(this,kind,selectedKey)
+                WorldEngine.observationText(this,kind,selectedKey)
+            }
+            // 只有内容真正变化时才更新，避免每 2 秒重设文本导致阅读位置跳回顶部。
+            if(output.text.toString() == nextText) return
+            val previousY = scroll.scrollY
+            val wasAtBottom = scroll.getChildAt(0)?.let { child ->
+                previousY + scroll.height >= child.height - (24 * resources.displayMetrics.density).toInt()
+            } ?: true
+            output.text = nextText
+            scroll.post {
+                val child = scroll.getChildAt(0) ?: return@post
+                if(wasAtBottom) {
+                    scroll.fullScroll(android.view.View.FOCUS_DOWN)
+                } else {
+                    val maxY = (child.height - scroll.height).coerceAtLeast(0)
+                    scroll.scrollTo(0, previousY.coerceAtMost(maxY))
+                }
             }
         }
         fun loadKind(nextKind:String) {
