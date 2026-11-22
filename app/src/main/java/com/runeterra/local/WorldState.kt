@@ -428,10 +428,13 @@ object WorldEngine {
                     }
                     "慎" -> {
                         groups.firstOrNull { it.id=="ionia_kinkou" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
-                        h.status="在教派长者指导下修行，承担均衡教派的重要职责；尚未继任暮光之眼"
+                        if(p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
+                            h.role="暮光之眼"
+                            h.status="在均衡教派遭受战争冲击后承担守护均衡的职责，与影流的分裂持续影响艾欧尼亚"
+                        } else h.status="在教派长者指导下修行；尚未继任暮光之眼"
                     }
                     "劫" -> {
-                        if(p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                        if(p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
                             val shadow=groups.firstOrNull { it.id=="ionia_shadow_order" }
                             if(shadow!=null && shadow.status=="尚未形成") { shadow.status="形成初期"; shadow.influence=24; shadow.resources=18; shadow.publicSupport=20 }
                             h.role="影流创建者"
@@ -687,7 +690,7 @@ object WorldEngine {
         val groups=organizations(p)
         groups.forEach { group ->
             if(group.status=="尚未形成") {
-                if(group.id=="ionia_shadow_order" && p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                if(group.id=="ionia_shadow_order" && p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
                     group.status="形成初期"; group.influence=24; group.resources=18; group.publicSupport=20
                     events.add("【组织形成·模拟分支】第 $day 日：战争创伤与理念分歧推动艾欧尼亚影流开始形成；其发展仍取决于人物选择与地方局势。")
                 } else return@forEach
@@ -837,13 +840,14 @@ object WorldEngine {
                     if(victims.isNotEmpty())events.add("【战争与平民生活·模拟】第 $day 日：${region}的战事与征用影响${victims.size}名居民，地方市场补给承压。")
                 }
                 if(isNoxusIonia && rel.warMonths>=6 && !p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
-                    val militias=organizations(p).firstOrNull { it.id=="ionia_provincial_militias" }
+                    val ionianGroups=organizations(p)
+                    val militias=ionianGroups.firstOrNull { it.id=="ionia_provincial_militias" }
                     val localReadiness=(militias?.influence?:0)>=55 || (sideB.stability<=65)
                     if(localReadiness && rng.nextInt(100)<30) {
                         militias?.let { it.influence=(it.influence+8).coerceAtMost(100); it.publicSupport=(it.publicSupport+8).coerceAtMost(100) }
                         events.add("【普雷西典战线·模拟分支】第 $day 日：诺克萨斯军团的推进威胁到艾欧尼亚重要圣地与省地交通；地方民兵、武道寺院和居民开始更广泛地组织抵抗。战局结果仍由后续资源、动员与军事行动决定。")
                         p.edit().putBoolean(KEY_IONIA_PLACIDIUM,true).apply()
-                        militias?.let { saveOrganizations(p,organizations(p)) }
+                        saveOrganizations(p,ionianGroups)
                     }
                 }
                 if(rel.warMonths%3==0)events.add("【战争进程·模拟】第 $day 日：${rel.a}与${rel.b}的战争已持续${rel.warMonths}个月；双方军力、财政与社会稳定持续消耗。")
