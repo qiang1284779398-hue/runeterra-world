@@ -95,7 +95,10 @@ object WorldAIProvider {
     .put("model",model)
     .put("messages",messages)
     .put("max_tokens",maxTokens.coerceAtLeast(256))
-    .put("temperature",0.2)
+    .put("temperature",0.85)
+    .put("top_p",0.9)
+    .put("frequency_penalty",0.6)
+    .put("presence_penalty",0.3)
     .put("stream",false)
     .put("response_format",JSONObject().put("type","json_object"))
     .toString()
@@ -127,7 +130,7 @@ object WorldAIProvider {
    else callback("未配置云端API，且本地模型未加载")
    return
   }
-  val model=p.getString("model","glm-4-flash")?.trim().orEmpty().ifBlank{"glm-4-flash"}
+  val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
   thread(name="SharedCloudAI") {
    var output=""
    var cloudFailed=false
