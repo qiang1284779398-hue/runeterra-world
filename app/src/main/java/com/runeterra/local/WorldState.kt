@@ -1838,18 +1838,33 @@ private fun craftBonus(region:String):Int = when(region) {
     fun requestLocalResidentThinking(context:Context) {
         if(!ResidentAI.isLoaded() || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-        val living=people(p).filter { it.alive }
+        val population=people(p)
+        val living=population.filter { it.alive }
         if(living.isEmpty()) return
         val cursor=p.getInt(KEY_AI_CURSOR,0).let { if(it<0) 0 else it%living.size }
         val r=living[cursor]
         p.edit().putInt(KEY_AI_CURSOR,(cursor+1)%living.size).apply()
         val day=p.getLong(KEY_DAY,1L)
-        val prompt="""你是符文之地世界中一名真实生活的普通居民的个人认知系统。你只能知道此人的经历和下列有限观察，不能全知，不能替其他人决定。
-人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
-人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}；最近记忆：${r.mindMemory.takeLast(8).joinToString("；")}。
+        val market=markets(p)[r.region]
+        val relations=buildList {
+            population.firstOrNull { it.id==r.partnerId }?.let { add("伴侣：${it.name}（${it.job}，${it.region}）") }
+            r.parentIds.mapNotNull { id -> population.firstOrNull { it.id==id } }.forEach { add("父母：${it.name}（${it.job}）") }
+            r.childIds.mapNotNull { id -> population.firstOrNull { it.id==id } }.forEach { add("子女：${it.name}（${it.age}岁）") }
+            r.friendIds.take(5).mapNotNull { id -> population.firstOrNull { it.id==id } }.forEach { add("友人：${it.name}（${it.job}）") }
+            population.firstOrNull { it.id==r.mentorId }?.let { add("师长：${it.name}（${it.job}）") }
+        }.take(10).joinToString("；").ifBlank { "目前没有已记录的亲密关系信息" }
+        val localLore=regionalLore.firstOrNull { it.name==r.region }?.let { "${it.political}；${it.magic}" } ?: "当地社会情况尚无详细记录"
+        val prompt="""你是符文之地中一名有自身经历、局限知识、关系和利益的居民的个人认知引擎。你不是旁白，不是游戏角色，不知道全世界发生的事。只能依据此人的亲历、可信记忆和当前可观察信息判断；不得替别人决定，也不得捏造对话、事件或知识。
+人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
+人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
+已知关系：${relations}。
+近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
+个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
+当地社会背景：${localLore}。这只是居民可能接触到的环境常识，不代表他知道政治内幕。
+当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
-请基于这个人的处境作出一个有个人立场的判断。不要编造未提供的经历或知识。
-只返回一个JSON对象，字段为 thought（第一人称思考，1-3句）、belief（可保持或修正信念）、intent（当前意图）、goal（短期目标）、action（只能是 stay、seek_food、seek_work、change_job 之一）、new_job（仅change_job时填写，限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒之一）。"""
+请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
+只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job之一）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）。"""
         localInferenceBusy=true
         ResidentAI.ask(prompt) { raw ->
             try {
@@ -1867,20 +1882,67 @@ private fun craftBonus(region:String):Int = when(region) {
                             latest.goal=result.optString("goal",latest.goal).take(180)
                             latest.mindMemory.add(latest.currentThought+"（信念："+latest.belief+"）")
                             while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
-                            when(result.optString("action")) {
-                                "seek_food" -> latest.goal="寻找食物与可靠补给"
-                                "seek_work" -> latest.goal="寻找新的谋生机会"
-                                "change_job" -> {
-                                    val allowed=setOf("农夫","采集者","药师","商贩","工匠","矿工","护卫","学徒")
-                                    val next=result.optString("new_job")
-                                    if(next in allowed && latest.age in 16..69 && latest.travelDaysRemaining<=0 && next!=latest.job) {
-                                        val old=latest.job
-                                        latest.job=next
-                                        recordLife(latest,day,"经过本地AI独立评估，决定由${old}转为${next}。","local_ai_decision")
+                            val action=result.optString("action","stay")
+                            when(action) {
+                                "seek_food" -> {
+                                    latest.goal="寻找食物与可靠补给"
+                                    val marketMap=markets(p)
+                                    val localMarket=marketMap[latest.region]
+                                    if(localMarket!=null && latest.food<=3 && localMarket.food>0) {
+                                        val unitPrice=goodPrice(localMarket,"粮食")
+                                        val affordable=if(unitPrice>0) latest.coins/unitPrice else 0
+                                        val bought=minOf(4-latest.food,localMarket.food,affordable).coerceAtLeast(0)
+                                        if(bought>0) {
+                                            val cost=bought*unitPrice
+                                            latest.coins-=cost
+                                            latest.food+=bought
+                                            localMarket.food-=bought
+                                            localMarket.wealth+=cost
+                                            recordLife(latest,day,"根据自己的判断前往当地市场购买${bought}单位粮食，花费${cost}枚金币；口粮由${latest.food-bought}增至${latest.food}。","local_ai_decision_action")
+                                            latest.mindMemory.add("行动结果：购买粮食成功，花费${cost}枚金币，当前口粮${latest.food}。")
+                                        } else if(latest.food<=1 && localMarket.wealth>0 && localMarket.food>0) {
+                                            val aid=minOf(1,localMarket.food)
+                                            localMarket.food-=aid
+                                            localMarket.wealth=(localMarket.wealth-unitPrice).coerceAtLeast(0)
+                                            latest.food+=aid
+                                            recordLife(latest,day,"因个人无力购买口粮，向当地公共救济储备求助并获得${aid}单位粮食。","local_ai_decision_action")
+                                            latest.mindMemory.add("行动结果：获得公共口粮救济，暂时缓解饥饿。")
+                                        } else {
+                                            latest.mindMemory.add("行动结果：尝试寻找食物，但当地市场库存或个人财力不足，未能买到口粮。")
+                                        }
+                                        saveMarkets(p,marketMap)
+                                    } else {
+                                        latest.mindMemory.add("行动结果：评估后发现当前口粮并未达到紧急程度，暂缓购买。")
                                     }
                                 }
+                                "seek_work","change_job" -> {
+                                    val allowed=setOf("农夫","采集者","药师","商贩","工匠","矿工","护卫","学徒","伐木工","海克斯技师","魔法材料采集者")
+                                    val next=result.optString("new_job")
+                                    if(next in allowed && latest.age in 16..69 && latest.health>=20 && latest.travelDaysRemaining<=0 && next!=latest.job) {
+                                        val regionCompatible=when(next) {
+                                            "海克斯技师" -> latest.region in setOf("皮尔特沃夫","祖安")
+                                            "魔法材料采集者" -> latest.region in setOf("艾欧尼亚","恕瑞玛","巨神峰","以绪塔尔","弗雷尔卓德")
+                                            "矿工" -> latest.region in setOf("诺克萨斯","弗雷尔卓德","恕瑞玛","德玛西亚")
+                                            else -> true
+                                        }
+                                        if(regionCompatible) {
+                                            val old=latest.job
+                                            latest.job=next
+                                            latest.goal="通过${next}改善个人生计"
+                                            recordLife(latest,day,"经过个人评估后，主动离开${old}，尝试从事${next}；这是一次谋生选择，后续收入与技能变化仍由世界经济和劳动模拟决定。","local_ai_decision_action")
+                                            latest.mindMemory.add("行动结果：已从${old}转为${next}，需要通过实际劳动检验这次选择。")
+                                        } else {
+                                            latest.mindMemory.add("行动结果：考虑的职业需要当地缺少的产业条件，决定暂不转行。")
+                                        }
+                                    } else {
+                                        latest.mindMemory.add("行动结果：没有找到符合自身条件且可执行的工作变动，暂时维持现状。")
+                                    }
+                                }
+                                else -> latest.mindMemory.add("行动结果：经过评估，决定暂时维持当前生活与职业。")
                             }
-                            savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
+                            while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
+                            val latestPopulation=people(p).map { if(it.id==latest.id) latest else it }
+                            savePeople(p,latestPopulation)
                         }
                     }
                 }
