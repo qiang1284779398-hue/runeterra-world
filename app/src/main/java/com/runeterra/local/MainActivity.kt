@@ -94,7 +94,7 @@ class MainActivity : Activity() {
             setPadding(24,12,24,8)
         }
         val hint=TextView(this).apply {
-            text="切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
+            text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
             textSize=13f
             setPadding(0,0,0,12)
         }
@@ -160,6 +160,7 @@ class MainActivity : Activity() {
         val refreshTask=object:Runnable {
             override fun run() {
                 if(dialog.isShowing) {
+                    hint.text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
                     if(kind=="世界事件" || kind=="人物互动") {
                         val latest=WorldEngine.observationNames(this@MainActivity,kind)
                         if(latest.isNotEmpty() && latest.firstOrNull()!=selectedKey) {
