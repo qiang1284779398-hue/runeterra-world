@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -16,6 +17,8 @@ import android.widget.TextView
 class MainActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var log: TextView
+    private var pendingBiographyExportId: Int = -1
+    private val requestExportBiography = 4107
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -255,10 +258,52 @@ class MainActivity : Activity() {
                     .setTitle("人生传记档案")
                     .setMessage(WorldEngine.residentHistory(this,id))
                     .setPositiveButton("返回",null)
+                    .setNeutralButton("导出传记") { _, _ -> beginBiographyExport(id) }
                     .show()
             }
             .setNegativeButton("关闭",null)
             .show()
+    }
+
+    private fun beginBiographyExport(id:Int) {
+        pendingBiographyExportId=id
+        val intent=Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type="text/plain"
+            putExtra(Intent.EXTRA_TITLE,"居民${id}号-人生传记.txt")
+        }
+        try {
+            startActivityForResult(intent,requestExportBiography)
+        } catch (e:Exception) {
+            pendingBiographyExportId=-1
+            Toast.makeText(this,"无法打开系统文件保存窗口：${e.message ?: "未知错误"}",Toast.LENGTH_LONG).show()
+        }
+    }
+
+    @Deprecated("Deprecated in Android API; retained for compatibility with the current Activity implementation")
+    override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
+        super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode!=requestExportBiography) return
+        val id=pendingBiographyExportId
+        pendingBiographyExportId=-1
+        if(resultCode!=RESULT_OK || data?.data==null) {
+            Toast.makeText(this,"已取消传记导出。",Toast.LENGTH_SHORT).show()
+            return
+        }
+        val biography=WorldEngine.residentBiographyExport(this,id)
+        if(biography==null) {
+            Toast.makeText(this,"居民档案不存在，无法导出。",Toast.LENGTH_LONG).show()
+            return
+        }
+        try {
+            contentResolver.openOutputStream(data.data!!,"wt")?.use { stream ->
+                stream.write(biography.toByteArray(Charsets.UTF_8))
+                stream.flush()
+            } ?: throw IllegalStateException("无法写入目标文件")
+            Toast.makeText(this,"传记已导出为 TXT 文件。",Toast.LENGTH_LONG).show()
+        } catch(e:Exception) {
+            Toast.makeText(this,"导出失败：${e.message ?: "写入文件时发生错误"}",Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun startWorld() {
