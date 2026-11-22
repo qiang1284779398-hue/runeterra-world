@@ -2749,7 +2749,7 @@ private fun craftBonus(region:String):Int = when(region) {
 
     /** Fairly alternates heroes and residents. A busy model does not consume or skip a turn. */
     fun requestNextLocalThinking(context:Context) {
-        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val hasResidents=people(p).any { it.alive }
         val hasHeroes=heroAgents(p).any { it.alive }
@@ -2818,7 +2818,8 @@ private fun craftBonus(region:String):Int = when(region) {
         beginLocalInference(p,"居民：${r.name}（编号${r.id}）")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
-        ResidentAI.askStructured(
+        WorldAIProvider.ask(
+            context,
             prompt,
             maxTokens=176,
             systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
@@ -3043,7 +3044,8 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
         beginLocalInference(p,"英雄：${hero.name}")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
-        ResidentAI.askStructured(
+        WorldAIProvider.ask(
+            context,
             prompt,
             maxTokens=176,
             systemPrompt="你是人物的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
