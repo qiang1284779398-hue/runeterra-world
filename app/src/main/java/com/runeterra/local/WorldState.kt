@@ -2830,7 +2830,10 @@ private fun craftBonus(region:String):Int = when(region) {
 身体：健康${r.health}，疲劳${r.fatigue}，心境${r.morale}；口粮${r.food}，钱${r.coins}，技能${r.skill}；正在${r.dailyActivity}。
 关系：${relations.take(150)}。身边可接触的人：${socialCandidates.take(130)}。
 最近经历：${recentLife.take(160)}。私人记忆：${privateMemory.take(170)}。身份记忆：${personalIdentity.takeLast(120)}。
-上一轮想法：${r.currentThought.take(100).ifBlank { "暂无" }}。
+上一轮想法：${r.currentThought.take(180).ifBlank { "暂无" }}。
+本轮必须先对照上一轮：区分哪些事实、关系、资源、身体状态或行动结果发生了变化。优先围绕真正新增的信息形成判断；不得把上一轮换词重说，也不得为了显得不同而无依据地改变信念。
+若没有任何新信息，允许保持原立场，但必须提出一个此前尚未表达的具体观察、疑问、风险评估或下一步打算；若仍决定不行动，要说明此刻不行动的具体理由。
+思考应体现人物连续性：记住自己上轮做过什么、别人如何回应、行动造成什么后果；不可把尚未发生的行动说成已完成。
 当地情况：${localLore.take(110)}；${publicInstitutions.take(90)}；近期事件：${localEvents.take(100).ifBlank { "无" }}。
 第${day}日；时代：${eraAnchor.take(70)}；规则：${publicRules.take(90)}。
 只思考眼前最重要的一件具体事情。必须考虑这个人的真实处境；可以害怕、犹豫、拒绝改变或什么也不做。thought必须是第一人称的自然中文，1至2句，约30至70字，不能复述上面资料，也不能空喊口号。
@@ -3064,7 +3067,9 @@ private fun craftBonus(region:String):Int = when(region) {
 个人记忆：${heroMemory.takeLast(220)}。人生经历：${heroHistory.takeLast(180)}。身份记忆：${heroIdentity.takeLast(130)}。
 关系：${bonds.take(150)}。
 时代：${eraAnchor.take(70)}；当地：${lore.take(110)}；制度：${publicContext.take(80)}；第${day}日；规则：${heroRules.take(80)}。
-只依据本人真实记忆、可接触关系与当前可知信息判断。不得预知未来、获取秘密情报或凭空完成行动。若没有新情况，可以说明自己为何暂时维持原计划，但不能换词复述旧思考。
+只依据本人真实记忆、可接触关系与当前可知信息判断。不得预知未来、获取秘密情报或凭空完成行动。
+本轮先比较个人记忆、经历、关系、当前处境与上一轮思考，找出真正新增或变化的事实，再据此作出判断。不得复述上一轮结论，不得只替换近义词；也不得为了追求新鲜感而无理由改变性格、信念或立场。
+如果没有新情况，可以保持原立场，但应补充一个此前未说过的具体观察、疑问、风险判断或下一步计划；若继续等待或拒绝行动，要说明符合人物身份的具体原因。
 thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
 只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一。不要Markdown。"""
         localInferenceBusy=true
