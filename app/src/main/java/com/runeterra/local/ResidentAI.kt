@@ -3,7 +3,6 @@ package com.runeterra.local
 import android.content.Context
 import com.hazratbilal.aikit.core.AiKitEngine
 import com.hazratbilal.aikit.chat.AiKitChat
-import com.hazratbilal.aikit.chat.engine.chat
 
 /**
  * Shared local llama.cpp engine. The GGUF model is selected/imported by the user and remains on device.
