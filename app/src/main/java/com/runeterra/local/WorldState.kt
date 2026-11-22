@@ -1045,6 +1045,19 @@ object WorldEngine {
             } else if(student.skill<100 && rng.nextInt(100)<18) {
                 student.skill=(student.skill+1).coerceAtMost(100)
             }
+            if(mentor!=null) {
+                val stages=listOf(10 to "基础技艺",25 to "熟练技艺",50 to "独立处理复杂工作",75 to "资深技艺",100 to "技艺精通")
+                stages.forEach { (threshold,label) ->
+                    val marker="师徒训练里程碑：$label"
+                    val alreadyRecorded=student.storyRecords.any { raw ->
+                        runCatching { JSONObject(raw).optString("detail").contains(marker) }.getOrDefault(false)
+                    }
+                    if(student.skill>=threshold && !alreadyRecorded) {
+                        recordLife(student,day,"师徒训练里程碑：$label（技能${student.skill}/100）；指导者为${mentor.name}，训练地点为${student.region}。","individual_transition")
+                        recordLife(mentor,day,"徒弟${student.name}达到$label阶段（技能${student.skill}/100）；师徒指导取得可观察的阶段成果。","individual_transition")
+                    }
+                }
+            }
         }
     }
     private const val KEY_LORE="lore_triggers"
@@ -1844,8 +1857,14 @@ private fun craftBonus(region:String):Int = when(region) {
                     }
                 }
                 if(day%90L==0L && r.alive && !traveling && r.skill>=10 && r.job=="学徒") {
+                    val formerMentor=pop.firstOrNull { it.id==r.mentorId && it.alive }
                     r.job="工匠"
-                    recordLife(r,day,"在${r.region}完成学徒阶段，成为工匠。")
+                    recordLife(r,day,"在${r.region}完成学徒阶段，成为工匠；正式承担独立工作。")
+                    if(formerMentor!=null) {
+                        recordLife(formerMentor,day,"徒弟${r.name}完成学徒阶段，成为工匠；此前传授的技艺进入独立实践阶段。")
+                        formerMentor.studentIds.remove(r.id)
+                    }
+                    r.mentorId=-1
                     events.add("第 $day 日：${r.name}在${r.region}完成学徒阶段，成为工匠。")
                 }
                 if(day%90L==0L && r.alive && !traveling && r.skill>=25 && r.job=="旅人") {
