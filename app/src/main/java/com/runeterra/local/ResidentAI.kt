@@ -32,7 +32,8 @@ object ResidentAI {
         if (loadedPath == path && isLoaded()) { callback(null); return }
         loading = true
         scope.launch {
-            try {
+            inferenceMutex.withLock {
+              try {
                 model?.let { Llama.releaseModel(it) }
                 model = null
                 loadedPath = null
@@ -50,10 +51,11 @@ object ResidentAI {
                 model = loaded
                 loadedPath = path
                 callback(null)
-            } catch (e: Throwable) {
+              } catch (e: Throwable) {
                 callback(e.message ?: e.toString())
-            } finally {
+              } finally {
                 loading = false
+              }
             }
         }
     }
