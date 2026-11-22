@@ -870,6 +870,20 @@ private fun craftBonus(region:String):Int = when(region) {
                     recordLife(r,day,"在${r.region}积累经验，转为护卫。")
                     events.add("第 $day 日：${r.name}在${r.region}积累经验，转为护卫。")
                 }
+                if(day%90L==0L && r.alive && !traveling && r.skill>=20 && r.job=="采集者" && rng.nextInt(100)<8) {
+                    val specializations=when(r.region) {
+                        "皮尔特沃夫","祖安" -> listOf("海克斯技师","工匠")
+                        "德玛西亚" -> listOf("伐木工","工匠")
+                        "诺克萨斯","弗雷尔卓德" -> listOf("矿工","伐木工")
+                        "艾欧尼亚" -> listOf("药师","魔法材料采集者")
+                        "恕瑞玛","巨神峰","以绪塔尔" -> listOf("魔法材料采集者","药师")
+                        "比尔吉沃特" -> listOf("药师","伐木工")
+                        else -> listOf("药师","伐木工")
+                    }
+                    r.job=specializations[rng.nextInt(specializations.size)]
+                    recordLife(r,day,"在${r.region}根据当地生计需求转为${r.job}。")
+                    events.add("第 $day 日：${r.name}在${r.region}转行为${r.job}，当地专业劳动力结构发生变化。")
+                }
                 if(day%90L==0L && r.alive && !traveling && r.skill>=50 && r.job=="采集者") {
                     r.job="商贩"
                     recordLife(r,day,"在${r.region}凭经验开始经营贸易。")
