@@ -1069,7 +1069,7 @@ object WorldEngine {
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\n所在领域：${it.region}\n当前地点：${it.location}\n族类／本质：${it.lineage.ifBlank { heroLineage(it.name) }}\n身份：${it.role}\n当前状态：${it.status}\n性别：${it.gender}；年龄：${if(it.age>=0) it.age.toString()+"岁" else "未记录"}；外貌：${it.appearance.ifBlank { "未特别记录" }}；能力：${it.abilities.ifBlank { "依既有设定" }}；存在状态：${if(it.alive) "存续" else "已被抹杀/死亡"}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\n所在领域：${it.region}\n当前地点：${it.location}\n族类／本质：${it.lineage.ifBlank { heroLineage(it.name) }}\n身份：${it.role}\n当前状态：${it.status}\n持续活动：${it.dailyActivity}\n性别：${it.gender}；年龄：${if(it.age>=0) it.age.toString()+"岁" else "未记录"}；外貌：${it.appearance.ifBlank { "未特别记录" }}；能力：${it.abilities.ifBlank { "依既有设定" }}；存在状态：${if(it.alive) "存续" else "已被抹杀/死亡"}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
         }
     }
     fun heroBiographyExport(context:Context,name:String):String? {
@@ -1078,7 +1078,7 @@ object WorldEngine {
         return buildString {
             append("符文之地 · 重要人物自主经历档案\n")
             append("人物：${h.name}\n领域：${h.region}\n当前地点：${h.location}\n族类／本质：${h.lineage.ifBlank { heroLineage(h.name) }}\n身份：${h.role}\n")
-            append("当前状态：${h.status}\n性别：${h.gender}\n外貌：${h.appearance}\n能力：${h.abilities}\n存在状态：${if(h.alive) "存续" else "已被抹杀/死亡"}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
+            append("当前状态：${h.status}\n持续活动：${h.dailyActivity}\n性别：${h.gender}\n外貌：${h.appearance}\n能力：${h.abilities}\n存在状态：${if(h.alive) "存续" else "已被抹杀/死亡"}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
             append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\n\n")
             append("【自主思考与记忆】\n")
             h.memory.forEach { append(it).append('\n') }
