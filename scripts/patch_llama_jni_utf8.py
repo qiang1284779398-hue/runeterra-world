@@ -75,16 +75,10 @@ s=s.replace(
 )
 
 
-# The upstream source has two fallback branches. Patch both (not just the first)
-# and make the successful template return carry the "template applied" flag.
-import re
-s, fallback_count = re.subn(
-    r'if (n < 0) return system\\.empty\\(\\) \\? user : \\(system \\+ "\\\\n\\\\n" \\+ user\\);',
-    r'if (n < 0) return {system.empty() ? user : (system + "\\\\n\\\\n" + user), false};',
-    s
-)
-if fallback_count == 0 and 'if (n < 0) return {system.empty()' not in s:
-    raise RuntimeError("Could not patch chat-template fallback branch")
+# Patch the second fallback branch as well as the first one.
+old_fallback = '    if (n < 0) return system.empty() ? user : (system + "\\n\\n" + user);'
+new_fallback = '    if (n < 0) return {system.empty() ? user : (system + "\\n\\n" + user), false};'
+s=s.replace(old_fallback, new_fallback)
 s=s.replace(
     '    return std::string(buf.data(), n);',
     '    return {std::string(buf.data(), n), true};'
