@@ -2827,7 +2827,7 @@ private fun craftBonus(region:String):Int = when(region) {
             synchronized(WorldEngine) {
             fun recordResidentInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
-                val latest=people(p).firstOrNull { it.id==r.id } ?: return@askStructured
+                val latest=people(p).firstOrNull { it.id==r.id } ?: return
                 latest.currentThought="【本轮推理未完成】${message} 下一轮将重新尝试。"
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
@@ -3053,7 +3053,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             synchronized(WorldEngine) {
             fun recordInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
-                val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@askStructured
+                val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
                 latest.thought="【本轮推理未完成】${message} 下一轮将重新尝试。"
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
