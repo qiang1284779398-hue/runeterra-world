@@ -29,13 +29,14 @@ private data class Resident(
      var storyRecords: MutableList<String> = mutableListOf(),
     var mindTrait: Int = 50, var belief: String = "重视生存与身边的人", var currentThought: String = "",
     var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf(),
-    var gender:String="未记录", var appearance:String="", var abilities:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false
+    var gender:String="未记录", var appearance:String="", var abilities:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
+    var identityMemory:String=""
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride).put("identityMemory",identityMemory)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -47,7 +48,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false), j.optString("identityMemory",""))
     }
 }
 
@@ -404,6 +405,7 @@ object WorldEngine {
                         val belief=hero.belief; hero.belief=otherHero.belief; otherHero.belief=belief
                         val thought=hero.thought; hero.thought=otherHero.thought; otherHero.thought=thought
                         val intent=hero.intent; hero.intent=otherHero.intent; otherHero.intent=intent
+                        val identityMemory=hero.identityMemory; hero.identityMemory=otherHero.identityMemory; otherHero.identityMemory=identityMemory
                         val memory=hero.memory.toMutableList(); hero.memory.clear(); hero.memory.addAll(otherHero.memory); otherHero.memory.clear(); otherHero.memory.addAll(memory)
                         appendHeroEvent(hero,"与${otherHero.name}互换灵魂；当前意识、记忆、信念、目标与意图来自对方，身体及身体经历保持原样。")
                         appendHeroEvent(otherHero,"与${hero.name}互换灵魂；当前意识、记忆、信念、目标与意图来自对方，身体及身体经历保持原样。")
@@ -414,6 +416,7 @@ object WorldEngine {
                         val thought=resident.currentThought; resident.currentThought=otherResident.currentThought; otherResident.currentThought=thought
                         val intent=resident.intent; resident.intent=otherResident.intent; otherResident.intent=intent
                         val trait=resident.mindTrait; resident.mindTrait=otherResident.mindTrait; otherResident.mindTrait=trait
+                        val identityMemory=resident.identityMemory; resident.identityMemory=otherResident.identityMemory; otherResident.identityMemory=identityMemory
                         val memory=resident.mindMemory.toMutableList(); resident.mindMemory.clear(); resident.mindMemory.addAll(otherResident.mindMemory); otherResident.mindMemory.clear(); otherResident.mindMemory.addAll(memory)
                         appendResidentEvent(resident,"与${otherResident.name}互换灵魂；当前意识、记忆、信念、目标、意图与人格倾向来自对方，身体及身体经历保持原样。")
                         appendResidentEvent(otherResident,"与${resident.name}互换灵魂；当前意识、记忆、信念、目标、意图与人格倾向来自对方，身体及身体经历保持原样。")
@@ -511,12 +514,12 @@ object WorldEngine {
                     val mode=op.optString("memory_mode","append")
                     val memo=op.optString("memory_text")
                     if(hero!=null) {
-                        when(mode) { "erase" -> { hero.memory.clear(); hero.thought="" }; "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add("【天道改写的主观人生记忆／身份认知】$memo"); hero.thought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
+                        when(mode) { "erase" -> { hero.memory.clear(); hero.thought=""; hero.identityMemory="" }; "replace" -> { hero.memory.clear(); hero.identityMemory=memo; if(memo.isNotBlank()) hero.memory.add("【天道改写的主观人生记忆／身份认知】$memo"); hero.thought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
                         appendHeroEvent(hero,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") hero.memory.clear()
                         outcomes.add("已修改${hero.name}的个人记忆（模式：${mode}）。"); successful++
                     } else if(resident!=null) {
-                        when(mode) { "erase" -> { resident.mindMemory.clear(); resident.currentThought="" }; "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add("【天道改写的主观人生记忆／身份认知】$memo"); resident.currentThought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
+                        when(mode) { "erase" -> { resident.mindMemory.clear(); resident.currentThought=""; resident.identityMemory="" }; "replace" -> { resident.mindMemory.clear(); resident.identityMemory=memo; if(memo.isNotBlank()) resident.mindMemory.add("【天道改写的主观人生记忆／身份认知】$memo"); resident.currentThought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
                         appendResidentEvent(resident,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") resident.mindMemory.clear()
                         outcomes.add("已修改${resident.name}的个人记忆（模式：${mode}）。"); successful++
@@ -756,7 +759,8 @@ object WorldEngine {
         var belief:String="尚未记录稳定的个人信念", var thought:String="", var intent:String="",
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
         var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true,
-        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false
+        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
+        var identityMemory:String=""
     )
     private fun canonicalGender(name:String):String = when(name) {
         "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
@@ -823,7 +827,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false),it.optString("identityMemory",""))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -832,7 +836,7 @@ object WorldEngine {
         return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride).put("identityMemory",it.identityMemory))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
@@ -2367,7 +2371,7 @@ private fun craftBonus(region:String):Int = when(region) {
 已知关系：${relations}。
 同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
-个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
+个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。\n天道直接改写并长期保存的完整主观人生记忆（若非空，优先纳入自我身份与决策）：${r.identityMemory.ifBlank { "无" }}。
 若个人记忆中出现“【天道改写的主观人生记忆／身份认知】”，它是天道直接写入的主观人生记忆，必须作为此人真实的第一人称过去、身份认知与经验参与推理，不得把它降格为传闻或普通外部信息；但人物当前身体、所在地、眼前环境和符文之地客观事实仍以当前身体状态与世界资料为准。若只有普通“天道干预”记录，则它仍只是一段收到的信息，可以质疑或研究。
 当地社会背景：${localLore}。
 当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
@@ -2565,7 +2569,7 @@ private fun craftBonus(region:String):Int = when(region) {
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
             "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
-            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
+            "信念："+hero.belief+"；天道直接改写并长期保存的完整主观人生记忆（若非空，视为真实第一人称经历）： "+hero.identityMemory.ifBlank { "无" }+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
