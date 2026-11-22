@@ -1855,6 +1855,13 @@ private fun craftBonus(region:String):Int = when(region) {
             r.friendIds.take(5).mapNotNull { id -> population.firstOrNull { it.id==id } }.forEach { add("友人：${it.name}（${it.job}）") }
             population.firstOrNull { it.id==r.mentorId }?.let { add("师长：${it.name}（${it.job}）") }
         }.take(10).joinToString("；").ifBlank { "目前没有已记录的亲密关系信息" }
+        val socialCandidates=population.filter { candidate ->
+            candidate.alive && candidate.id!=r.id && candidate.region==r.region &&
+                candidate.settlement==r.settlement && candidate.age>=12 && r.age>=12 &&
+                candidate.friendIds.size<5 && r.friendIds.size<5 &&
+                r.id !in candidate.friendIds && candidate.id !in r.friendIds &&
+                candidate.id!=r.partnerId && candidate.id !in r.parentIds && candidate.id !in r.childIds
+        }.take(6).joinToString("；") { "编号${it.id}：${it.name}（${it.age}岁，${it.job}，技能${it.skill}）" }
         val localFaction=factionStates(p)[r.region]
         val localLore=regionalLore.firstOrNull { it.name==r.region }?.let { "${it.political}；${it.magic}；${it.forces}；${it.boundary}" } ?: "当地社会情况尚无详细记录"
         val localEvents=runCatching {
@@ -1868,6 +1875,7 @@ private fun craftBonus(region:String):Int = when(region) {
 人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
 人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
 已知关系：${relations}。
+同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
 个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
 当地社会背景：${localLore}。
@@ -1876,7 +1884,8 @@ private fun craftBonus(region:String):Int = when(region) {
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
 请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
-只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help之一；ask_help仅在确有可信亲友且自己急需食物时选择）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）。"""
+行动选择应体现这个人自己的长期兴趣和处境，而不只是生存：可以维持现状、寻找食物、求职或转行、向可信亲友求助、练习现有职业技能，或主动结识同一聚落中真实存在的人。不要为了制造剧情而强行选择社交或成长。
+只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize之一；ask_help仅在确有可信亲友且自己急需食物时选择）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
         localInferenceBusy=true
         ResidentAI.ask(prompt) { raw ->
             try {
@@ -1966,6 +1975,41 @@ private fun craftBonus(region:String):Int = when(region) {
                                     } else {
                                         latest.mindMemory.add("行动结果：没有找到符合自身条件且可执行的工作变动，暂时维持现状。")
                                     }
+                                }
+                                "practice_skill" -> {
+                                    if(latest.age>=10 && latest.health>=25 && latest.skill<100 && latest.travelDaysRemaining<=0) {
+                                        val mentor=people(p).firstOrNull { it.id==latest.mentorId && it.alive && it.region==latest.region }
+                                        val gain=if(mentor!=null) 2 else 1
+                                        val before=latest.skill
+                                        latest.skill=(latest.skill+gain).coerceAtMost(100)
+                                        recordLife(latest,day,"主动投入时间练习${latest.job}相关技艺，技能由${before}提升至${latest.skill}/100${if(mentor!=null) "；师长${mentor.name}在场指导" else "；此次为个人练习"}。","resident_self_development")
+                                        latest.mindMemory.add("行动结果：主动练习技艺，技能提升至${latest.skill}/100。")
+                                        if(mentor!=null) {
+                                            mentor.mindMemory.add("师徒经历：我指导${latest.name}练习${latest.job}相关技艺。")
+                                            recordLife(mentor,day,"指导学生${latest.name}练习${latest.job}相关技艺。","mentor_teaching")
+                                            savePeople(p,people(p).map { if(it.id==mentor.id) mentor else it })
+                                        }
+                                    } else latest.mindMemory.add("行动结果：当前年龄、健康、旅途或技能状态不适合继续练习。")
+                                }
+                                "socialize" -> {
+                                    val targetId=result.optInt("target_id",-1)
+                                    val other=people(p).firstOrNull { it.id==targetId && it.alive }
+                                    if(other!=null && latest.age>=12 && other.age>=12 &&
+                                        other.id!=latest.id && other.region==latest.region &&
+                                        other.settlement==latest.settlement && latest.travelDaysRemaining<=0 &&
+                                        other.travelDaysRemaining<=0 && latest.friendIds.size<5 &&
+                                        other.friendIds.size<5 && other.id !in latest.friendIds &&
+                                        latest.id !in other.friendIds && other.id!=latest.partnerId &&
+                                        other.id !in latest.parentIds && other.id !in latest.childIds) {
+                                        latest.friendIds.add(other.id)
+                                        other.friendIds.add(latest.id)
+                                        recordLife(latest,day,"主动与${other.name}交往并建立友谊；双方居住于${latest.settlement}，关系由此进入个人经历。","resident_initiated_relationship")
+                                        recordLife(other,day,"与${latest.name}建立友谊；对方主动接触，双方开始形成新的社会联系。","resident_initiated_relationship")
+                                        latest.mindMemory.add("关系变化：我与${other.name}成为朋友。")
+                                        other.mindMemory.add("关系变化：我与${latest.name}成为朋友。")
+                                        while(other.mindMemory.size>120) other.mindMemory.removeAt(0)
+                                        savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; other.id -> other; else -> person } })
+                                    } else latest.mindMemory.add("行动结果：想要结识的人不在可接触范围内，或双方条件不适合建立友谊；没有改变关系。")
                                 }
                                 else -> latest.mindMemory.add("行动结果：经过评估，决定暂时维持当前生活与职业。")
                             }
@@ -2484,6 +2528,10 @@ private fun craftBonus(region:String):Int = when(region) {
             append("当前地区：${r.region}\n当前聚落：${r.settlement.ifBlank { "未记录" }}\n当前职业：${r.job}\n")
             append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
             append("\n【个人认知状态】\n说明：带有“本地模型推理”标记的思考来自已加载的 GGUF 本地模型；其他旧记录可能来自世界模拟规则。\n人格倾向值：${r.mindTrait}/100\n当前信念：${r.belief}\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\n当前意图：${r.intent}\n认知记忆：${r.mindMemory.size}条\n")
+            append("\n【个人认知与记忆时间线】\n")
+            if(r.mindMemory.isEmpty()) append("尚无保存的个人认知记忆。\n")
+            else r.mindMemory.forEachIndexed { index,memory -> append("${index+1}. ${memory}\n") }
+            append("说明：这些是居民当时保存的认知文本和行动结果，不等同于客观世界全知记录；记忆可能不完整，也可能包含其当时的误解。\n")
             if(r.travelDaysRemaining>0) append("旅途：${r.travelOrigin}→${r.travelDestination}；剩余${r.travelDaysRemaining}日；目的：${r.travelPurpose}\n")
             append("\n【人物关系网络】\n伴侣：${partner?.name ?: if(r.partnerId>=0) "关系对象档案不可用" else "暂无记录"}\n")
             append("父母：${parents.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n子女：${children.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
