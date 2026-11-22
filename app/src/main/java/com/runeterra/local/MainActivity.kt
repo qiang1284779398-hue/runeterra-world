@@ -130,13 +130,14 @@ class MainActivity : Activity() {
 
     private fun showHeavenlySystem() {
         val statusLines=WorldEngine.heavenlyStatus(this)
-        val choices=arrayOf("向全世界发布神谕","向指定居民传达","向指定英雄传达","查看天道干预记录","查看天道系统状态")
+        val choices=arrayOf("天道直接下令（全权限自然语言）","向全世界发布神谕","向指定居民传达","向指定英雄传达","查看天道干预记录","查看天道系统状态")
         AlertDialog.Builder(this)
             .setTitle("天道系统 · 外部观察与干预")
             .setItems(choices) { _, which ->
                 when(which) {
-                    0 -> chooseHeavenlyMode("全世界",-1,"")
-                    1 -> {
+                    0 -> composeDivineCommand()
+                    1 -> chooseHeavenlyMode("全世界",-1,"")
+                    2 -> {
                         val residents=WorldEngine.residentDirectory(this).filter { it.contains("｜在世") }
                         AlertDialog.Builder(this).setTitle("选择接收神谕的居民")
                             .setItems(residents.toTypedArray()) { _, index ->
@@ -145,7 +146,7 @@ class MainActivity : Activity() {
                                 if(id!=null) chooseHeavenlyMode("指定居民",id,name)
                             }.setNegativeButton("取消",null).show()
                     }
-                    2 -> {
+                    3 -> {
                         val heroes=WorldEngine.heroDirectory(this).mapNotNull { row ->
                             row.substringAfter("【","").substringBefore("】").takeIf { it.isNotBlank() }
                         }.distinct()
@@ -153,18 +154,49 @@ class MainActivity : Activity() {
                             .setItems(heroes.toTypedArray()) { _, index -> chooseHeavenlyMode("指定英雄",-1,heroes[index]) }
                             .setNegativeButton("取消",null).show()
                     }
-                    3 -> {
+                    4 -> {
                         val history=WorldEngine.heavenlyInterventionHistory(this)
                         AlertDialog.Builder(this).setTitle("天道干预历史")
                             .setMessage(history.joinToString("\n\n").ifBlank { "尚无天道干预记录。" })
                             .setPositiveButton("关闭",null).show()
                     }
-                    4 -> AlertDialog.Builder(this).setTitle("天道系统状态")
+                    5 -> AlertDialog.Builder(this).setTitle("天道系统状态")
                         .setMessage(statusLines.joinToString("\n\n"))
                         .setPositiveButton("关闭",null).show()
                 }
             }
             .setNegativeButton("关闭",null)
+            .show()
+    }
+
+
+    private fun composeDivineCommand() {
+        val input=EditText(this).apply {
+            hint="例如：让盖伦变成女性，但保留他的记忆、人格和能力。\n抹杀某某。\n把拉克丝瞬间传送到艾欧尼亚。\n创造一名生活在皮尔特沃夫的居民。"
+            minLines=5
+            maxLines=10
+            setSingleLine(false)
+            setPadding(28,20,28,20)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("天道 · 全权限直接指令")
+            .setMessage("用自然语言描述你要改变的世界。8B负责理解并生成操作，世界引擎负责验证和执行。没有对应实体模拟器的复杂现象会明确标注为事件/规则记录，不会假装已经完成全部物理后果。")
+            .setView(input)
+            .setPositiveButton("解析并执行") { _, _ ->
+                val command=input.text.toString().trim()
+                if(command.isBlank()) return@setPositiveButton
+                Toast.makeText(this,"8B 正在解析天道指令，请稍候…",Toast.LENGTH_LONG).show()
+                WorldEngine.interpretHeavenlyCommand(this,command) { result ->
+                    runOnUiThread {
+                        AlertDialog.Builder(this)
+                            .setTitle("天道指令执行报告")
+                            .setMessage(result)
+                            .setPositiveButton("确定") { _, _ -> refresh() }
+                            .show()
+                    }
+                }
+            }
+            .setNegativeButton("取消",null)
             .show()
     }
 
