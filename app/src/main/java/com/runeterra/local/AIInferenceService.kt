@@ -25,21 +25,40 @@ class AIInferenceService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i("RuneterraAI", "AI_SERVICE_ON_CREATE pid=${android.os.Process.myPid()}")
+        diagnostic("INFO", "AI_SERVICE_ON_CREATE pid=${android.os.Process.myPid()}")
+    }
+
+    // Persist service-side diagnostics to the same file shown by the in-app diagnostics screen.
+    private fun diagnostic(level: String, message: String, error: Throwable? = null) {
+        val stamp = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.US)
+            .format(java.util.Date())
+        val detail = buildString {
+            append(stamp).append(" | [AI-SERVICE ").append(level).append("] ").append(message)
+            if (error != null) {
+                append("\\n").append(android.util.Log.getStackTraceString(error))
+            }
+            append("\\n")
+        }
+        if (level == "ERROR") diagnostic("ERROR", message, error) else diagnostic("INFO", message)
+        try {
+            File(filesDir, "ai_diagnostics.log").appendText(detail)
+        } catch (ignored: Throwable) {
+            diagnostic("ERROR", "写入诊断文件失败", ignored)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder {
-        Log.i("RuneterraAI", "AI_SERVICE_ON_BIND")
+        diagnostic("INFO", "AI_SERVICE_ON_BIND")
         return messenger.binder
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.i("RuneterraAI", "AI_SERVICE_ON_UNBIND")
+        diagnostic("INFO", "AI_SERVICE_ON_UNBIND")
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
-        Log.e("RuneterraAI", "AI_SERVICE_ON_DESTROY")
+        diagnostic("ERROR", "AI_SERVICE_ON_DESTROY")
         scope.cancel()
         super.onDestroy()
     }
@@ -54,7 +73,7 @@ class AIInferenceService : Service() {
             }
             to?.send(Message.obtain(null, 100).apply { data = b })
         } catch (e: Throwable) {
-            Log.e("RuneterraAI", "reply failed", e)
+            diagnostic("ERROR", "reply failed", e)
         }
     }
 
@@ -94,7 +113,7 @@ class AIInferenceService : Service() {
                             val hash = sha256(modelFile)
                             val expectedQwen17b = "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
                             val officialMatch = hash.equals(expectedQwen17b, ignoreCase = true)
-                            Log.i("RuneterraAI", "模型SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch")
+                            diagnostic("INFO", "模型SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch")
                             val context = if (isSmall) 1024 else 1536
                             val threads = if (isSmall) 2 else 3
                             Log.i(
@@ -119,10 +138,10 @@ class AIInferenceService : Service() {
                             model = loaded
                             modelPath = p
                             val stable = hash == hashAfterLoad && bytesBefore == bytesAfter && modifiedBefore == modifiedAfter
-                            Log.i("RuneterraAI", "模型加载后文件校验；stable=$stable；before=$hash；after=$hashAfterLoad；bytesBefore=$bytesBefore；bytesAfter=$bytesAfter")
+                            diagnostic("INFO", "模型加载后文件校验；stable=$stable；before=$hash；after=$hashAfterLoad；bytesBefore=$bytesBefore；bytesAfter=$bytesAfter")
                             reply(to, id, true, "SHA256=$hash；加载后SHA256=$hashAfterLoad；加载期间文件稳定=$stable；匹配官方Qwen3-1.7B=$officialMatch", true)
                         } catch (e: Throwable) {
-                            Log.e("RuneterraAI", "模型加载异常", e)
+                            diagnostic("ERROR", "模型加载异常", e)
                             reply(to, id, false, e.message ?: e.toString(), true)
                         }
                     }
@@ -135,10 +154,10 @@ class AIInferenceService : Service() {
                         model?.let { Llama.releaseModel(it) }
                         model = null
                         modelPath = ""
-                        Log.i("RuneterraAI", "模型已卸载并释放；requestId=$id")
+                        diagnostic("INFO", "模型已卸载并释放；requestId=$id")
                         reply(to, id, true, "模型已卸载")
                     } catch (e: Throwable) {
-                        Log.e("RuneterraAI", "模型卸载异常", e)
+                        diagnostic("ERROR", "模型卸载异常", e)
                         reply(to, id, false, "模型卸载异常：" + (e.message ?: e.toString()))
                     }
                 }
@@ -201,7 +220,7 @@ class AIInferenceService : Service() {
                             )
                             reply(to, id, true, output)
                         } catch (e: Throwable) {
-                            Log.e("RuneterraAI", "推理异常", e)
+                            diagnostic("ERROR", "推理异常", e)
                             reply(to, id, false, "推理异常：" + (e.message ?: e.toString()))
                         }
                     }
