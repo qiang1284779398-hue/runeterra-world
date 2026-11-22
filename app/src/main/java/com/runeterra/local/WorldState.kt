@@ -378,7 +378,6 @@ object WorldEngine {
         }
         fun appendResidentEvent(r:Resident,detail:String) {
             impactRegions.add(r.region)
-            if(r.settlement.isNotBlank()) affectedSettlements.add(r.region to r.settlement)
             directlyChangedResidentIds.add(r.id)
             r.mindMemory.add("天道直接干预：${detail}")
             while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
@@ -387,7 +386,6 @@ object WorldEngine {
         }
         fun appendHeroEvent(h:HeroAgent,detail:String) {
             impactRegions.add(h.region)
-            if(h.location.isNotBlank()) affectedHeroLocations.add(h.region to h.location)
             directlyChangedHeroNames.add(h.name)
             h.memory.add("天道直接干预：${detail}")
             h.history.add("第${day}日｜${detail}")
@@ -471,16 +469,25 @@ object WorldEngine {
                     else { outcomes.add("已改变${target}：${changes.joinToString("，")}。"); successful++ }
                 }
                 "erase_person" -> {
+                    if(hero!=null && hero.location.isNotBlank()) affectedHeroLocations.add(hero.region to hero.location)
+                    if(resident!=null && resident.settlement.isNotBlank()) affectedSettlements.add(resident.region to resident.settlement)
+                    if(hero!=null) { hero.alive=false;                "erase_person" -> {
                     if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; deathEvents.add(Triple(hero.name,-1,true)); appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
                     else if(resident!=null) { resident.alive=false; resident.health=0; deathEvents.add(Triple(resident.name,resident.id,false)); appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "resurrect_person" -> {
+                    if(hero!=null && hero.location.isNotBlank()) affectedHeroLocations.add(hero.region to hero.location)
+                    if(resident!=null && resident.settlement.isNotBlank()) affectedSettlements.add(resident.region to resident.settlement)
+                    if(hero!=null) { hero.alive=true;                "resurrect_person" -> {
                     if(hero!=null) { hero.alive=true; hero.health=100; hero.status="已被天道复活；原有经历保留"; appendHeroEvent(hero,"被天道复活，原有经历与记忆保留。"); outcomes.add("已复活英雄：${hero.name}。"); successful++ }
                     else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "set_anatomy_survival" -> {
+                    if(hero!=null && hero.location.isNotBlank()) affectedHeroLocations.add(hero.region to hero.location)
+                    if(resident!=null && resident.settlement.isNotBlank()) affectedSettlements.add(resident.region to resident.settlement)
+                    if(hero==null && resident==null)                "set_anatomy_survival" -> {
                     if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
                     val hasHeadFlag=op.has("head_severed")
                     val hasSurvivalFlag=op.has("survive")
@@ -496,6 +503,8 @@ object WorldEngine {
                     if(destination.isBlank()) { outcomes.add("未执行：传送目的地为空。"); continue }
                     val region=op.optString("region").ifBlank { destination }
                     if(hero!=null) {
+                        if(hero.location.isNotBlank()) affectedHeroLocations.add(hero.region to hero.location)
+                        val before=hero.region+"·"+hero.location                    if(hero!=null) {
                         val before=hero.region+"·"+hero.location
                         val targetRegion=op.optString("region").ifBlank { if(destination in regions) destination else hero.region }
                         impactRegions.add(hero.region); impactRegions.add(targetRegion)
@@ -505,6 +514,8 @@ object WorldEngine {
                         appendHeroEvent(hero,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
                         outcomes.add("已将${hero.name}从${before}传送至${destination}。"); successful++
                     } else if(resident!=null) {
+                        if(resident.settlement.isNotBlank()) affectedSettlements.add(resident.region to resident.settlement)
+                        val before=resident.region+"·"+resident.settlement                    } else if(resident!=null) {
                         val before=resident.region+"·"+resident.settlement
                         val targetRegion=op.optString("region").ifBlank { if(destination in regions) destination else resident.region }
                         val targetPlace=if(destination in regions) defaultSettlement(targetRegion,resident.id) else destination
