@@ -41,16 +41,32 @@ class MainActivity : Activity() {
         val settlements = Button(this).apply { text = "城市 / 村庄 / 聚落档案"; setOnClickListener { showSettlementDirectory() } }
         val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
         val caravans = Button(this).apply { text = "商队 / 贸易 / 地区市场"; setOnClickListener { showCaravanDirectory() } }
+        val households = Button(this).apply { text = "家庭 / 家庭成员 / 共同资产档案"; setOnClickListener { showHouseholdDirectory() } }
         val biographies = Button(this).apply {
             text = "居民档案 / 人生传记"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, factions, settlements, organizations, caravans, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showHouseholdDirectory() {
+        val entries=WorldEngine.householdDirectory(this)
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 家庭与共同生活")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("家庭档案")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
     }
 
     private fun showCaravanDirectory() {
