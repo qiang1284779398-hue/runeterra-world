@@ -26,7 +26,9 @@ private data class Resident(
      var householdId: Int = -1,
      var lineage: String = "人类",
      var lifespanYears: Int = 95,
-     var storyRecords: MutableList<String> = mutableListOf()
+     var storyRecords: MutableList<String> = mutableListOf(),
+    var mindTrait: Int = 50, var belief: String = "重视生存与身边的人", var currentThought: String = "",
+    var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf()
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
@@ -44,7 +46,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList())
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList())
     }
 }
 
