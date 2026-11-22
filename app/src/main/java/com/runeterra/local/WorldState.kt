@@ -2924,7 +2924,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 }
                 if(a>=0 && b>a) {
                     val result=JSONObject(raw.substring(a,b+1))
-                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@ask
+                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@askStructured
                     val thought=result.optString("thought").take(700)
                     if(thought.isNotBlank()) {
                         heroNow.thought=thought
