@@ -165,6 +165,7 @@ class ChatGPTWebActivity : Activity() {
               const addRoot = root => {
                 if (!root || seen.has(root)) return;
                 seen.add(root);
+                roots.push(root);
                 let els = [];
                 try { els = Array.from(root.querySelectorAll('*')); } catch (_) {}
                 for (const el of els) if (el.shadowRoot) addRoot(el.shadowRoot);
