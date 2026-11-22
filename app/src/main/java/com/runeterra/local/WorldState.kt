@@ -82,6 +82,45 @@ object WorldEngine {
         r.storyRecords.add(packet.toString())
         while(r.storyRecords.size>5000) r.storyRecords.removeAt(0)
     }
+    // Individual cognition: residents evaluate their own situation, update beliefs/intents, and retain bounded private memory.
+    private fun thinkIndividually(day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
+        if(day%30L!=0L)return
+        pop.filter{it.alive}.forEach { r ->
+            val market=markets[r.region]
+            val foodPressure=r.food<=1 || (market!=null && market.food<pop.count{it.alive&&it.region==r.region}*2)
+            val healthPressure=r.health<45
+            val wealthPressure=r.coins<8
+            val oldBelief=r.belief
+            val options=mutableListOf<String>()
+            val observations=mutableListOf<String>()
+            if(foodPressure){observations.add("口粮或当地供给变得紧张");options.add("优先寻找食物、采集或互助")}
+            if(healthPressure){observations.add("身体状况正在限制行动");options.add("减少风险并寻求治疗")}
+            if(wealthPressure){observations.add("积蓄不足，抗风险能力弱");options.add("寻找收入或降低支出")}
+            if(r.skill>=30)options.add("利用已有技能寻找更好的谋生机会")
+            if(r.friendIds.isNotEmpty()||r.partnerId>=0)options.add("向可信关系寻求帮助或合作")
+            if(options.isEmpty()){observations.add("当前生活暂时稳定");options.add("继续当前职业，积累经验与资源")}
+            val selected=if(r.mindTrait>=70) options.firstOrNull{it.contains("风险")||it.contains("稳定")||it.contains("优先")} 
+                else if(r.mindTrait<=30) options.lastOrNull() else options[rng.nextInt(options.size)]
+            val thought="第${day}日：我观察到${observations.joinToString("；")}。我倾向于${selected}。"
+            r.currentThought=thought
+            r.intent=selected
+            if(foodPressure)r.belief="生存资源并不可靠，需要为短缺做准备"
+            else if(healthPressure)r.belief="身体状况会限制我的选择"
+            else if(wealthPressure)r.belief="没有积蓄就难以应对意外"
+            else if(r.skill>=50)r.belief="熟练技能能为我争取更多选择"
+            else if(r.mindTrait>=70)r.belief="谨慎准备比冒险更重要"
+            else if(r.mindTrait<=30)r.belief="机会值得尝试，不能只守着眼前"
+            if(r.belief!=oldBelief || day%180L==0L)r.mindMemory.add(thought+"（信念：${r.belief}）")
+            while(r.mindMemory.size>120)r.mindMemory.removeAt(0)
+            if(foodPressure && day%90L==0L && r.goal !in setOf("寻找稳定食物来源","改善生计并建立储备")) {
+                r.goal=if(r.mindTrait>=55)"寻找稳定食物来源" else "改善生计并建立储备"
+                recordLife(r,day,"在资源压力下重新审视个人目标，决定${r.goal}。","autonomous_goal_revision")
+            } else if(!foodPressure && !healthPressure && day%180L==0L && r.skill>=25 && r.goal in setOf("寻找稳定食物来源","改善生计并建立储备")) {
+                r.goal="提升技能并寻找更好的机会"
+                recordLife(r,day,"生计压力缓解后重新评估方向，将目标调整为${r.goal}。","autonomous_goal_revision")
+            }
+        }
+    }
     // No random bystander sampling: every resident whose region and livelihood match a regional impact receives the record.
     private fun recordLocalStory(pop:List<Resident>,day:Long,region:String,detail:String,rng:Random,limit:Int=3,roles:Set<String> = emptySet()) {
         pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
@@ -1800,6 +1839,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickMagic(day,p,pop,markets,events,rng)
             tickEcology(day,p,pop,events,rng,ecology)
             tickFauna(day,p,ecology,pop,events,rng,fauna)
+            thinkIndividually(day,pop,markets,rng)
             // Continuous food production follows local growers, skill and ecological conditions.
             residentRegions.forEach { region ->
                 val market=markets[region] ?: return@forEach
