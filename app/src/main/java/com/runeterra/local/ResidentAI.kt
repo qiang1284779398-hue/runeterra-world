@@ -60,8 +60,10 @@ object ResidentAI {
 
     // Conservative profile for small GGUFs on memory-constrained Android devices.
     private fun isSmallModel(path: String): Boolean {
-        val p = path.lowercase()
-        return listOf("0.6b", "1.7b", "2b", "3b", "qwen3-1.7").any { p.contains(it) }
+        // Imported models use a generic filename, so classify by actual file size.
+        val file = File(path)
+        val bytes = if (file.exists()) file.length() else 0L
+        return bytes in 1..(2_000L * 1024L * 1024L)
     }
     private fun inferenceContext(path: String): Int = if (isSmallModel(path)) 768 else 1536
     private fun inferenceThreads(path: String): Int = if (isSmallModel(path)) 2 else 3
@@ -71,7 +73,9 @@ object ResidentAI {
     }
 
     fun load(context: android.content.Context, path: String, callback: (String?) -> Unit) {
-        appContext = context.applicationContext\n        recordStage("开始加载模型；文件存在=${File(path).exists()}；大小=${File(path).length()} bytes")\n        if (loading) { callback("模型正在加载，请稍候。"); return }
+        appContext = context.applicationContext
+        recordStage("开始加载模型；文件存在=${File(path).exists()}；大小=${File(path).length()} bytes")
+        if (loading) { callback("模型正在加载，请稍候。"); return }
         if (loadedPath == path && isLoaded()) { callback(null); return }
         loading = true
         scope.launch {
@@ -80,7 +84,8 @@ object ResidentAI {
                 model?.let { Llama.releaseModel(it) }
                 model = null
                 loadedPath = null
-                recordStage("调用 llama.cpp loadModel；context=${inferenceContext(path)}；threads=${inferenceThreads(path)}；small=${isSmallModel(path)}")\n                val loaded = Llama.loadModel(
+                recordStage("调用 llama.cpp loadModel；context=${inferenceContext(path)}；threads=${inferenceThreads(path)}；small=${isSmallModel(path)}")
+                val loaded = Llama.loadModel(
                     modelPath = path,
                     config = LlamaConfig(
                         contextSize = inferenceContext(path),
@@ -95,7 +100,8 @@ object ResidentAI {
                 loadedPath = path
                 withContext(Dispatchers.Main.immediate) { callback(null) }
               } catch (e: Throwable) {
-                recordStage("模型加载异常：${e.message ?: e.toString()}")\n                withContext(Dispatchers.Main.immediate) { callback(e.message ?: e.toString()) }
+                recordStage("模型加载异常：${e.message ?: e.toString()}")
+                withContext(Dispatchers.Main.immediate) { callback(e.message ?: e.toString()) }
               } finally {
                 loading = false
               }
@@ -122,15 +128,18 @@ object ResidentAI {
                     return@withLock
                 }
                 try {
-                    recordStage("开始普通推理；small=${isSmallModel(loadedPath ?: "")}；promptChars=${prompt.length}")\n                    val result = Llama.complete(
+                    recordStage("开始普通推理；small=${isSmallModel(loadedPath ?: "")}；promptChars=${prompt.length}")
+                    val result = Llama.complete(
                         model = active,
                         prompt = promptForDevice(prompt, loadedPath ?: ""),
                         systemPrompt = "你是符文之地居民的个人认知引擎。严格依据提供的个人经历、知识和所处环境思考，不得假装知道未经历的事情。输出简洁、可执行的结果。/no_think",
                         maxTokens = if (isSmallModel(loadedPath ?: "")) 96 else 160
                     )
-                    recordStage("普通推理完成；outputChars=${result.text.length}")\n                    withContext(Dispatchers.Main.immediate) { callback(cleanStructuredOutput(result.text)) }
+                    recordStage("普通推理完成；outputChars=${result.text.length}")
+                    withContext(Dispatchers.Main.immediate) { callback(cleanStructuredOutput(result.text)) }
                 } catch (e: Throwable) {
-                    recordStage("普通推理异常：${e.message ?: e.toString()}")\n                    withContext(Dispatchers.Main.immediate) { callback("本地推理错误：${e.message ?: e.toString()}") }
+                    recordStage("普通推理异常：${e.message ?: e.toString()}")
+                    withContext(Dispatchers.Main.immediate) { callback("本地推理错误：${e.message ?: e.toString()}") }
                 }
             }
         }
@@ -145,7 +154,8 @@ object ResidentAI {
                     return@withLock
                 }
                 try {
-                    recordStage("开始结构化推理；small=${isSmallModel(loadedPath ?: "")}；promptChars=${prompt.length}；maxTokens=${maxTokens}")\n                    val result=Llama.complete(
+                    recordStage("开始结构化推理；small=${isSmallModel(loadedPath ?: "")}；promptChars=${prompt.length}；maxTokens=${maxTokens}")
+                    val result=Llama.complete(
                         model=active,
                         // Qwen3 otherwise may spend most of its token budget in a visible
                         // <think> block and never reach the JSON consumed by the simulator.
@@ -153,7 +163,8 @@ object ResidentAI {
                         systemPrompt="$systemPrompt\n/no_think\n不要展示思维链，不要复述系统指令，不要解释任务；直接输出最终JSON。",
                         maxTokens=if (isSmallModel(loadedPath ?: "")) maxTokens.coerceAtMost(96) else maxTokens.coerceAtMost(160)
                     )
-                    recordStage("结构化推理完成；outputChars=${result.text.length}")\n                    callback(result.text.trim())
+                    recordStage("结构化推理完成；outputChars=${result.text.length}")
+                    callback(result.text.trim())
                 } catch(e:Throwable) {
                     callback("本地推理错误：${e.message ?: e.toString()}")
                 }
