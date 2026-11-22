@@ -107,7 +107,8 @@ class AIInferenceService : Service() {
                                     contextSize = context,
                                     threads = threads,
                                     gpuLayers = 0,
-                                    temperature = 0.55f,
+                                    // First diagnostic pass for small GGUFs is deterministic: separate sampling instability from tokenizer/JNI/model-file faults.
+                                    temperature = if (isSmall) 0.0f else 0.55f,
                                     topP = 0.85f,
                                     topK = 30
                                 )
@@ -188,7 +189,16 @@ class AIInferenceService : Service() {
                             val elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAt
                             val hashAfterInference = try { sha256(File(modelPath)) } catch (_: Throwable) { "读取失败" }
                             val output = result.text.trim()
-                            Log.i("RuneterraAI", "推理完成 id=$id elapsedMs=$elapsedMs outputChars=${output.length} modelSHA_before=$hashBeforeInference modelSHA_after=$hashAfterInference fileStable=${hashBeforeInference == hashAfterInference}")
+                            val replacementChars = output.count { it == '\uFFFD' }
+                            Log.i(
+                                "RuneterraAI",
+                                "推理完成 id=$id elapsedMs=$elapsedMs outputChars=${output.length} " +
+                                    "tokens=${result.tokensGenerated} tps=${result.tokensPerSecond} " +
+                                    "promptEvalMs=${result.promptEvalTimeMs} generateMs=${result.generateTimeMs} " +
+                                    "replacementChars=$replacementChars outputPreview=${output.take(100)} " +
+                                    "modelSHA_before=$hashBeforeInference modelSHA_after=$hashAfterInference " +
+                                    "fileStable=${hashBeforeInference == hashAfterInference}"
+                            )
                             reply(to, id, true, output)
                         } catch (e: Throwable) {
                             Log.e("RuneterraAI", "推理异常", e)
