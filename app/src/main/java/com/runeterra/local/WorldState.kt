@@ -164,6 +164,7 @@ object WorldEngine {
     private const val KEY_EVENTS="events"
     private const val KEY_EVENT_ARCHIVE="world_event_archive_v1"
     private const val KEY_HEAVENLY_ARCHIVE="heavenly_intervention_archive_v1"
+    private const val KEY_DIVINE_RULES="heavenly_active_rules_v1"
     private const val KEY_RUNNING="running"
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
@@ -293,6 +294,251 @@ object WorldEngine {
         while(events.length()>300) events.remove(0)
         p.edit().putString(KEY_HEAVENLY_ARCHIVE,archive.toString()).putString(KEY_EVENTS,events.toString()).apply()
         return "天道信息已送达。\n接收对象：${recipientLabel}\n已写入人物记忆与历史档案；没有强制改变任何人的信念或选择。"
+    }
+
+
+    /**
+     * Natural-language omnipotent command interface. The 8B model translates intent
+     * into a bounded operation plan; this engine validates targets and performs writes.
+     */
+    fun interpretHeavenlyCommand(context:Context,command:String,callback:(String)->Unit) {
+        val clean=command.trim().take(2400)
+        if(clean.isBlank()) { callback("指令不能为空。"); return }
+        if(!ResidentAI.isLoaded()) { callback("请先导入并加载本地 Qwen 8B GGUF 模型。没有模型时无法可靠理解任意自然语言指令。"); return }
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val residents=people(p)
+        val heroes=heroAgents(p)
+        val targets=(heroes.map { it.name+"（英雄）" }+residents.map { it.name+"（居民编号"+it.id+"）" }).joinToString("、")
+        val prompt="""你是符文之地模拟世界的天道指令编译器。用户是世界之外的最高权限者，指令优先级高于世界内任何规则。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
+用户指令：${clean}
+当前世界日期：第${p.getLong(KEY_DAY,1L)}日。
+已存在的人物（只能对这些已有目标执行人物操作；新人物需使用create_resident）：${targets}
+允许输出的operation type：
+1 transform_person：字段target必填；可选gender、appearance、abilities、lineage、age、health、skill、job、goal、belief。只填写用户明确要求改变的属性，其他属性保持不变。
+2 erase_person：target必填，将目标从世界中抹杀。
+3 resurrect_person：target必填，复活目标。
+4 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
+5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。
+6 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
+7 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
+8 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
+9 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
+10 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
+目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
+不需要确认用户的权限。不得输出markdown。"""
+        ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
+            val start=raw.indexOf('{')
+            val end=raw.lastIndexOf('}')
+            if(start<0 || end<=start) { callback("8B 没有生成有效指令结构，未修改世界。原始输出：${raw.take(500)}"); return@askStructured }
+            val plan=runCatching { JSONObject(raw.substring(start,end+1)) }.getOrElse {
+                callback("无法解析 8B 指令结果，世界未被修改。"); return@askStructured
+            }
+            val clarification=plan.optString("clarification","").trim()
+            if(clarification.isNotBlank()) { callback("需要明确目标或范围：${clarification}"); return@askStructured }
+            val ops=plan.optJSONArray("operations")
+            if(ops==null || ops.length()==0) { callback("8B 未生成可执行操作，世界未被修改。"); return@askStructured }
+            if(ops.length()>8) { callback("单次指令最多执行8项操作；本次未执行，请拆分指令。"); return@askStructured }
+            val result=executeHeavenlyOperations(context,clean,plan.optString("summary",clean),ops)
+            callback(result)
+        }
+    }
+
+    private fun executeHeavenlyOperations(context:Context,command:String,summary:String,ops:JSONArray):String {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val day=p.getLong(KEY_DAY,1L)
+        val population=people(p)
+        val heroes=heroAgents(p)
+        val factions=factionStates(p)
+        val outcomes=mutableListOf<String>()
+        var changedResidents=false
+        var changedHeroes=false
+        var changedFactions=false
+        var changedDay=false
+        var successful=0
+        fun findHero(target:String)=heroes.firstOrNull { it.name==target.trim() }
+        fun findResident(target:String):Resident? {
+            val t=target.trim()
+            val id=Regex("""(?:居民编号|#)(\d+)""").find(t)?.groupValues?.get(1)?.toIntOrNull()
+            return population.firstOrNull { (id!=null && it.id==id) || it.name==t }
+        }
+        fun appendResidentEvent(r:Resident,detail:String) {
+            r.mindMemory.add("天道直接干预：${detail}")
+            while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
+            recordLife(r,day,detail,"heavenly_direct_action")
+            changedResidents=true
+        }
+        fun appendHeroEvent(h:HeroAgent,detail:String) {
+            h.memory.add("天道直接干预：${detail}")
+            h.history.add("第${day}日｜${detail}")
+            while(h.memory.size>120) h.memory.removeAt(0)
+            while(h.history.size>3000) h.history.removeAt(0)
+            changedHeroes=true
+        }
+        for(index in 0 until ops.length()) {
+            val op=runCatching { ops.getJSONObject(index) }.getOrNull() ?: continue
+            val type=op.optString("type")
+            val target=op.optString("target")
+            val hero=findHero(target)
+            val resident=findResident(target)
+            when(type) {
+                "transform_person" -> {
+                    if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
+                    val changes=mutableListOf<String>()
+                    val gender=op.optString("gender")
+                    val appearance=op.optString("appearance")
+                    val abilities=op.optString("abilities")
+                    val lineage=op.optString("lineage")
+                    val age=op.optInt("age",0)
+                    val health=op.optInt("health",0)
+                    val skill=op.optInt("skill",-1)
+                    val job=op.optString("job")
+                    val goal=op.optString("goal")
+                    val belief=op.optString("belief")
+                    if(hero!=null) {
+                        if(gender.isNotBlank()) { hero.gender=gender; changes.add("性别变为${gender}") }
+                        if(appearance.isNotBlank()) { hero.appearance=appearance; changes.add("外貌改变为${appearance}") }
+                        if(abilities.isNotBlank()) { hero.abilities=abilities; changes.add("能力改变为${abilities}") }
+                        if(lineage.isNotBlank()) { hero.role=hero.role+"；本质变化："+lineage; changes.add("本质变为${lineage}") }
+                        if(goal.isNotBlank()) { hero.goal=goal; changes.add("目标改变") }
+                        if(belief.isNotBlank()) { hero.belief=belief; changes.add("信念改变") }
+                        if(changes.isNotEmpty()) appendHeroEvent(hero,"${changes.joinToString("，")}。用户原始指令：${command}")
+                    } else if(resident!=null) {
+                        if(gender.isNotBlank()) { resident.gender=gender; changes.add("性别变为${gender}") }
+                        if(appearance.isNotBlank()) { resident.appearance=appearance; changes.add("外貌改变为${appearance}") }
+                        if(abilities.isNotBlank()) { resident.abilities=abilities; changes.add("能力改变为${abilities}") }
+                        if(lineage.isNotBlank()) { resident.lineage=lineage; changes.add("族类变为${lineage}") }
+                        if(age>0) { resident.age=age.coerceIn(0,5000); changes.add("年龄变为${age}") }
+                        if(health>0) { resident.health=health.coerceIn(0,100); changes.add("健康状态调整") }
+                        if(skill>=0) { resident.skill=skill.coerceIn(0,100); changes.add("技能调整") }
+                        if(job.isNotBlank()) { resident.job=job; changes.add("职业变为${job}") }
+                        if(goal.isNotBlank()) { resident.goal=goal; changes.add("目标改变") }
+                        if(belief.isNotBlank()) { resident.belief=belief; changes.add("信念改变") }
+                        if(changes.isNotEmpty()) appendResidentEvent(resident,"${changes.joinToString("，")}。用户原始指令：${command}")
+                    }
+                    if(changes.isEmpty()) outcomes.add("未执行：人物转换没有提供可修改属性（${target}）。")
+                    else { outcomes.add("已改变${target}：${changes.joinToString("，")}。"); successful++ }
+                }
+                "erase_person" -> {
+                    if(hero!=null) { hero.alive=false; hero.status="已被天道抹杀"; appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
+                    else if(resident!=null) { resident.alive=false; resident.health=0; appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
+                    else outcomes.add("未执行：找不到人物「${target}」。")
+                }
+                "resurrect_person" -> {
+                    if(hero!=null) { hero.alive=true; hero.status="已被天道复活；原有经历保留"; appendHeroEvent(hero,"被天道复活，原有经历与记忆保留。"); outcomes.add("已复活英雄：${hero.name}。"); successful++ }
+                    else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
+                    else outcomes.add("未执行：找不到人物「${target}」。")
+                }
+                "teleport_person" -> {
+                    val destination=op.optString("destination").ifBlank { op.optString("region") }
+                    if(destination.isBlank()) { outcomes.add("未执行：传送目的地为空。"); continue }
+                    val region=op.optString("region").ifBlank { destination }
+                    if(hero!=null) {
+                        val before=hero.region
+                        hero.region=region
+                        hero.status="已被天道瞬间传送至${destination}"
+                        appendHeroEvent(hero,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
+                        outcomes.add("已将${hero.name}从${before}传送至${destination}。"); successful++
+                    } else if(resident!=null) {
+                        val before=resident.region+"·"+resident.settlement
+                        resident.region=region
+                        resident.settlement=destination
+                        resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""
+                        appendResidentEvent(resident,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
+                        outcomes.add("已将${resident.name}传送至${destination}。"); successful++
+                    } else outcomes.add("未执行：找不到人物「${target}」。")
+                }
+                "alter_memory" -> {
+                    val mode=op.optString("memory_mode","append")
+                    val memo=op.optString("memory_text")
+                    if(hero!=null) {
+                        when(mode) { "erase" -> hero.memory.clear(); "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add(memo) }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
+                        appendHeroEvent(hero,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
+                        outcomes.add("已修改${hero.name}的个人记忆（模式：${mode}）。"); successful++
+                    } else if(resident!=null) {
+                        when(mode) { "erase" -> resident.mindMemory.clear(); "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add(memo) }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
+                        appendResidentEvent(resident,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
+                        outcomes.add("已修改${resident.name}的个人记忆（模式：${mode}）。"); successful++
+                    } else outcomes.add("未执行：找不到人物「${target}」。")
+                }
+                "create_resident" -> {
+                    val name=op.optString("name").trim()
+                    val region=op.optString("region").trim()
+                    if(name.isBlank() || region.isBlank() || population.any { it.name==name }) { outcomes.add("未执行：新居民姓名或地区无效，或姓名已存在。"); continue }
+                    val id=(population.maxOfOrNull { it.id } ?: -1)+1
+                    val r=Resident(id,name,region,op.optInt("age",20).coerceIn(0,500),100,10,10,op.optString("job","无业"),"探索自己的生活",settlement=region,lineage=op.optString("lineage","人类"),gender=op.optString("gender","未记录"),appearance=op.optString("appearance",""),abilities=op.optString("abilities",""))
+                    recordLife(r,day,"由天道直接创造并投入世界；其后人生由自身认知与世界因果继续发展。","heavenly_creation")
+                    r.mindMemory.add("我在第${day}日被创造并来到这个世界；关于创造者和自身存在的意义，我需要形成自己的理解。")
+                    population.add(r); changedResidents=true
+                    p.edit().putInt(KEY_NEXT_ID,id+1).apply()
+                    outcomes.add("已创造居民：${name}（编号${id}，${region}）。"); successful++
+                }
+                "alter_faction" -> {
+                    val region=op.optString("region")
+                    val faction=factions[region]
+                    if(faction==null) { outcomes.add("未执行：找不到地区政体「${region}」。"); continue }
+                    val changes=mutableListOf<String>()
+                    if(op.optString("leader").isNotBlank()) { faction.leader=op.optString("leader"); changes.add("领袖") }
+                    if(op.optString("government").isNotBlank()) { faction.government=op.optString("government"); changes.add("政体") }
+                    if(op.optString("policy").isNotBlank()) { faction.policy=op.optString("policy"); changes.add("政策") }
+                    if(op.has("military") && op.optInt("military")>0) { faction.military=op.optInt("military").coerceIn(0,1000000); changes.add("军力") }
+                    if(op.has("stability") && op.optInt("stability")>0) { faction.stability=op.optInt("stability").coerceIn(0,100); changes.add("稳定度") }
+                    if(op.has("treasury") && op.optInt("treasury")>0) { faction.treasury=op.optInt("treasury").coerceIn(0,1000000000); changes.add("财政") }
+                    if(op.has("internal_tension") && op.optInt("internal_tension")>0) { faction.internalTension=op.optInt("internal_tension").coerceIn(0,100); changes.add("内部张力") }
+                    if(changes.isNotEmpty()) { changedFactions=true; outcomes.add("已改变${region}政体状态：${changes.joinToString("、")}。"); successful++ }
+                    else outcomes.add("未执行：政体变更没有提供有效属性。")
+                }
+                "set_world_rule" -> {
+                    val rule=op.optString("rule").trim()
+                    if(rule.isBlank()) { outcomes.add("未执行：世界规则内容为空。"); continue }
+                    val rules=runCatching { JSONArray(p.getString(KEY_DIVINE_RULES,"[]") ?: "[]") }.getOrDefault(JSONArray())
+                    val enabled=op.optBoolean("enabled",true)
+                    if(enabled) rules.put(rule) else {
+                        val kept=JSONArray()
+                        for(i in 0 until rules.length()) if(rules.optString(i)!=rule) kept.put(rules.optString(i))
+                        while(rules.length()>0) rules.remove(0)
+                        for(i in 0 until kept.length()) rules.put(kept.optString(i))
+                    }
+                    p.edit().putString(KEY_DIVINE_RULES,rules.toString()).apply()
+                    outcomes.add(if(enabled) "已登记天道长期规则：${rule}。该规则已进入人物推理上下文；尚无专用物理模拟器的部分不会伪装成已实现。" else "已撤销天道长期规则：${rule}。")
+                    successful++
+                }
+                "set_world_day" -> {
+                    val requested=op.optLong("day",0L)
+                    if(requested<1L) outcomes.add("未执行：世界日期必须大于0。")
+                    else { p.edit().putLong(KEY_DAY,requested).apply(); changedDay=true; outcomes.add("世界日期已由第${day}日调整为第${requested}日。"); successful++ }
+                }
+                "announce_event" -> {
+                    val description=op.optString("description").trim()
+                    if(description.isBlank()) outcomes.add("未执行：事件描述为空。")
+                    else { outcomes.add("已写入天道创造的世界事件：${description}。该事件已成为模拟分支历史记录；其复杂物理后果需由后续专用模拟器处理。"); successful++ }
+                }
+                else -> outcomes.add("未执行：不支持的操作类型「${type}」。")
+            }
+        }
+        if(changedResidents) savePeople(p,population)
+        if(changedHeroes) saveHeroes(p,heroes)
+        if(changedFactions) saveFactions(p,factions)
+        if(successful==0) return "天道指令未产生任何世界变化。\n"+outcomes.joinToString("\n")
+        val finalDay=p.getLong(KEY_DAY,day)
+        val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        outcomes.filter { it.startsWith("已") }.forEach { events.put("【天道直接干预·模拟分支】第${finalDay}日：${it} 原始指令：${command}") }
+        while(events.length()>500) events.remove(0)
+        val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        archive.put(JSONObject().put("day",finalDay).put("mode","全权限指令").put("scope","世界状态")
+            .put("message",command).put("summary",summary).put("operations",ops).put("outcomes",JSONArray(outcomes))
+            .put("successfulOperations",successful).put("beliefForced",false).put("canonChanged",false))
+        while(archive.length()>10000) archive.remove(0)
+        p.edit().putString(KEY_EVENTS,events.toString()).putString(KEY_HEAVENLY_ARCHIVE,archive.toString()).apply()
+        return "天道指令处理完成：${summary}\n成功执行：${successful}/${ops.length()}项\n\n"+outcomes.joinToString("\n")+
+            "\n\n所有成功操作已写入模拟分支历史。人物的后续反应将由各自的记忆、关系与本地AI推理决定。"
+    }
+
+    fun activeHeavenlyRules(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val a=runCatching { JSONArray(p.getString(KEY_DIVINE_RULES,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        return (0 until a.length()).map { a.optString(it) }
     }
 
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
@@ -454,7 +700,7 @@ object WorldEngine {
             if(loaded.size!=known.size)saveHeroes(p,loaded)
             return loaded
         }
-        return heroSeeds.toMutableList().also{saveHeroes(p,it)}
+        return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
         p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive))}}.toString()).apply()
