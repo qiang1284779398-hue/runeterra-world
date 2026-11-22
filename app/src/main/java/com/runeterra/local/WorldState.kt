@@ -742,11 +742,16 @@ private fun craftBonus(region:String):Int = when(region) {
             candidates.take((2-active.size).coerceAtLeast(0)).forEach { (from,to,days) ->
                 val source=markets[from] ?: return@forEach
                 val destination=markets[to] ?: return@forEach
-                val good=goods.maxByOrNull { item ->
+                val good=goods.filter { item ->
+                    val sourceStock=if(item=="粮食")source.food else source.stock[item]?:0
+                    val targetStock=if(item=="粮食")destination.food else destination.stock[item]?:0
+                    sourceStock >= (if(item=="粮食") 90 else 35) &&
+                        targetStock <= (if(item=="粮食") 180 else 12)
+                }.maxByOrNull { item ->
                     val sourceStock=if(item=="粮食")source.food else source.stock[item]?:0
                     val targetStock=if(item=="粮食")destination.food else destination.stock[item]?:0
                     sourceStock-targetStock
-                } ?: "粮食"
+                } ?: return@forEach
                 val sourceStock=if(good=="粮食")source.food else source.stock[good]?:0
                 val cargo=minOf(35,sourceStock-(if(good=="粮食")60 else 20),(destination.wealth/2).coerceAtLeast(1))
                 if(cargo<8)return@forEach
@@ -960,7 +965,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val active=caravans(p).filter { it.alive }
         val marketMap=markets(p)
         val rows=active.map {
-            "${it.owner}｜${it.from} → ${it.to}｜粮食 ${it.cargo}｜剩余 ${it.daysRemaining} 日"
+            "${it.owner}｜${it.from} → ${it.to}｜${it.good} ${it.cargo}｜剩余 ${it.daysRemaining} 日"
         }.toMutableList()
         rows.add(0,"在途商队：${active.size} 支")
         rows.addAll(marketMap.entries.sortedBy { it.key }.map { (region,m) ->
