@@ -23,11 +23,8 @@ android {
 }
 
 
-configurations.configureEach {
-    resolutionStrategy.force("androidx.core:core:1.15.0")
-}
-
 dependencies {
-    // AiKit bundles llama.cpp JNI and runs GGUF inference fully on-device.
-    implementation("io.github.its-hazratbilal:android-ai-kit-chat:1.0.0")
+    // Prebuilt llama.cpp JNI engine; GGUF inference runs entirely on-device.
+    implementation("dev.ffmpegkit-maintained:llama-android:0.1.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 }
