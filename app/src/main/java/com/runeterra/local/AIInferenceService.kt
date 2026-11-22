@@ -37,7 +37,7 @@ class AIInferenceService : Service() {
             if (error != null) {
                 append("\n").append(android.util.Log.getStackTraceString(error))
             }
-            append("\\n")
+            append("\n")
         }
         if (level == "ERROR") Log.e("RuneterraAI", message, error) else Log.i("RuneterraAI", message)
         try {
