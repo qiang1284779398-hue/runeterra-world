@@ -614,7 +614,7 @@ object WorldEngine {
     }
     private const val KEY_ORGANIZATIONS="organizations_state"
     private data class Organization(
-        val id:String,val name:String,val region:String,val kind:String,val agenda:String,
+        val id:String,var name:String,val region:String,val kind:String,var agenda:String,
         val rivals:MutableList<String>,val allies:MutableList<String>,
         var leader:String,var influence:Int,var resources:Int,var publicSupport:Int,
         var status:String="活跃",val members:MutableList<Int> = mutableListOf()
