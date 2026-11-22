@@ -728,7 +728,9 @@ private fun craftBonus(region:String):Int = when(region) {
                     a!=null && b!=null && b.wealth>=20 && goods.any { good ->
                         val sourceStock=if(good=="粮食")a.food else a.stock[good]?:0
                         val targetStock=if(good=="粮食")b.food else b.stock[good]?:0
-                        sourceStock >= (if(good=="粮食") 90 else 35) && targetStock <= (if(good=="粮食") 180 else 12)
+                        val sourceMinimum=if(good=="粮食") 90 else 35
+                        val targetMaximum=if(good=="粮食") 180 else 12
+                        sourceStock >= sourceMinimum && targetStock <= targetMaximum
                     }
                 }
                 .sortedByDescending { (from,to,_) ->
@@ -745,8 +747,9 @@ private fun craftBonus(region:String):Int = when(region) {
                 val good=goods.filter { item ->
                     val sourceStock=if(item=="粮食")source.food else source.stock[item]?:0
                     val targetStock=if(item=="粮食")destination.food else destination.stock[item]?:0
-                    sourceStock >= (if(item=="粮食") 90 else 35) &&
-                        targetStock <= (if(item=="粮食") 180 else 12)
+                    val sourceMinimum=if(item=="粮食") 90 else 35
+                    val targetMaximum=if(item=="粮食") 180 else 12
+                    sourceStock >= sourceMinimum && targetStock <= targetMaximum
                 }.maxByOrNull { item ->
                     val sourceStock=if(item=="粮食")source.food else source.stock[item]?:0
                     val targetStock=if(item=="粮食")destination.food else destination.stock[item]?:0
