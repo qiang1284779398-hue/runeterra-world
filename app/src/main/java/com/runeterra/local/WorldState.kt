@@ -62,6 +62,7 @@ object WorldEngine {
             detail.contains("粮食") || detail.contains("口粮") || detail.contains("市场") || detail.contains("积蓄") || detail.contains("经济") -> "生计与经济"
             detail.contains("魔法") || detail.contains("灵性") || detail.contains("黑雾") || detail.contains("星界") -> "魔法与超自然"
             detail.contains("生态") || detail.contains("污染") || detail.contains("水源") || detail.contains("植被") -> "环境与生态"
+            detail.contains("英雄") || detail.contains("交集") -> "英雄交集与个人经历"
             else -> "个人经历与社会变化"
         }
         val stage=when { r.age<6 -> "幼年"; r.age<13 -> "童年"; r.age<18 -> "少年"; r.age<30 -> "青年"; r.age<50 -> "成年"; r.age<70 -> "中年"; else -> "晚年" }
