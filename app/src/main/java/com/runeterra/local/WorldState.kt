@@ -102,8 +102,8 @@ object WorldEngine {
             if(r.skill>=30)options.add("利用已有技能寻找更好的谋生机会")
             if(r.friendIds.isNotEmpty()||r.partnerId>=0)options.add("向可信关系寻求帮助或合作")
             if(options.isEmpty()){observations.add("当前生活暂时稳定");options.add("继续当前职业，积累经验与资源")}
-            val selected=if(r.mindTrait>=70) options.firstOrNull{it.contains("风险")||it.contains("稳定")||it.contains("优先")} 
-                else if(r.mindTrait<=30) options.lastOrNull() else options[rng.nextInt(options.size)]
+            val selected=if(r.mindTrait>=70) options.firstOrNull{it.contains("风险")||it.contains("稳定")||it.contains("优先")} ?: options.first()
+                else if(r.mindTrait<=30) options.last() else options[rng.nextInt(options.size)]
             val thought="第${day}日：我观察到${observations.joinToString("；")}。我倾向于${selected}。"
             r.currentThought=thought
             r.intent=selected
@@ -1146,7 +1146,7 @@ object WorldEngine {
                     }
                     if(student.skill>=threshold && !alreadyRecorded) {
                         recordLife(student,day,"师徒训练里程碑：$label（技能${student.skill}/100）；指导者为${mentor.name}，训练地点为${student.region}。","individual_transition")
-                        recordLife(mentor,day,"徒弟${student.name}达到$label阶段（技能${student.skill}/100）；师徒指导取得可观察的阶段成果。","individual_transition")
+                        recordLife(mentor,day,"徒弟${student.name}达到${label}阶段（技能${student.skill}/100）；师徒指导取得可观察的阶段成果。","individual_transition")
                     }
                 }
             }
