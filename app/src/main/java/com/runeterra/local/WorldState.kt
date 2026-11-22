@@ -226,7 +226,7 @@ object WorldEngine {
             "世界日期：第"+p.getLong(KEY_DAY,1L)+"日",
             "已记录干预：${archive.length()}次",
             "最近干预："+(latest?.let { "第"+it.optLong("day")+"日｜"+it.optString("mode")+"｜"+it.optString("message") } ?: "尚无"),
-            "作用原则：只传递信息，不直接改写居民信念、人格、关系或行动。",
+            "作用原则：天道可直接改变人物属性、生死、位置、记忆、政体、时间与世界规则；信息传达只是其中一种能力。",
             "认知原则：接收者可能相信、怀疑、误解、拒绝、研究或传播；不同人物会形成不同解释。",
             "研究原则：居民可将相关经历纳入知识体系，尝试提出假说并寻找可验证证据。",
             "边界原则：每次干预都属于模拟分支历史，官方符文之地设定不会因此被改写。"
@@ -327,7 +327,7 @@ object WorldEngine {
 10 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","lineage":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
@@ -487,6 +487,33 @@ object WorldEngine {
                     population.add(r); changedResidents=true
                     p.edit().putInt(KEY_NEXT_ID,id+1).apply()
                     outcomes.add("已创造居民：${name}（编号${id}，${region}）。"); successful++
+                }
+                "create_character" -> {
+                    val name=op.optString("name").trim()
+                    val region=op.optString("region").trim()
+                    val role=op.optString("role").trim()
+                    if(name.isBlank() || region.isBlank() || role.isBlank() || heroes.any { it.name==name }) {
+                        outcomes.add("未执行：新人物姓名、地区、身份无效，或姓名已存在。"); continue
+                    }
+                    val created=HeroAgent(
+                        name=name,region=region,role=role,
+                        status=op.optString("status","由天道创造后开始独立生活"),
+                        goal=op.optString("goal","探索自身处境并形成个人目标"),
+                        influence=50,
+                        belief="尚未形成稳定信念",
+                        gender=op.optString("gender","未记录"),
+                        appearance=op.optString("appearance",""),
+                        abilities=op.optString("abilities",""),
+                        alive=true,
+                        age=op.optInt("age",-1),
+                        health=op.optInt("health",100).coerceIn(0,100),
+                        skill=op.optInt("skill",50).coerceIn(0,100),
+                        lineage=op.optString("lineage","")
+                    )
+                    created.memory.add("第\${day}日：我由天道创造并进入符文之地。关于自身来历与创造者，我需要通过自己的经历形成判断。")
+                    created.history.add("第\${day}日｜由天道创造并投入模拟分支世界；此后思想与行动不预设。")
+                    heroes.add(created); changedHeroes=true; impactRegions.add(region)
+                    outcomes.add("已创造独立人物：\${name}（\${region}，\${role}）。"); successful++
                 }
                 "alter_faction" -> {
                     val region=op.optString("region")
@@ -2467,7 +2494,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
-            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
+            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
             "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
