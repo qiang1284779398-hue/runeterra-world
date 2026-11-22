@@ -134,6 +134,25 @@ object WorldEngine {
         }
         saveMagic(p,levels)
     }
+    private const val KEY_HERO_BONDS="hero_relationships_state"
+    private data class HeroBond(val a:String,val b:String,val basis:String,var trust:Int,var tension:Int,var lastEventDay:Long=0L)
+    // Relationship baselines reflect established character lore; numeric values are simulation state, not canon facts.
+    private val heroBondSeeds=listOf(
+        HeroBond("盖伦","拉克丝","姐弟；共同面对德玛西亚禁魔制度与家族责任",92,18),
+        HeroBond("斯维因","德莱厄斯","崔法利议会共同执政者；政治合作",78,24),
+        HeroBond("斯维因","乐芙兰","帝国权力斗争；彼此提防的长期暗战",18,88),
+        HeroBond("慎","劫","曾同属均衡教派；理念分歧导致决裂",22,82),
+        HeroBond("艾希","瑟庄妮","弗雷尔卓德统一道路相冲突的战母",12,90),
+        HeroBond("阿兹尔","泽拉斯","昔日主仆与友人；飞升仪式背叛造成宿敌关系",3,98),
+        HeroBond("蕾欧娜","黛安娜","烈阳与皎月信仰冲突及个人历史",20,84),
+        HeroBond("凯特琳","蔚","皮尔特沃夫执法搭档；彼此信任但行事方式不同",86,22),
+        HeroBond("蔚","金克丝","姐妹关系；创伤与分离造成复杂情感",48,72),
+        HeroBond("艾瑞莉娅","斯维因","艾欧尼亚抵抗者与诺克萨斯统治者的战争对立",8,94),
+        HeroBond("瑟庄妮","丽桑卓","凛冬之爪与霜卫之间的历史性敌意",10,92),
+        HeroBond("阿卡丽","慎","师承与理念分歧；阿卡丽选择独立道路",42,48),
+        HeroBond("艾克","金克丝","祖安旧日同伴；如今走上不同道路",38,58),
+        HeroBond("厄运小姐","俄洛伊","比尔吉沃特权力现实与布胡鲁信仰之间的交集",54,28)
+    )
     private const val KEY_HEROES="heroes_state"
     private data class HeroAgent(val name:String,val region:String,val role:String,var status:String,var goal:String,var influence:Int)
     private val heroSeeds=listOf(
@@ -183,6 +202,54 @@ object WorldEngine {
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
         p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence))}}.toString()).apply()
+    }
+    private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
+        val raw=p.getString(KEY_HERO_BONDS,null)
+        val loaded=if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroBond(it.optString("a"),it.optString("b"),it.optString("basis"),it.optInt("trust",50),it.optInt("tension",50),it.optLong("lastEventDay",0L))}.toMutableList()}}.getOrNull() else null
+        val bonds=loaded?:mutableListOf()
+        val known=bonds.map{it.a+"|"+it.b}.toSet()
+        heroBondSeeds.filter{(it.a+"|"+it.b) !in known}.forEach{bonds.add(it.copy())}
+        if(loaded==null || bonds.size!=known.size)saveHeroBonds(p,bonds)
+        return bonds
+    }
+    private fun saveHeroBonds(p:android.content.SharedPreferences,bonds:List<HeroBond>){
+        p.edit().putString(KEY_HERO_BONDS,JSONArray().apply{bonds.forEach{put(JSONObject().put("a",it.a).put("b",it.b).put("basis",it.basis).put("trust",it.trust).put("tension",it.tension).put("lastEventDay",it.lastEventDay))}}.toString()).apply()
+    }
+    private fun tickHeroBonds(day:Long,p:android.content.SharedPreferences,events:MutableList<String>,rng:Random){
+        if(day%30L!=0L)return
+        val bonds=heroBonds(p)
+        val factions=factionStates(p)
+        val diplomacy=diplomacy(p)
+        val groups=organizations(p)
+        bonds.forEach{bond->
+            val region=heroSeeds.firstOrNull{it.name==bond.a}?.region
+            val localPressure=(factions[region]?.internalTension?:25)
+            val hostilePair=bond.tension>=65
+            val warPressure=if(setOf(bond.a,bond.b)==setOf("艾瑞莉娅","斯维因")) {
+                diplomacy.firstOrNull{setOf(it.a,it.b)==setOf("诺克萨斯","艾欧尼亚")}?.let{if(it.war)5 else if(it.tension>=70)2 else 0}?:0
+            } else 0
+            val groupPressure=when {
+                setOf(bond.a,bond.b)==setOf("慎","劫") -> if((groups.firstOrNull{it.id=="ionia_shadow_order"}?.influence?:0)>(groups.firstOrNull{it.id=="ionia_kinkou"}?.influence?:0))2 else 0
+                setOf(bond.a,bond.b)==setOf("艾希","瑟庄妮") -> if((groups.firstOrNull{it.id=="freljord_winter_claw"}?.influence?:0)>70)2 else 0
+                setOf(bond.a,bond.b)==setOf("阿兹尔","泽拉斯") -> 1
+                else -> 0
+            }
+            val drift=rng.nextInt(3)-1
+            if(hostilePair) bond.tension=(bond.tension+drift+warPressure+groupPressure+(if(localPressure>=70)1 else 0)).coerceIn(0,100)
+            else bond.trust=(bond.trust+drift+(if(localPressure<35)1 else 0)-(if(localPressure>=75)1 else 0)).coerceIn(0,100)
+            val notable=(bond.tension>=95 || bond.trust<=5)
+            if(notable && (bond.lastEventDay==0L || day-bond.lastEventDay>=180L)) {
+                events.add("【人物关系变化·模拟】第 $day 日：${bond.a}与${bond.b}之间的关系因「${bond.basis}」持续承压；信任${bond.trust}，矛盾${bond.tension}。这是模拟分支中的关系状态，不改写官方既定经历。")
+                bond.lastEventDay=day
+            }
+        }
+        saveHeroBonds(p,bonds)
+    }
+    fun heroRelationshipDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        return heroBonds(p).sortedByDescending{it.tension}.map{
+            "【${it.a} ↔ ${it.b}】\\n关系背景：${it.basis}\\n模拟信任：${it.trust}/100\\n模拟矛盾：${it.tension}/100\\n说明：关系背景取自英雄联盟人物设定；数值及后续变化是本世界的模拟状态，不代表官方数值或固定剧情。"
+        }
     }
     private fun tickHeroes(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
         if(day%30L!=0L)return
@@ -1119,6 +1186,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickOrganizations(day,p,pop,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
+            tickHeroBonds(day,p,events,rng)
             tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
