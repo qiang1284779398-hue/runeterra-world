@@ -28,6 +28,18 @@ object ResidentAI {
     fun isLoading(): Boolean = loading
     fun modelPath(): String? = loadedPath
 
+    // Conservative profile for small GGUFs on memory-constrained Android devices.
+    private fun isSmallModel(path: String): Boolean {
+        val p = path.lowercase()
+        return listOf("0.6b", "1.7b", "2b", "3b", "qwen3-1.7").any { p.contains(it) }
+    }
+    private fun inferenceContext(path: String): Int = if (isSmallModel(path)) 768 else 1536
+    private fun inferenceThreads(path: String): Int = if (isSmallModel(path)) 2 else 3
+    private fun promptForDevice(prompt: String, path: String): String {
+        val limit = if (isSmallModel(path)) 2600 else 7000
+        return if (prompt.length > limit) prompt.take(limit) + "\n（上下文已按设备内存限制截断）" else prompt
+    }
+
     fun load(context: android.content.Context, path: String, callback: (String?) -> Unit) {
         if (loading) { callback("模型正在加载，请稍候。"); return }
         if (loadedPath == path && isLoaded()) { callback(null); return }
@@ -41,8 +53,8 @@ object ResidentAI {
                 val loaded = Llama.loadModel(
                     modelPath = path,
                     config = LlamaConfig(
-                        contextSize = 1536,
-                        threads = 3,
+                        contextSize = inferenceContext(path),
+                        threads = inferenceThreads(path),
                         gpuLayers = 0,
                         temperature = 0.55f,
                         topP = 0.85f,
@@ -82,9 +94,9 @@ object ResidentAI {
                 try {
                     val result = Llama.complete(
                         model = active,
-                        prompt = prompt,
-                        systemPrompt = "你是符文之地居民的个人认知引擎。严格依据提供的个人经历、知识和所处环境思考，不得假装知道未经历的事情。输出简洁、可执行的结果。",
-                        maxTokens = 256
+                        prompt = promptForDevice(prompt, loadedPath ?: ""),
+                        systemPrompt = "你是符文之地居民的个人认知引擎。严格依据提供的个人经历、知识和所处环境思考，不得假装知道未经历的事情。输出简洁、可执行的结果。/no_think",
+                        maxTokens = if (isSmallModel(loadedPath ?: "")) 96 else 160
                     )
                     withContext(Dispatchers.Main.immediate) { callback(cleanStructuredOutput(result.text)) }
                 } catch (e: Throwable) {
@@ -107,9 +119,9 @@ object ResidentAI {
                         model=active,
                         // Qwen3 otherwise may spend most of its token budget in a visible
                         // <think> block and never reach the JSON consumed by the simulator.
-                        prompt=if (prompt.contains("/no_think")) prompt else "$prompt\n/no_think",
-                        systemPrompt="$systemPrompt\n不要展示思维链，不要复述系统指令，不要解释任务；直接输出最终JSON。",
-                        maxTokens=maxTokens
+                        prompt=promptForDevice(if (prompt.contains("/no_think")) prompt else "$prompt\n/no_think", loadedPath ?: ""),
+                        systemPrompt="$systemPrompt\n/no_think\n不要展示思维链，不要复述系统指令，不要解释任务；直接输出最终JSON。",
+                        maxTokens=if (isSmallModel(loadedPath ?: "")) maxTokens.coerceAtMost(96) else maxTokens.coerceAtMost(160)
                     )
                     callback(result.text.trim())
                 } catch(e:Throwable) {
