@@ -923,7 +923,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 if(day%360L==0L) {
                     r.age++
                     if(r.alive && r.age in 18..25 && r.partnerId<0 && r.householdId>=0 &&
-                        day%30L==0L && rng.nextInt(1000)<8 &&
+                        rng.nextInt(100)<12 &&
                         (r.coins>=8 || r.skill>=30) &&
                         pop.any { it.alive && it.id in r.parentIds && it.householdId==r.householdId }) {
                         val previousHousehold=r.householdId
