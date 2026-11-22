@@ -872,7 +872,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
         val pop=people(p)
-        householdStates(p,pop)
+        val households=householdStates(p,pop)
         val markets=markets(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
