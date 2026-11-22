@@ -2693,10 +2693,23 @@ private fun craftBonus(region:String):Int = when(region) {
 如果个人记忆中有天道干预、异常信息或关于世界本质的疑问，可以自主选择investigate_world来整理假说、观察现象并寻找证据，或选择discuss_world与真实可接触的亲友交流；没有研究条件时也可以暂缓。
 只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一；investigate_world用于独立研究世界规律或核验天道信息，discuss_world仅在有可接触的可信关系时交流；不得自动得出超出证据的结论）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
         localInferenceBusy=true
-        ResidentAI.ask(prompt) { raw ->
+        ResidentAI.askStructured(
+            prompt,
+            maxTokens=512,
+            systemPrompt="你是居民编号undefined、姓名undefined的独立个人认知引擎。必须从这个人的具体身份、性格、职业、关系、记忆和现实处境出发思考。不能套用其他居民的通用答案，不能复制其他人的思考模板；不同人可以作出相同选择，但理由必须来自各自经历。只输出完整JSON对象，不要输出Markdown。"
+        ) { raw ->
+            fun recordResidentInferenceIssue(message:String) {
+                val latest=people(p).firstOrNull { it.id==r.id } ?: return
+                latest.currentThought="【推理状态】本次没有生成有效思考记录：${message.take(180)}。请检查模型是否正常加载，并保持世界运行后重试。"
+                savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
+            }
             try {
                 val start=raw.indexOf('{')
                 val end=raw.lastIndexOf('}')
+                if(start<0 || end<=start) {
+                    recordResidentInferenceIssue(raw.ifBlank { "模型返回内容为空或不是JSON" })
+                    return@askStructured
+                }
                 if(start>=0 && end>start) {
                     val result=JSONObject(raw.substring(start,end+1))
                     val latest=people(p).firstOrNull { it.id==r.id && it.alive }
@@ -2848,8 +2861,8 @@ private fun craftBonus(region:String):Int = when(region) {
                         }
                     }
                 }
-            } catch(_:Throwable) {
-                // Invalid model output is ignored; no fictional event is written.
+            } catch(e:Throwable) {
+                recordResidentInferenceIssue(e.message ?: e.toString())
             } finally {
                 localInferenceBusy=false
             }
