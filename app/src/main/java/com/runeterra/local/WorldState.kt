@@ -39,7 +39,7 @@ object WorldEngine {
         if(raw!=null) return runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
         val rng=Random(24681357L)
         val list=(0 until 240).map { i -> Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),regions[i%regions.size],
-            16+rng.nextInt(54),65+rng.nextInt(36),2+rng.nextInt(8),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)]) }.toMutableList()
+            16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)]) }.toMutableList()
         p.edit().putInt(KEY_NEXT_ID,240).apply()
         savePeople(p,list); return list
     }
@@ -60,10 +60,11 @@ object WorldEngine {
             day++
             val rng=Random(day*7919L+17L)
             val newborns=mutableListOf<Resident>()
+            var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
-                if(rng.nextInt(100)<(20+r.skill.coerceAtMost(15))) when(r.job) {
+                if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
                     "农夫","采集者" -> {r.food+=2+rng.nextInt(3);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2;r.skill=(r.skill+1).coerceAtMost(100)}
@@ -76,21 +77,21 @@ object WorldEngine {
                     if(candidate!=null) { r.partnerId=candidate.id;candidate.partnerId=r.id
                         events.add("第 $day 日：${r.region}的${r.name}与${candidate.name}建立伴侣关系。") }
                 }
-                if(day%30L==0L && r.partnerId>=0 && r.age in 20..38 && r.familyCount<3 && rng.nextInt(1000)<3) {
+                if(day%30L==0L && r.partnerId>=0 && r.id<r.partnerId && r.age in 20..38 && r.familyCount<3 && rng.nextInt(1000)<3) {
                     r.familyCount++
                     val mate=pop.firstOrNull { it.id==r.partnerId && it.alive }
                     if(mate!=null) mate.familyCount=r.familyCount
-                    val id=p.getInt(KEY_NEXT_ID,240)+newborns.size
+                    val id=nextId++
                     val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习")
                     newborns.add(child)
                     events.add("第 $day 日：${r.region}的${r.name}家庭迎来新生儿${child.name}。")
                 }
-                if(r.alive && r.food<=1 && rng.nextInt(1000)<3) {
+                if(r.alive && r.food<=0 && day%30L==0L && rng.nextInt(100)<12) {
                     val next=regions[(regions.indexOf(r.region)+1)%regions.size]
                     r.region=next
                     events.add("第 $day 日：${r.name}因生计压力迁往${next}。")
                 }
-                if(r.health<=0 || (r.age>78 && rng.nextInt(100)<2)) {
+                if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
                     r.alive=false
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
                     if(r.partnerId>=0) pop.firstOrNull { it.id==r.partnerId }?.partnerId=-1
@@ -106,7 +107,7 @@ object WorldEngine {
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
         val arr=JSONArray();events.forEach{arr.put(it)}
-        p.edit().putInt(KEY_NEXT_ID,p.getInt(KEY_NEXT_ID,240)+pop.size-240)
+        p.edit().putInt(KEY_NEXT_ID,nextId)
             .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
     }
