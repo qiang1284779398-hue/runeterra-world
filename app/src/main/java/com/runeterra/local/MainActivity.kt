@@ -223,11 +223,10 @@ class MainActivity : Activity() {
     private fun importLocalModel(uri: Uri) {
         Toast.makeText(this,"正在安全导入模型；旧模型会先保留，请保持应用打开…",Toast.LENGTH_LONG).show()
         Thread {
-            var tempFile: File? = null
             try {
                 val modelsDir=File(filesDir,"models").apply { mkdirs() }
                 val modelFile=File(modelsDir,"resident-model.gguf")
-                tempFile=File(modelsDir,"resident-model.gguf.importing")
+                val tempFile=File(modelsDir,"resident-model.gguf.importing")
                 tempFile.delete()
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(tempFile).use { output -> input.copyTo(output, 1024*1024); output.fd.sync() }
@@ -275,7 +274,6 @@ class MainActivity : Activity() {
                     }
                 }
             } catch(e:Throwable) {
-                tempFile?.delete()
                 runOnUiThread { Toast.makeText(this,"模型导入失败：${e.message}；原模型未被覆盖。",Toast.LENGTH_LONG).show() }
             }
         }.start()
