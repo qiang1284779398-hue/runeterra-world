@@ -1086,6 +1086,51 @@ object WorldEngine {
             h.history.forEach { append(it).append('\n') }
         }
     }
+    // Read-only observation API for the in-app live thought/action console.
+    fun observationNames(context:Context,kind:String):List<String> {
+        return if(kind=="英雄") {
+            heroAgents(context.getSharedPreferences(PREFS,Context.MODE_PRIVATE))
+                .sortedBy { it.region }.map { it.name }
+        } else {
+            people(context.getSharedPreferences(PREFS,Context.MODE_PRIVATE))
+                .sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age})
+                .map { it.id.toString()+"｜"+it.name }
+        }
+    }
+    fun observationText(context:Context,kind:String,key:String):String {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val day=p.getLong(KEY_DAY,1L)
+        if(kind=="英雄") {
+            val h=heroAgents(p).firstOrNull { it.name==key } ?: return "未找到该英雄。"
+            return buildString {
+                append("符文之地 · 人物实时观察\n")
+                append("对象：${h.name}｜${h.region}｜${h.location}\n身份：${h.role}\n状态：${h.status}｜存续：${if(h.alive) "是" else "否"}\n")
+                append("当前活动：${h.dailyActivity}\n目标：${h.goal}\n意图：${h.intent}\n信念：${h.belief}\n")
+                append("最近思考日期：${if(h.lastThoughtDay>0) "第${h.lastThoughtDay}日" else "尚未推理"}\n")
+                append("最近思考：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
+                append("\n【个人思考与记忆（新到旧）】\n")
+                h.memory.takeLast(30).asReversed().forEach { append(it).append('\n') }
+                append("\n【已记录经历（新到旧）】\n")
+                h.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
+                append("\n当前世界日期：第${day}日\n说明：这里展示实际保存的推理与事件记录，不会伪造人物正在思考的内容。")
+            }
+        }
+        val id=key.substringBefore("｜").toIntOrNull() ?: return "居民编号无效。"
+        val r=people(p).firstOrNull { it.id==id } ?: return "未找到该居民。"
+        return buildString {
+            append("符文之地 · 人物实时观察\n")
+            append("对象：${r.name}｜编号：${r.id}\n地区：${r.region}｜聚落：${r.settlement.ifBlank { "未记录" }}\n")
+            append("年龄：${r.age}｜职业：${r.job}｜存续：${if(r.alive) "在世" else "已故"}\n")
+            append("当前活动：${r.dailyActivity}\n目标：${r.goal}\n意图：${r.intent}\n信念：${r.belief}\n")
+            append("健康：${r.health}/100｜疲劳：${r.fatigue}/100｜生活状态：${r.morale}/100｜粮食：${r.food}｜财富：${r.coins}\n")
+            append("\n【最近思考】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
+            append("\n【个人记忆与推理（新到旧）】\n")
+            r.mindMemory.takeLast(30).asReversed().forEach { append(it).append('\n') }
+            append("\n【人生经历（新到旧）】\n")
+            r.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
+            append("\n当前世界日期：第${day}日\n说明：只显示已保存的思考、活动和事件；不会把模拟推演冒充真实意识。")
+        }
+    }
     fun heroRelationshipDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroBonds(p).sortedByDescending{it.tension}.map{
