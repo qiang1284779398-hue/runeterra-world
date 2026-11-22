@@ -139,18 +139,46 @@ object WorldEngine {
     private val heroSeeds=listOf(
         HeroAgent("盖伦","德玛西亚","战士","活跃","维护德玛西亚秩序",70),
         HeroAgent("拉克丝","德玛西亚","法师","隐藏身份","保护秘密与自由",65),
+        HeroAgent("嘉文四世","德玛西亚","王位继承者","政治与军事责任","在王国危机中承担王室责任",72),
+        HeroAgent("菲奥娜","德玛西亚","决斗家","家族事务","维护劳伦特家族荣誉并挑战贵族旧秩序",62),
+        HeroAgent("薇恩","德玛西亚","猎魔人","追猎","追猎黑暗生物与威胁家园的怪物",58),
         HeroAgent("卡特琳娜","诺克萨斯","刺客","行动中","执行家族与帝国任务",70),
+        HeroAgent("斯维因","诺克萨斯","统治者","执掌崔法利议会","以远见、力量与谋略维系帝国",86),
+        HeroAgent("德莱厄斯","诺克萨斯","军团统帅","军事行动","以诺克萨斯军团推进帝国利益",76),
+        HeroAgent("乐芙兰","诺克萨斯","秘密结社领袖","暗中布局","通过黑色玫瑰操纵帝国深层权力",82),
         HeroAgent("艾瑞莉娅","艾欧尼亚","抵抗者","活动","守护艾欧尼亚",80),
         HeroAgent("阿卡丽","艾欧尼亚","刺客","游走","追寻自己的道路",65),
+        HeroAgent("慎","艾欧尼亚","均衡教派首领","维持均衡","守护物质领域与精神领域之间的均衡",68),
+        HeroAgent("劫","艾欧尼亚","影流领袖","扩张影流影响","以自己的道路守护艾欧尼亚",72),
         HeroAgent("厄运小姐","比尔吉沃特","船长","掌权","掌控港口与海上势力",70),
+        HeroAgent("俄洛伊","比尔吉沃特","布胡鲁大祭司","履行信仰使命","传播娜迦卡波洛丝的意志并考验灵魂",68),
         HeroAgent("瑟庄妮","弗雷尔卓德","部族首领","活动","带领凛冬之爪",70),
-        HeroAgent("凯莎","恕瑞玛","虚空战士","巡行","抵御虚空威胁",65),
+        HeroAgent("艾希","弗雷尔卓德","战母","部族联盟","团结阿瓦罗萨部族并争取弗雷尔卓德未来",78),
+        HeroAgent("丽桑卓","弗雷尔卓德","霜卫领袖","守望冰封威胁","维持远古冰封秘密并阻止监视者苏醒",84),
+        HeroAgent("阿兹尔","恕瑞玛","飞升者皇帝","帝国复兴","重建恕瑞玛帝国并恢复太阳圆盘荣光",82),
+        HeroAgent("泽拉斯","恕瑞玛","飞升者","争夺力量","追求超越凡人的力量并对抗阿兹尔",78),
+        HeroAgent("塔莉垭","恕瑞玛","岩石编织者","游历","保护家园与普通沙漠居民",62),
+        HeroAgent("黛安娜","巨神峰","皎月教派相关人物","探索与冲突","追寻皎月力量并面对烈阳教派",64),
+        HeroAgent("蕾欧娜","巨神峰","烈阳战士","守护信仰","维护烈阳教派与拉阔尔传统",66),
+        HeroAgent("潘森","巨神峰","战争星灵宿主","抗争","以凡人意志对抗星界命运",70),
         HeroAgent("杰斯","皮尔特沃夫","发明家","研究","守护城市未来",60),
-        HeroAgent("维克托","祖安","机械先驱","研究","推动进化理念",65)
+        HeroAgent("凯特琳","皮尔特沃夫","执法官","调查","维护皮尔特沃夫秩序并调查犯罪",62),
+        HeroAgent("蔚","皮尔特沃夫","执法者","行动","以自己的方式维护双城秩序",60),
+        HeroAgent("维克托","祖安","机械先驱","研究","推动进化理念",65),
+        HeroAgent("金克丝","祖安","犯罪者","制造混乱","以不可预测的行动冲击双城权力秩序",62),
+        HeroAgent("艾克","祖安","发明家与社区守护者","保护社区","守护祖安街区与萤火成员",64),
+        HeroAgent("奇亚娜","以绪塔尔","元素法师与王族","争夺继承权","争取以绪塔尔王位与云塔认可",70),
+        HeroAgent("妮蔻","以绪塔尔","瓦斯塔亚变形者","寻找归属","寻找同伴并保护瓦斯塔亚族群",58),
+        HeroAgent("凯莎","恕瑞玛","虚空战士","巡行","抵御虚空威胁",65)
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
         val raw=p.getString(KEY_HEROES,null)
-        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroAgent(it.optString("name"),it.optString("region"),it.optString("role"),it.optString("status"),it.optString("goal"),it.optInt("influence",50))}.toMutableList()}}.getOrNull()?.let{return it}
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroAgent(it.optString("name"),it.optString("region"),it.optString("role"),it.optString("status"),it.optString("goal"),it.optInt("influence",50))}.toMutableList()}}.getOrNull()?.let{loaded->
+            val known=loaded.map{it.name}.toSet()
+            heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
+            if(loaded.size!=known.size)saveHeroes(p,loaded)
+            return loaded
+        }
         return heroSeeds.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
