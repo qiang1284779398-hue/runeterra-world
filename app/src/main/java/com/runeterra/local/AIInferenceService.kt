@@ -35,15 +35,15 @@ class AIInferenceService : Service() {
         val detail = buildString {
             append(stamp).append(" | [AI-SERVICE ").append(level).append("] ").append(message)
             if (error != null) {
-                append("\\n").append(android.util.Log.getStackTraceString(error))
+                append("\n").append(android.util.Log.getStackTraceString(error))
             }
             append("\\n")
         }
-        if (level == "ERROR") diagnostic("ERROR", message, error) else diagnostic("INFO", message)
+        if (level == "ERROR") Log.e("RuneterraAI", message, error) else Log.i("RuneterraAI", message)
         try {
             File(filesDir, "ai_diagnostics.log").appendText(detail)
         } catch (ignored: Throwable) {
-            diagnostic("ERROR", "写入诊断文件失败", ignored)
+            Log.e("RuneterraAI", "写入诊断文件失败", ignored)
         }
     }
 
