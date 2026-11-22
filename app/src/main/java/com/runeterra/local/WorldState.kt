@@ -332,6 +332,7 @@ object WorldEngine {
         }.asReversed()
     }
 
+    @Synchronized
     fun heavenlyIntervene(context:Context,scope:String,targetId:Int=-1,targetName:String="",mode:String="神谕",message:String):String {
         val clean=message.trim().take(1800)
         if(clean.isBlank()) return "天道信息不能为空。"
@@ -2765,6 +2766,7 @@ private fun craftBonus(region:String):Int = when(region) {
             maxTokens=384,
             systemPrompt="你是居民编号${r.id}、姓名${r.name}的独立个人认知引擎。只依据该居民自己的经历和处境推理；不得套用通用模板。只输出完整JSON对象，不要输出Markdown。"
         ) { raw ->
+            synchronized(WorldEngine) {
             fun recordResidentInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=people(p).firstOrNull { it.id==r.id } ?: return
@@ -2937,6 +2939,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 localInferenceBusy=false
                 finishLocalInference(p,inferenceSucceeded,"居民：${r.name}（编号${r.id}）｜${inferenceResult}")
             }
+            }
         }
     }
 
@@ -2987,6 +2990,7 @@ private fun craftBonus(region:String):Int = when(region) {
             maxTokens=384,
             systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
         ) { raw ->
+            synchronized(WorldEngine) {
             fun recordInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
@@ -3074,9 +3078,11 @@ private fun craftBonus(region:String):Int = when(region) {
                 localInferenceBusy=false
                 finishLocalInference(p,inferenceSucceeded,"英雄：${hero.name}｜${inferenceResult}")
             }
+            }
         }
     }
 
+    @Synchronized
     fun advance(context: Context, days: Int=1): WorldSnapshot {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
@@ -3641,6 +3647,7 @@ private fun craftBonus(region:String):Int = when(region) {
     fun setRunning(context: Context,running:Boolean) {
         context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean(KEY_RUNNING,running).apply()
     }
+    @Synchronized
     fun reset(context: Context) {
         context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().putLong(KEY_DAY,1L).putString(KEY_ERA,ERA_PRE_IONIA).apply()
     }
