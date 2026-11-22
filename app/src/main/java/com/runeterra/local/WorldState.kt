@@ -2123,7 +2123,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 append("当时身份：${e.optString("job")}｜健康${e.optInt("health")}/100｜技能${e.optInt("skill")}/100｜财富${e.optInt("coins")}｜粮食${e.optInt("food")}\n")
                 append("事实记录：${e.optString("detail")}\n")
                 val d=e.optLong("day"); val region=e.optString("region")
-                val context=worldEvents.filter { (it.contains("第 $d 日") || it.contains("第$d日")) && (it.contains(region) || it.contains(r.name)) }
+                val context=worldEvents.filter { (it.contains("第 $d 日") || it.contains("第${d}日")) && (it.contains(region) || it.contains(r.name)) }
                 if(context.isNotEmpty()) { append("同日相关世界背景：\n"); context.take(4).forEach { append("· ").append(it).append("\n") } }
             }
             append("\n【旧版本人生时间线】\n")
