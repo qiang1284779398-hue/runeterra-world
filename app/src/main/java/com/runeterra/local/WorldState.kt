@@ -399,8 +399,8 @@ object WorldEngine {
                     val appearance=op.optString("appearance")
                     val abilities=op.optString("abilities")
                     val lineage=op.optString("lineage")
-                    val age=op.optInt("age",0)
-                    val health=op.optInt("health",0)
+                    val age=op.optInt("age",-1)
+                    val health=op.optInt("health",-1)
                     val skill=op.optInt("skill",-1)
                     val job=op.optString("job")
                     val goal=op.optString("goal")
@@ -474,10 +474,12 @@ object WorldEngine {
                     if(hero!=null) {
                         when(mode) { "erase" -> hero.memory.clear(); "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add(memo) }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
                         appendHeroEvent(hero,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
+                        if(mode=="erase") hero.memory.clear()
                         outcomes.add("已修改${hero.name}的个人记忆（模式：${mode}）。"); successful++
                     } else if(resident!=null) {
                         when(mode) { "erase" -> resident.mindMemory.clear(); "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add(memo) }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
                         appendResidentEvent(resident,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
+                        if(mode=="erase") resident.mindMemory.clear()
                         outcomes.add("已修改${resident.name}的个人记忆（模式：${mode}）。"); successful++
                     } else outcomes.add("未执行：找不到人物「${target}」。")
                 }
@@ -497,7 +499,7 @@ object WorldEngine {
                     val name=op.optString("name").trim()
                     val region=op.optString("region").trim()
                     val role=op.optString("role").trim()
-                    if(name.isBlank() || region.isBlank() || role.isBlank() || heroes.any { it.name==name }) {
+                    if(name.isBlank() || region.isBlank() || role.isBlank() || heroes.any { it.name==name } || population.any { it.name==name }) {
                         outcomes.add("未执行：新人物姓名、地区、身份无效，或姓名已存在。"); continue
                     }
                     val created=HeroAgent(
@@ -515,10 +517,10 @@ object WorldEngine {
                         skill=(op.optInt("skill",-1).let { if(it<0) 50 else it }).coerceIn(0,100),
                         lineage=op.optString("lineage","")
                     )
-                    created.memory.add("第\${day}日：我由天道创造并进入符文之地。关于自身来历与创造者，我需要通过自己的经历形成判断。")
-                    created.history.add("第\${day}日｜由天道创造并投入模拟分支世界；此后思想与行动不预设。")
+                    created.memory.add("第${day}日：我由天道创造并进入符文之地。关于自身来历与创造者，我需要通过自己的经历形成判断。")
+                    created.history.add("第${day}日｜由天道创造并投入模拟分支世界；此后思想与行动不预设。")
                     heroes.add(created); changedHeroes=true; impactRegions.add(region)
-                    outcomes.add("已创造独立人物：\${name}（\${region}，\${role}）。"); successful++
+                    outcomes.add("已创造独立人物：${name}（${region}，${role}）。"); successful++
                 }
                 "alter_faction" -> {
                     val region=op.optString("region")
