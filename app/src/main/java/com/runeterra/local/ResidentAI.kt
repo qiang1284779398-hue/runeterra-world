@@ -110,7 +110,7 @@ object ResidentAI {
                     )
                     callback(result.text.trim())
                 } catch(e:Throwable) {
-                    callback("本地推理错误：\${e.message ?: e.toString()}")
+                    callback("本地推理错误：${e.message ?: e.toString()}")
                 }
             }
         }
