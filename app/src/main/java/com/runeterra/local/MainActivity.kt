@@ -218,7 +218,7 @@ class MainActivity : Activity() {
         val refreshTask=object:Runnable {
             override fun run() {
                 if(dialog.isShowing) {
-                    hint.text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
+                    hint.text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。状态每 2 秒刷新；正文不会自动重绘，点击“手动刷新当前记录”查看最新内容。"
                     if(kind=="世界事件" || kind=="人物互动") {
                         val latest=WorldEngine.observationNames(this@MainActivity,kind)
                         if(latest.isNotEmpty() && latest.firstOrNull()!=selectedKey) {
