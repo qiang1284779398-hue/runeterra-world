@@ -35,7 +35,7 @@ object WorldEngine {
         if(raw!=null) return runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
         val rng=Random(24681357L)
         val list=(0 until 240).map { i -> Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),regions[i%regions.size],
-            16+rng.nextInt(54),65+rng.nextInt(36),2+rng.nextInt(8),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)) }.toMutableList()
+            16+rng.nextInt(54),65+rng.nextInt(36),2+rng.nextInt(8),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)] }.toMutableList()
         savePeople(p,list); return list
     }
     private fun savePeople(p: android.content.SharedPreferences, list: List<Resident>) {
