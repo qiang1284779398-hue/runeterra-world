@@ -31,6 +31,51 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_HEROES="heroes_state"
+    private data class HeroAgent(val name:String,val region:String,val role:String,var status:String,var goal:String,var influence:Int)
+    private val heroSeeds=listOf(
+        HeroAgent("盖伦","德玛西亚","战士","活跃","维护德玛西亚秩序",70),
+        HeroAgent("拉克丝","德玛西亚","法师","隐藏身份","保护秘密与自由",65),
+        HeroAgent("卡特琳娜","诺克萨斯","刺客","行动中","执行家族与帝国任务",70),
+        HeroAgent("艾瑞莉娅","艾欧尼亚","抵抗者","活动","守护艾欧尼亚",80),
+        HeroAgent("阿卡丽","艾欧尼亚","刺客","游走","追寻自己的道路",65),
+        HeroAgent("厄运小姐","比尔吉沃特","船长","掌权","掌控港口与海上势力",70),
+        HeroAgent("瑟庄妮","弗雷尔卓德","部族首领","活动","带领凛冬之爪",70),
+        HeroAgent("凯莎","恕瑞玛","虚空战士","巡行","抵御虚空威胁",65),
+        HeroAgent("杰斯","皮尔特沃夫","发明家","研究","守护城市未来",60),
+        HeroAgent("维克托","祖安","机械先驱","研究","推动进化理念",65)
+    )
+    private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
+        val raw=p.getString(KEY_HEROES,null)
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroAgent(it.optString("name"),it.optString("region"),it.optString("role"),it.optString("status"),it.optString("goal"),it.optInt("influence",50))}.toMutableList()}}.getOrNull()?.let{return it}
+        return heroSeeds.toMutableList().also{saveHeroes(p,it)}
+    }
+    private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence))}}.toString()).apply()
+    }
+    private fun tickHeroes(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
+        if(day%30L!=0L)return
+        val agents=heroAgents(p)
+        agents.forEach{h->
+            val regionResidents=pop.filter{it.alive&&it.region==h.region}
+            if(rng.nextInt(100)<18){
+                val target=regionResidents.randomOrNull()
+                if(target!=null){
+                    when(h.name){
+                        "盖伦"->{target.health=(target.health+3).coerceAtMost(100);h.status="巡逻"}
+                        "拉克丝"->{target.health=(target.health+2).coerceAtMost(100);h.status="秘密援助"}
+                        "艾瑞莉娅"->{target.health=(target.health+2).coerceAtMost(100);h.status="抵抗行动"}
+                        "厄运小姐"->{target.coins+=2;h.status="港口行动"}
+                        "杰斯"->{markets[h.region]?.let{it.wealth+=5};h.status="技术研究"}
+                        "维克托"->{markets[h.region]?.let{it.wealth+=3};h.status="技术实验"}
+                        else->{h.status="行动中"}
+                    }
+                    events.add("【英雄行动·模拟】第 $day 日：${h.name}在${h.region}执行「${h.goal}」，影响居民${target.name}。")
+                }else h.status="行动中"
+            }
+        }
+        saveHeroes(p,agents)
+    }
     private const val KEY_FACTIONS="factions_state"
     private data class Faction(var name:String,var leader:String,var military:Int,var stability:Int,var treasury:Int,var territory:MutableList<String>)
     private fun factionStates(p:android.content.SharedPreferences):MutableMap<String,Faction> {
@@ -218,6 +263,7 @@ object WorldEngine {
             applyLoreChainStage(day,p,pop,markets,events,rng)
             tickDiplomacy(day,p,pop,markets,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
+            tickHeroes(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
