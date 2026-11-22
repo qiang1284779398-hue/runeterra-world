@@ -221,7 +221,7 @@ object WorldEngine {
         return listOf(
             "天道系统：已启用",
             "世界日期：第"+p.getLong(KEY_DAY,1L)+"日",
-            "已记录干预：\${archive.length()}次",
+            "已记录干预：${archive.length()}次",
             "最近干预："+(latest?.let { "第"+it.optLong("day")+"日｜"+it.optString("mode")+"｜"+it.optString("message") } ?: "尚无"),
             "作用原则：只传递信息，不直接改写居民信念、人格、关系或行动。",
             "认知原则：接收者可能相信、怀疑、误解、拒绝、研究或传播；不同人物会形成不同解释。",
@@ -236,7 +236,7 @@ object WorldEngine {
         return (0 until archive.length()).mapNotNull { i ->
             runCatching {
                 val item=JSONObject(archive.getString(i))
-                "第\${item.optLong("day")}日｜\${item.optString("mode")}｜\${item.optString("scope")}｜接收者：\${item.optString("recipients")}\\n\${item.optString("message")}\\n结果：接收信息已写入相关人物记忆；是否相信及后续行动尚未预设。"
+                "第${item.optLong("day")}日｜${item.optString("mode")}｜${item.optString("scope")}｜接收者：${item.optString("recipients")}\n${item.optString("message")}\n结果：接收信息已写入相关人物记忆；是否相信及后续行动尚未预设。"
             }.getOrNull()
         }.asReversed()
     }
@@ -263,18 +263,18 @@ object WorldEngine {
         if(scope=="指定英雄" && heroTargets.isEmpty()) return "没有找到这名英雄或特殊存在。"
         val recipients=mutableListOf<String>()
         residentTargets.forEach { r ->
-            val memory="第\${day}日，接收到天道干预（\${mode}）：\${clean}。这是一条外部信息；其真实性、含义与来源仍需由我自行判断。"
+            val memory="第${day}日，接收到天道干预（${mode}）：${clean}。这是一条外部信息；其真实性、含义与来源仍需由我自行判断。"
             r.mindMemory.add(memory)
             while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
-            r.currentThought="第\${day}日：我接收到一条被称为“天道”的外部信息，尚未决定如何理解。"
-            recordLife(r,day,"接收到天道干预（\${mode}）：\${clean}。该记录只证明信息抵达，不代表此人相信其内容。","heavenly_intervention_received")
+            r.currentThought="第${day}日：我接收到一条被称为“天道”的外部信息，尚未决定如何理解。"
+            recordLife(r,day,"接收到天道干预（${mode}）：${clean}。该记录只证明信息抵达，不代表此人相信其内容。","heavenly_intervention_received")
             recipients.add(r.name+"（居民#"+r.id+"）")
         }
         if(residentTargets.isNotEmpty()) savePeople(p,peopleNow)
         heroTargets.forEach { h ->
-            h.memory.add("第\${day}日，接收到天道干预（\${mode}）：\${clean}。信息来源与真实性仍待独立判断。")
+            h.memory.add("第${day}日，接收到天道干预（${mode}）：${clean}。信息来源与真实性仍待独立判断。")
             while(h.memory.size>100) h.memory.removeAt(0)
-            h.history.add("第\${day}日｜接收到天道干预（\${mode}）：\${clean}。接收不等于相信，后续解释与行动未预设。")
+            h.history.add("第${day}日｜接收到天道干预（${mode}）：${clean}。接收不等于相信，后续解释与行动未预设。")
             while(h.history.size>3000) h.history.removeAt(0)
             recipients.add(h.name)
         }
@@ -287,10 +287,10 @@ object WorldEngine {
         archive.put(item)
         while(archive.length()>10000) archive.remove(0)
         val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
-        events.put("【天道干预·模拟分支】第\${day}日：以\${mode}方式向\${recipientLabel}传达信息：“\${clean}”。接收者不被强制相信。")
+        events.put("【天道干预·模拟分支】第${day}日：以${mode}方式向${recipientLabel}传达信息：“${clean}”。接收者不被强制相信。")
         while(events.length()>300) events.remove(0)
         p.edit().putString(KEY_HEAVENLY_ARCHIVE,archive.toString()).putString(KEY_EVENTS,events.toString()).apply()
-        return "天道信息已送达。\\n接收对象：\${recipientLabel}\\n已写入人物记忆与历史档案；没有强制改变任何人的信念或选择。"
+        return "天道信息已送达。\n接收对象：${recipientLabel}\n已写入人物记忆与历史档案；没有强制改变任何人的信念或选择。"
     }
 
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
