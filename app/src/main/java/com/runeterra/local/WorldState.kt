@@ -528,7 +528,7 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val states=factionStates(p)
         return states.values.sortedBy{it.name}.map { f ->
-            "【${f.name}】\\n政体：${f.government}\\n统治集团：${f.rulingBloc}\\n内部反对力量：${f.opposition}\\n当前政策：${f.policy}\\n主要领袖/机构：${f.leader}\\n军力：${f.military}｜财政：${f.treasury}｜稳定度：${f.stability}｜内部矛盾：${f.internalTension}\\n控制地区：${f.territory.joinToString("、")}\\n（势力政治变化属于模拟历史分支，不代表官方剧情。）"
+            "【${f.name}】\n政体：${f.government}\n统治集团：${f.rulingBloc}\n内部反对力量：${f.opposition}\n当前政策：${f.policy}\n主要领袖/机构：${f.leader}\n军力：${f.military}｜财政：${f.treasury}｜稳定度：${f.stability}｜内部矛盾：${f.internalTension}\n控制地区：${f.territory.joinToString("、")}\n（势力政治变化属于模拟历史分支，不代表官方剧情。）"
         }
     }
     fun residentDirectory(context:Context):List<String> {
