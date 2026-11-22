@@ -443,27 +443,27 @@ object WorldEngine {
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\\n所在领域：${it.region}\\n族类／本质：${heroLineage(it.name)}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n当前信念：${it.belief}\\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\\n当前意图：${it.intent}\\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\\n已记录个人经历：${it.history.size}条\\n影响力指标：${it.influence}/100\\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\n所在领域：${it.region}\n族类／本质：${heroLineage(it.name)}\n身份：${it.role}\n当前状态：${it.status}\n个人目标：${it.goal}\n当前信念：${it.belief}\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\n当前意图：${it.intent}\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\n已记录个人经历：${it.history.size}条\n影响力指标：${it.influence}/100\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
         }
     }
     fun heroBiographyExport(context:Context,name:String):String? {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val h=heroAgents(p).firstOrNull { it.name==name } ?: return null
         return buildString {
-            append("符文之地 · 重要人物自主经历档案\\n")
-            append("人物：${h.name}\\n领域：${h.region}\\n族类／本质：${heroLineage(h.name)}\\n身份：${h.role}\\n")
-            append("当前状态：${h.status}\\n当前目标：${h.goal}\\n信念：${h.belief}\\n最近思考：${h.thought}\\n意图：${h.intent}\\n")
-            append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\\n\\n")
-            append("【自主思考与记忆】\\n")
-            h.memory.forEach { append(it).append('\\n') }
-            append("\\n【模拟人生事件】\\n")
-            h.history.forEach { append(it).append('\\n') }
+            append("符文之地 · 重要人物自主经历档案\n")
+            append("人物：${h.name}\n领域：${h.region}\n族类／本质：${heroLineage(h.name)}\n身份：${h.role}\n")
+            append("当前状态：${h.status}\n当前目标：${h.goal}\n信念：${h.belief}\n最近思考：${h.thought}\n意图：${h.intent}\n")
+            append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\n\n")
+            append("【自主思考与记忆】\n")
+            h.memory.forEach { append(it).append('\n') }
+            append("\n【模拟人生事件】\n")
+            h.history.forEach { append(it).append('\n') }
         }
     }
     fun heroRelationshipDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroBonds(p).sortedByDescending{it.tension}.map{
-            "【${it.a} ↔ ${it.b}】\\n关系背景：${it.basis}\\n模拟信任：${it.trust}/100\\n模拟矛盾：${it.tension}/100\\n说明：关系背景取自英雄联盟人物设定；数值及后续变化是本世界的模拟状态，不代表官方数值或固定剧情。"
+            "【${it.a} ↔ ${it.b}】\n关系背景：${it.basis}\n模拟信任：${it.trust}/100\n模拟矛盾：${it.tension}/100\n说明：关系背景取自英雄联盟人物设定；数值及后续变化是本世界的模拟状态，不代表官方数值或固定剧情。"
         }
     }
     private fun tickHeroes(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
@@ -1559,8 +1559,8 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val fauna=faunaState(p)
         return fauna.groupBy{it.region}.toSortedMap().map{(region,groups)->
-            "【"+region+" · 野生生物群落】\\n"+groups.joinToString("\\n"){it.guild+"："+it.abundance+"/100（健康 "+it.health+"/100；"+it.role+"）"}+
-            "\\n说明：这是按生态功能划分的模拟种群指数，不是官方物种名录或真实数量；暗影岛灵体、班德尔城特殊领域生物不属于普通野生动物。"
+            "【"+region+" · 野生生物群落】\n"+groups.joinToString("\n"){it.guild+"："+it.abundance+"/100（健康 "+it.health+"/100；"+it.role+"）"}+
+            "\n说明：这是按生态功能划分的模拟种群指数，不是官方物种名录或真实数量；暗影岛灵体、班德尔城特殊领域生物不属于普通野生动物。"
         }
     }
     private fun foodBonus(region:String,ecology:Map<String,Ecology>):Int {
@@ -1580,7 +1580,7 @@ object WorldEngine {
         return state.values.sortedBy{it.region}.map{e->
             val population=all.count{it.alive&&it.region==e.region}
             val harvest=when{(e.water+e.vegetation+e.soil)/3>=75->"自然条件较好";(e.water+e.vegetation+e.soil)/3<30->"自然条件严峻";else->"自然条件中等"}
-            "【"+e.region+" · "+e.climate+"】\\n温度环境指数："+e.temperature+"/100\\n水源条件："+e.water+"/100\\n植被覆盖："+e.vegetation+"/100\\n土壤状况："+e.soil+"/100\\n野生生物承载："+e.wildlife+"/100\\n污染压力："+e.pollution+"/100\\n模拟普通居民："+population+"人\\n综合判断："+harvest+"\\n说明：指数仅用于模拟环境变化，不是官方地理测量；班德尔城与暗影岛属于特殊生态，不参与普通农耕逻辑。"
+            "【"+e.region+" · "+e.climate+"】\n温度环境指数："+e.temperature+"/100\n水源条件："+e.water+"/100\n植被覆盖："+e.vegetation+"/100\n土壤状况："+e.soil+"/100\n野生生物承载："+e.wildlife+"/100\n污染压力："+e.pollution+"/100\n模拟普通居民："+population+"人\n综合判断："+harvest+"\n说明：指数仅用于模拟环境变化，不是官方地理测量；班德尔城与暗影岛属于特殊生态，不参与普通农耕逻辑。"
         }
     }
 
@@ -2524,7 +2524,7 @@ private fun craftBonus(region:String):Int = when(region) {
             val artisans=residents.count { it.job=="工匠" }
             val traders=residents.count { it.job=="商贩" }
             val guards=residents.count { it.job=="护卫" }
-            "【"+name+"】\\n所属区域："+region+"\\n实体类型："+meta.type+"\\n可居住性："+(if(meta.habitable)"可作为常规居住点" else "非普通居民居住地")+"\\n说明："+meta.note+"\\n常住居民："+(if(meta.habitable)residents.size.toString()+"人" else "不适用")+"\\n生产与职业：农采"+farmers+"、工匠"+artisans+"、商贩"+traders+"、护卫"+guards+"\\n（人口、职业与聚落活动属于模拟数据；官方地名不代表官方确认了此处的模拟人口。）"
+            "【"+name+"】\n所属区域："+region+"\n实体类型："+meta.type+"\n可居住性："+(if(meta.habitable)"可作为常规居住点" else "非普通居民居住地")+"\n说明："+meta.note+"\n常住居民："+(if(meta.habitable)residents.size.toString()+"人" else "不适用")+"\n生产与职业：农采"+farmers+"、工匠"+artisans+"、商贩"+traders+"、护卫"+guards+"\n（人口、职业与聚落活动属于模拟数据；官方地名不代表官方确认了此处的模拟人口。）"
         } }.sorted()
     }
     fun factionDirectory(context:Context):List<String> {
@@ -2561,7 +2561,7 @@ private fun craftBonus(region:String):Int = when(region) {
             val members=all.filter { it.householdId==h.id }; val living=members.filter { it.alive }
             val location=living.groupBy { it.region+" · "+it.settlement }.maxByOrNull { it.value.size }?.key ?: "无在世成员"
             val names=living.sortedBy { it.age }.joinToString("、") { it.name }.ifBlank { "无在世成员" }
-            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；共同储粮会优先补给口粮不足的儿童、病弱成员及其他缺粮者。共同资产仍未接入市场采购、住房和工资制度。"
+            "【家庭 ${h.id}】\n主要居住地：$location\n成员：$names\n成员总数：${members.size}（在世${living.size}）\n共同储粮：${h.foodReserve}\n共同资产：${h.sharedWealth}\n建立记录：第${h.foundedDay}日\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；共同储粮会优先补给口粮不足的儿童、病弱成员及其他缺粮者。共同资产仍未接入市场采购、住房和工资制度。"
         }.sortedBy { it.substringBefore("】") }
     }
     fun lineageDirectory(context:Context):List<String>{
@@ -2576,11 +2576,11 @@ private fun craftBonus(region:String):Int = when(region) {
         )
         val rows=groups.map{(name,description,rule)->
             val count=living.count{it.lineage==name}
-            "【${name}】\\n当前模拟在世人口：${count}\\n世界设定：${description}\\n运行规则：${rule}\\n注意：人口数量和寿命参数均为模拟数据，不是官方人口统计。"
+            "【${name}】\n当前模拟在世人口：${count}\n世界设定：${description}\n运行规则：${rule}\n注意：人口数量和寿命参数均为模拟数据，不是官方人口统计。"
         }.toMutableList()
         val yordles=heroAgents(p).filter{it.name in setOf("提莫","崔丝塔娜","璐璐","兰博","库奇","维迦","黑默丁格")}
-        rows.add("【约德尔人】\\n独立特殊社群：约德尔人不混入普通人类居民人口。当前已登记重要人物：${yordles.size}位（${yordles.joinToString("、"){it.name}}）。\\n世界设定：班德尔城位于精神领域，入口与符文之地相连；入口并非随时对所有人开放。约德尔人的时间体验与凡人不同，不能直接套用人类人口年龄模型。\\n运行规则：约德尔人物作为独立世界行动者记录，不计入普通居民出生、死亡与市场人口。")
-        rows.add("【其他特殊存在】\\n飞升者、暗裔、半神、星灵、亡灵与虚空生物按独立超自然实体处理，不归入普通居民族群；其存在与活动通过英雄行动、组织、地区魔法和世界危机影响凡人社会。")
+        rows.add("【约德尔人】\n独立特殊社群：约德尔人不混入普通人类居民人口。当前已登记重要人物：${yordles.size}位（${yordles.joinToString("、"){it.name}}）。\n世界设定：班德尔城位于精神领域，入口与符文之地相连；入口并非随时对所有人开放。约德尔人的时间体验与凡人不同，不能直接套用人类人口年龄模型。\n运行规则：约德尔人物作为独立世界行动者记录，不计入普通居民出生、死亡与市场人口。")
+        rows.add("【其他特殊存在】\n飞升者、暗裔、半神、星灵、亡灵与虚空生物按独立超自然实体处理，不归入普通居民族群；其存在与活动通过英雄行动、组织、地区魔法和世界危机影响凡人社会。")
         return rows
     }
     fun residentDirectory(context:Context):List<String> {
