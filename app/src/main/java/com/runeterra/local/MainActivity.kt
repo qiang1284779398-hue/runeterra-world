@@ -125,7 +125,7 @@ class MainActivity : Activity() {
             setPadding(24,12,24,8)
         }
         val hint=TextView(this).apply {
-            text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
+            text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。状态每 2 秒刷新；正文不会自动重绘，点击“手动刷新当前记录”查看最新内容。"
             textSize=13f
             setPadding(0,0,0,12)
         }
@@ -140,6 +140,10 @@ class MainActivity : Activity() {
         eventSwitches.addView(worldEventsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         eventSwitches.addView(interactionsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val spinner=Spinner(this)
+        val refreshButton=Button(this).apply {
+            text="手动刷新当前记录"
+            isAllCaps=false
+        }
         val output=TextView(this).apply {
             textSize=14f
             setTextIsSelectable(true)
@@ -152,6 +156,7 @@ class MainActivity : Activity() {
         panel.addView(switches)
         panel.addView(eventSwitches)
         panel.addView(spinner,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
+        panel.addView(refreshButton,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         panel.addView(scroll,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         val dialog=AlertDialog.Builder(this)
             .setTitle("符文之地 · 人物与世界观察台")
@@ -186,6 +191,8 @@ class MainActivity : Activity() {
                 observer.addOnPreDrawListener(restorePosition)
             }
         }
+        refreshButton.setOnClickListener { showSelected() }
+
         fun loadKind(nextKind:String) {
             kind=nextKind
             val names=WorldEngine.observationNames(this,kind)
@@ -225,7 +232,8 @@ class MainActivity : Activity() {
                             spinner.setSelection(position)
                         }
                     }
-                    showSelected()
+                    // 正文绝不随 2 秒状态轮询而重绘，避免阅读时滚动位置跳动。
+                    // 用户需要最新内容时，点击“手动刷新当前记录”。
                     handler.postDelayed(this,2000L)
                 }
             }
