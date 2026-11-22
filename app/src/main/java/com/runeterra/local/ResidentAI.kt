@@ -37,7 +37,11 @@ object ResidentAI {
  @Synchronized private fun connect(c:Context){app=c.applicationContext;if(remote!=null||binding||bound)return;try{binding=true;val ok=app!!.bindService(Intent(app,AIInferenceService::class.java),connection,Context.BIND_AUTO_CREATE);bound=ok;if(!ok){binding=false;record("bindService返回false")}}catch(e:Throwable){binding=false;record("绑定AI进程失败："+e.message)}}
  private fun send(what:Int,b:Bundle,cb:(Boolean,String)->Unit){val id=ids.getAndIncrement();b.putLong("id",id);pending[id]=cb;val r=remote;if(r==null){pending.remove(id);cb(false,"AI独立进程未连接，请重新连接后重试");return};try{val m=Message.obtain(null,what);m.data=b;m.replyTo=incoming;r.send(m);main.postDelayed({pending.remove(id)?.invoke(false,"AI请求超时或AI进程崩溃；主模拟器进程仍然存活")},300000)}catch(e:Throwable){pending.remove(id);cb(false,"IPC发送失败："+e.message)}}
  fun load(context:Context,p:String,callback:(String?)->Unit){path=p;connect(context);if(loading){callback("模型正在加载");return};loading=true;loaded=false;record("请求AI独立进程加载模型；存在="+File(p).exists()+"；大小="+File(p).length());main.postDelayed({if(remote==null){loading=false;callback("AI进程尚未连接；请稍后再次点击加载") }else send(LOAD,Bundle().apply{putString("path",p)}){ok,result->loading=false;loaded=ok;callback(if(ok)null else result.ifBlank{"模型加载失败"})}},900)}
- fun unload(){loaded=false;try{remote?.send(Message.obtain(null,UNLOAD))}catch(_:Throwable){};record("请求卸载AI模型")}
+ fun unload(callback:(Boolean,String)->Unit = { _, _ -> }) {
+  loaded=false
+  record("请求卸载AI模型")
+  send(UNLOAD,Bundle(),callback)
+ }
  fun isLoaded()=loaded
  fun isLoading()=loading
  fun modelPath()=path
