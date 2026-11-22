@@ -11,6 +11,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
+import java.security.MessageDigest
 
 class AIInferenceService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -60,6 +61,19 @@ class AIInferenceService : Service() {
     // The 1.7B GGUF is below 2 GB. Keep its context conservative on mobile.
     private fun small(p: String) = File(p).length() <= 2_000L * 1024L * 1024L
 
+    private fun sha256(file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered(1024 * 1024).use { input ->
+            val buffer = ByteArray(1024 * 1024)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
     private fun handle(msg: Message) {
         val id = msg.data.getLong("id")
         val to = msg.replyTo
@@ -74,6 +88,10 @@ class AIInferenceService : Service() {
                             model?.let { Llama.releaseModel(it) }
                             model = null
                             val isSmall = small(p)
+                            val hash = sha256(File(p))
+                            val expectedQwen17b = "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
+                            val officialMatch = hash.equals(expectedQwen17b, ignoreCase = true)
+                            Log.i("RuneterraAI", "模型SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch")
                             val context = if (isSmall) 1024 else 1536
                             val threads = if (isSmall) 2 else 3
                             Log.i(
@@ -93,7 +111,7 @@ class AIInferenceService : Service() {
                             )
                             model = loaded
                             modelPath = p
-                            reply(to, id, true, load = true)
+                            reply(to, id, true, "SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch", true)
                         } catch (e: Throwable) {
                             Log.e("RuneterraAI", "模型加载异常", e)
                             reply(to, id, false, e.message ?: e.toString(), true)
