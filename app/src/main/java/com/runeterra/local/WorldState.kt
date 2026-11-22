@@ -2669,9 +2669,17 @@ private fun craftBonus(region:String):Int = when(region) {
         val active=all.filter { it.alive }
         if(active.isEmpty()) return
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
-        val hero=active[cursor]
-        p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
         val day=p.getLong(KEY_DAY,1L)
+        // Unanswered historical opportunities jump the ordinary round-robin queue so major events
+        // are not lost behind routine cognition turns while the world clock advances rapidly.
+        val urgentIndex=active.indexOfFirst { candidate ->
+            val opportunity=candidate.memory.lastOrNull { it.contains("【历史事件接驳机会") }
+            val opportunityDay=opportunity?.let { Regex("""第(\\d+)日""").find(it)?.groupValues?.getOrNull(1)?.toLongOrNull() } ?: -1L
+            opportunityDay>candidate.lastThoughtDay
+        }
+        val selectedIndex=if(urgentIndex>=0) urgentIndex else cursor
+        val hero=active[selectedIndex]
+        p.edit().putInt(KEY_HERO_AI_CURSOR,(if(urgentIndex>=0) selectedIndex+1 else cursor+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
         val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
         val faction=factionStates(p)[hero.region]
