@@ -91,13 +91,13 @@ object WorldEngine {
             else -> "旧存档：未能确认历史起点；建议重置后从指定时代开始"
         }
         return listOf(
-            "【当前历史锚点】\\n$phase\\n模拟纪年：第${day}日（不是官方公历年份）\\n官方时间线定位：以诺克萨斯第一次入侵艾欧尼亚之前作为起点；官方背景没有给出可直接换算的统一公历日期。",
-            "【历史事实与模拟分支的边界】\\n福光岛灾变／破败之咒属于遥远的既往历史，不会在本次模拟中作为新发生的事件重演；暗影岛的黑雾与佛耶戈封印状态属于开局背景。\\n诺克萨斯第一次入侵艾欧尼亚是未来可能发生的重大历史转折，必须由外交、军政、补给与组织条件共同促成。",
-            "【后续事件原则】\\n重大事件不按固定模拟日强制播放。事件触发需要满足前置条件；战事结束后才记录战后余波。模拟产生的结果属于本世界分支历史，不冒充官方正史。",
-            "【存档提示】\\n如果这是在旧版本中已经运行过的存档，单纯显示新历史锚点不会改写旧人物经历；如需严格从该时期开始，请使用重置世界建立新存档。"
+            "【当前历史锚点】\n$phase\n模拟纪年：第${day}日（不是官方公历年份）\n官方时间线定位：以诺克萨斯第一次入侵艾欧尼亚之前作为起点；官方背景没有给出可直接换算的统一公历日期。",
+            "【历史事实与模拟分支的边界】\n福光岛灾变／破败之咒属于遥远的既往历史，不会在本次模拟中作为新发生的事件重演；暗影岛的黑雾与佛耶戈封印状态属于开局背景。\n诺克萨斯第一次入侵艾欧尼亚是未来可能发生的重大历史转折，必须由外交、军政、补给与组织条件共同促成。",
+            "【后续事件原则】\n重大事件不按固定模拟日强制播放。事件触发需要满足前置条件；战事结束后才记录战后余波。模拟产生的结果属于本世界分支历史，不冒充官方正史。",
+            "【存档提示】\n如果这是在旧版本中已经运行过的存档，单纯显示新历史锚点不会改写旧人物经历；如需严格从该时期开始，请使用重置世界建立新存档。"
         )
     }
-    fun timelineStatus(context:Context):String = timelineDirectory(context).firstOrNull()?.substringBefore("\\n")?.removePrefix("【")?.removeSuffix("】") ?: "历史锚点未设定"
+    fun timelineStatus(context:Context):String = timelineDirectory(context).firstOrNull()?.substringBefore("\n")?.removePrefix("【")?.removeSuffix("】") ?: "历史锚点未设定"
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
@@ -363,7 +363,12 @@ object WorldEngine {
                         h.status="执行秘密任务；具体行动不为外界所知"
                     }
                     "艾瑞莉娅" -> {
-                        h.status="生活于艾欧尼亚地方社群；尚未因诺克萨斯入侵而成为抵抗运动领袖"
+                        if(p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                            h.role="艾欧尼亚抵抗者"
+                            h.goal="守护艾欧尼亚并组织地方抵抗"
+                            h.status="诺克萨斯入侵后参与组织艾欧尼亚地方抵抗；具体经历由本世界事件生成"
+                            h.influence=(h.influence+1).coerceAtMost(100)
+                        } else h.status="生活于艾欧尼亚地方社群；尚未因诺克萨斯入侵而成为抵抗运动领袖"
                     }
                     "阿卡丽" -> {
                         h.status="独立行动；不受均衡教派或影流直接指挥"
