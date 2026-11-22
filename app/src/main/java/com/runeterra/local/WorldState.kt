@@ -2105,7 +2105,7 @@ private fun craftBonus(region:String):Int = when(region) {
                                     val received=latest.mindMemory.any { it.contains("天道干预") || it.contains("外部信息") }
                                     latest.goal=if(received) "核验收到的外部信息，并研究世界规律" else "观察身边现象，寻找可验证的世界规律"
                                     val note=if(received) "开始独立整理天道信息与亲历证据，区分观察、传闻、推测和未知；目前没有足够证据证明信息内容。" else "开始留意身边自然、魔法与社会现象，尝试提出可验证的问题；尚未获得确定结论。"
-                                    latest.mindMemory.add("研究行动：\${note}")
+                                    latest.mindMemory.add("研究行动：${note}")
                                     recordLife(latest,day,note,"resident_independent_inquiry")
                                 }
                                 "discuss_world" -> {
@@ -2116,10 +2116,10 @@ private fun craftBonus(region:String):Int = when(region) {
                                     }
                                     if(confidant!=null) {
                                         val topic=latest.mindMemory.lastOrNull { it.contains("天道干预") || it.contains("世界规律") } ?: "关于世界与自身处境的疑问"
-                                        latest.mindMemory.add("交流行动：我与\${confidant.name}讨论了\${topic}。对方的真实看法尚未记录，不能推定其赞同。")
-                                        confidant.mindMemory.add("交流经历：\${latest.name}与我谈到\${topic}；我是否认同仍由自己的判断决定。")
-                                        recordLife(latest,day,"与可信关系\${confidant.name}交流关于世界本质或异常信息的疑问；没有预设对方立场。","resident_belief_discussion")
-                                        recordLife(confidant,day,"与\${latest.name}交流关于世界本质或异常信息的疑问；交流内容不代表双方达成共识。","resident_belief_discussion")
+                                        latest.mindMemory.add("交流行动：我与${confidant.name}讨论了${topic}。对方的真实看法尚未记录，不能推定其赞同。")
+                                        confidant.mindMemory.add("交流经历：${latest.name}与我谈到${topic}；我是否认同仍由自己的判断决定。")
+                                        recordLife(latest,day,"与可信关系${confidant.name}交流关于世界本质或异常信息的疑问；没有预设对方立场。","resident_belief_discussion")
+                                        recordLife(confidant,day,"与${latest.name}交流关于世界本质或异常信息的疑问；交流内容不代表双方达成共识。","resident_belief_discussion")
                                         while(confidant.mindMemory.size>120) confidant.mindMemory.removeAt(0)
                                         savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; confidant.id -> confidant; else -> person } })
                                     } else latest.mindMemory.add("交流行动：目前没有同地且可信的关系对象，暂未进行讨论。")
@@ -2182,7 +2182,7 @@ private fun craftBonus(region:String):Int = when(region) {
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
             "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；目标："+hero.goal+"。\n"+
-            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+
+            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
@@ -2204,7 +2204,15 @@ private fun craftBonus(region:String):Int = when(region) {
                         val localGroup=groups.filter { it.region==heroNow.region }.maxByOrNull { it.influence+it.publicSupport/2 }
                         val outcome=when(action) {
                             "train" -> { heroNow.influence=(heroNow.influence+1).coerceAtMost(100); "训练或准备，模拟影响力小幅变化" }
-                            "investigate" -> { if(localGroup!=null) localGroup.influence=(localGroup.influence+1).coerceAtMost(100); "调查可接触的当地事务，未自动获得秘密情报" }
+                            "investigate" -> {
+                                if(heroNow.memory.any { it.contains("天道干预") || it.contains("外部信息") }) {
+                                    heroNow.memory.add("第"+day+"日：开始独立核验收到的外部信息，区分亲历、传闻、推测与未知；尚未证明其真实性。")
+                                    "开始研究天道信息并寻找可验证证据，尚无结论"
+                                } else {
+                                    if(localGroup!=null) localGroup.influence=(localGroup.influence+1).coerceAtMost(100)
+                                    "调查可接触的当地事务，未自动获得秘密情报"
+                                }
+                            }
                             "negotiate" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
                             "aid" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "投入当地社群事务，影响限于本地组织" }
                             else -> "决定维持当前安排"
