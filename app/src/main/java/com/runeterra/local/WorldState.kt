@@ -3307,7 +3307,7 @@ private fun craftBonus(region:String):Int = when(region) {
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age}).map {
-            "${it.id}｜${it.name}｜${it.lineage}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
+            "${it.id}｜${it.name}｜${it.lineage}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜活动：${it.dailyActivity}｜疲劳${it.fatigue}｜状态${it.morale}｜${if(it.alive)"在世" else "已故"}"
         }
     }
     // Stable export API: returns recorded biography text, or null when the resident does not exist.
@@ -3340,6 +3340,7 @@ private fun craftBonus(region:String):Int = when(region) {
             append("【人物基础资料】\n生命类别：${r.lineage}\n年龄：${r.age}岁\n性别：${r.gender}\n外貌：${r.appearance}\n能力：${r.abilities}\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n")
             append("当前地区：${r.region}\n当前聚落：${r.settlement.ifBlank { "未记录" }}\n当前职业：${r.job}\n")
             append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
+            append("当前生活活动：${r.dailyActivity}\n疲劳程度：${r.fatigue}/100｜生活状态：${r.morale}/100\n说明：活动与状态由持续生活模拟更新；不是强制剧情，也不意味着人物拥有真实人类意识。\n")
             append("\n【个人认知状态】\n说明：带有“本地模型推理”标记的思考来自已加载的 GGUF 本地模型；其他旧记录可能来自世界模拟规则。\n人格倾向值：${r.mindTrait}/100\n当前信念：${r.belief}\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\n当前意图：${r.intent}\n认知记忆：${r.mindMemory.size}条\n")
             append("\n【个人认知与记忆时间线】\n")
             if(r.mindMemory.isEmpty()) append("尚无保存的个人认知记忆。\n")
