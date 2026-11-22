@@ -120,19 +120,41 @@ object WorldEngine {
         saveHeroes(p,agents)
     }
     private const val KEY_FACTIONS="factions_state"
-    private data class Faction(var name:String,var leader:String,var military:Int,var stability:Int,var treasury:Int,var territory:MutableList<String>)
+    private data class Faction(
+        var name:String,var leader:String,var military:Int,var stability:Int,var treasury:Int,
+        var territory:MutableList<String>,
+        var government:String="",var rulingBloc:String="",var opposition:String="",
+        var policy:String="",var internalTension:Int=20
+    )
+    private data class FactionLore(
+        val government:String,val rulingBloc:String,val opposition:String,val policy:String,
+        val leader:String
+    )
+    // Lore-grounded institutional identities. Simulated political changes are alternate history, not canon.
+    private val factionLore=mapOf(
+        "德玛西亚" to FactionLore("王国君主制","冕卫家族与王室支持者","法师社群、改革派贵族与反禁魔者","维护王国秩序；围绕魔法管制产生持续政治争议","嘉文四世"),
+        "诺克萨斯" to FactionLore("扩张型帝国；崔法利议会主导","崔法利议会与诺克萨斯军方","地方总督、旧贵族及反扩张势力","以力量与功绩晋升，持续争夺边境与影响力","崔法利议会"),
+        "艾欧尼亚" to FactionLore("多地灵性传统并存；无统一中央政权","地方长老、寺院与抵抗组织","亲诺克萨斯合作者、地方割据者与路线分歧派","守护土地与精神传统，同时处理战争创伤和自治分歧","地方议会与长老"),
+        "皮尔特沃夫" to FactionLore("城邦议会与精英家族影响","议会、贸易家族与工坊巨头","底层工人、改革派与反垄断团体","推动海克斯科技、贸易和城市秩序，承受阶层压力","皮尔特沃夫议会"),
+        "祖安" to FactionLore("地下城邦；工坊、帮派与企业势力并立","化学男爵及大型工坊势力","工人社区、独立发明家与反企业组织","争夺资源、空气与生存空间，科技繁荣伴随污染和剥削","化学男爵议会"),
+        "弗雷尔卓德" to FactionLore("部族联盟与氏族政治","各部族首领及联盟","敌对部族、流亡者与争夺资源的氏族","在严酷环境中争夺生存资源、盟约与部族领导权","部族首领议会"),
+        "恕瑞玛" to FactionLore("帝国复兴与绿洲城邦并存","太阳圆盘信仰者、复兴势力与地方统治者","独立城邦、反帝国势力与掠夺集团","争夺古代遗产、水源、商路与帝国合法性","复兴势力代表"),
+        "巨神峰" to FactionLore("山地城邦、宗教组织与星灵影响","烈阳教派与地方守护者","皎月教派及不同信仰群体","信仰、登山朝圣与星灵力量影响地方秩序","烈阳教派长老"),
+        "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","海盗 rival 船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
+        "以绪塔尔" to FactionLore("隐秘城邦与元素魔法贵族治理","以绪奥肯统治阶层与元素法师","边境探索者、异议者与外来势力","维持隔绝与元素秩序，防止外界发现其文明","以绪奥肯统治者")
+    )
     private fun factionStates(p:android.content.SharedPreferences):MutableMap<String,Faction> {
         val raw=p.getString(KEY_FACTIONS,null)
         if(raw!=null) runCatching {
             val a=JSONArray(raw);val map=mutableMapOf<String,Faction>()
-            for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();map[j.optString("name")]=Faction(j.optString("name"),j.optString("leader"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list)}
+            for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();val name=j.optString("name");val lore=factionLore[name];map[name]=Faction(name,j.optString("leader",lore?.leader?:"地方统治者"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list,j.optString("government",lore?.government?:"地方政体"),j.optString("rulingBloc",lore?.rulingBloc?:"地方统治集团"),j.optString("opposition",lore?.opposition?:"地方反对势力"),j.optString("policy",lore?.policy?:"维持地方秩序"),j.optInt("internalTension",20))}
             if(map.size>=regions.size)return map
         }
-        val initial=regions.associateWith { r -> Faction(r,"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r)) }.toMutableMap()
+        val initial=regions.associateWith { r -> Faction(r,factionLore[r]?.leader?:"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?:"地方政体",factionLore[r]?.rulingBloc?:"地方统治集团",factionLore[r]?.opposition?:"地方反对势力",factionLore[r]?.policy?:"维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30)) }.toMutableMap()
         saveFactions(p,initial);return initial
     }
     private fun saveFactions(p:android.content.SharedPreferences,map:Map<String,Faction>){
-        p.edit().putString(KEY_FACTIONS,JSONArray().apply{map.values.forEach{f->put(JSONObject().put("name",f.name).put("leader",f.leader).put("military",f.military).put("stability",f.stability).put("treasury",f.treasury).put("territory",JSONArray(f.territory)))}}.toString()).apply()
+        p.edit().putString(KEY_FACTIONS,JSONArray().apply{map.values.forEach{f->put(JSONObject().put("name",f.name).put("leader",f.leader).put("military",f.military).put("stability",f.stability).put("treasury",f.treasury).put("territory",JSONArray(f.territory)).put("government",f.government).put("rulingBloc",f.rulingBloc).put("opposition",f.opposition).put("policy",f.policy).put("internalTension",f.internalTension))}}.toString()).apply()
     }
     private fun tickFactionGovernance(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
         if(day%30L!=0L)return
@@ -141,7 +163,12 @@ object WorldEngine {
             val count=pop.count{it.alive&&it.region in f.territory}
             val marketWealth=f.territory.sumOf{markets[it]?.wealth?:0}
             f.treasury=(f.treasury+count/5+marketWealth/1000-rng.nextInt(8)).coerceAtLeast(0)
-            f.stability=(f.stability+(if(count>0)1 else -2)+(if(f.treasury<150) -3 else 1)).coerceIn(0,100)
+            f.internalTension=(f.internalTension+(rng.nextInt(7)-3)+(if(f.stability<35)2 else 0)+(if(f.treasury<150)2 else 0)).coerceIn(0,100)
+            f.stability=(f.stability+(if(count>0)1 else -2)+(if(f.treasury<150) -3 else 1)+(if(f.internalTension>75)-2 else 0)).coerceIn(0,100)
+            if(f.internalTension>=75 && rng.nextInt(100)<18) {
+                events.add("【势力内政·模拟】第 $day 日：${f.name}内部矛盾激化，${f.rulingBloc}与${f.opposition}围绕「${f.policy}」发生政治冲突。")
+                f.stability=(f.stability-2).coerceAtLeast(0)
+            }
             f.military=(f.military+if(f.treasury>800 && rng.nextInt(100)<10)5 else 0).coerceAtMost(10000)
             if(f.stability<25 && rng.nextInt(100)<12){
                 events.add("【政局】第 $day 日：${f.name}局势动荡，财政${f.treasury}，稳定度${f.stability}；出现抗议、权力斗争或地方自治迹象。")
@@ -496,6 +523,13 @@ object WorldEngine {
         p.edit().putInt(KEY_NEXT_ID,nextId)
             .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
+    }
+    fun factionDirectory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val states=factionStates(p)
+        return states.values.sortedBy{it.name}.map { f ->
+            "【${f.name}】\\n政体：${f.government}\\n统治集团：${f.rulingBloc}\\n内部反对力量：${f.opposition}\\n当前政策：${f.policy}\\n主要领袖/机构：${f.leader}\\n军力：${f.military}｜财政：${f.treasury}｜稳定度：${f.stability}｜内部矛盾：${f.internalTension}\\n控制地区：${f.territory.joinToString("、")}\\n（势力政治变化属于模拟历史分支，不代表官方剧情。）"
+        }
     }
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
