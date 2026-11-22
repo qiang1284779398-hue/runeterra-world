@@ -1828,6 +1828,70 @@ private fun craftBonus(region:String):Int = when(region) {
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
         return WorldSnapshot(p.getLong(KEY_DAY,1L),people(p).count { it.alive },events,p.getBoolean(KEY_RUNNING,false))
     }
+    @Volatile private var localInferenceBusy=false
+    private const val KEY_AI_CURSOR="resident_ai_cursor"
+
+    /**
+     * Runs one real local-model decision at a time. Every resident keeps separate
+     * memories and context; the shared model is never duplicated per resident.
+     */
+    fun requestLocalResidentThinking(context:Context) {
+        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val living=people(p).filter { it.alive }
+        if(living.isEmpty()) return
+        val cursor=p.getInt(KEY_AI_CURSOR,0).let { if(it<0) 0 else it%living.size }
+        val r=living[cursor]
+        p.edit().putInt(KEY_AI_CURSOR,(cursor+1)%living.size).apply()
+        val day=p.getLong(KEY_DAY,1L)
+        val prompt="""你是符文之地世界中一名真实生活的普通居民的个人认知系统。你只能知道此人的经历和下列有限观察，不能全知，不能替其他人决定。
+人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
+人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}；最近记忆：${r.mindMemory.takeLast(8).joinToString("；")}。
+当前世界日期：第${day}日。
+请基于这个人的处境作出一个有个人立场的判断。不要编造未提供的经历或知识。
+只返回一个JSON对象，字段为 thought（第一人称思考，1-3句）、belief（可保持或修正信念）、intent（当前意图）、goal（短期目标）、action（只能是 stay、seek_food、seek_work、change_job 之一）、new_job（仅change_job时填写，限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒之一）。"""
+        localInferenceBusy=true
+        ResidentAI.ask(prompt) { raw ->
+            try {
+                val start=raw.indexOf('{')
+                val end=raw.lastIndexOf('}')
+                if(start>=0 && end>start) {
+                    val result=JSONObject(raw.substring(start,end+1))
+                    val latest=people(p).firstOrNull { it.id==r.id && it.alive }
+                    if(latest!=null) {
+                        val thought=result.optString("thought").take(700)
+                        if(thought.isNotBlank()) {
+                            latest.currentThought="第${day}日（本地模型推理）：${thought}"
+                            latest.belief=result.optString("belief",latest.belief).take(180)
+                            latest.intent=result.optString("intent",latest.intent).take(180)
+                            latest.goal=result.optString("goal",latest.goal).take(180)
+                            latest.mindMemory.add(latest.currentThought+"（信念："+latest.belief+"）")
+                            while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
+                            when(result.optString("action")) {
+                                "seek_food" -> latest.goal="寻找食物与可靠补给"
+                                "seek_work" -> latest.goal="寻找新的谋生机会"
+                                "change_job" -> {
+                                    val allowed=setOf("农夫","采集者","药师","商贩","工匠","矿工","护卫","学徒")
+                                    val next=result.optString("new_job")
+                                    if(next in allowed && latest.age in 16..69 && latest.travelDaysRemaining<=0 && next!=latest.job) {
+                                        val old=latest.job
+                                        latest.job=next
+                                        recordLife(latest,day,"经过本地AI独立评估，决定由${old}转为${next}。","local_ai_decision")
+                                    }
+                                }
+                            }
+                            savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
+                        }
+                    }
+                }
+            } catch(_:Throwable) {
+                // Invalid model output is ignored; no fictional event is written.
+            } finally {
+                localInferenceBusy=false
+            }
+        }
+    }
+
     fun advance(context: Context, days: Int=1): WorldSnapshot {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
