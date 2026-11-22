@@ -28,13 +28,14 @@ private data class Resident(
      var lifespanYears: Int = 95,
      var storyRecords: MutableList<String> = mutableListOf(),
     var mindTrait: Int = 50, var belief: String = "重视生存与身边的人", var currentThought: String = "",
-    var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf()
+    var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf(),
+    var gender:String="未记录", var appearance:String="", var abilities:String=""
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory))
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -46,7 +47,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList())
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""))
     }
 }
 
@@ -377,11 +378,16 @@ object WorldEngine {
     )
     private const val KEY_HEROES="heroes_state"
     private data class HeroAgent(
-        val name:String,val region:String,var role:String,var status:String,var goal:String,var influence:Int,
+        val name:String,var region:String,var role:String,var status:String,var goal:String,var influence:Int,
         var belief:String="尚未记录稳定的个人信念", var thought:String="", var intent:String="",
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
-        var lastThoughtDay:Long=0L
+        var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true
     )
+    private fun canonicalGender(name:String):String = when(name) {
+        "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
+        "盖伦","嘉文四世","斯维因","德莱厄斯","慎","劫","杰斯","艾克","提莫","兰博","库奇","维迦","黑默丁格","内瑟斯","雷克顿","亚托克斯","佛耶戈","锤石","瑞兹","奥恩","沃利贝尔","潘森","莫德凯撒" -> "男性"
+        else -> "未记录"
+    }
     private val heroSeeds=listOf(
         HeroAgent("盖伦","德玛西亚","战士","活跃","维护德玛西亚秩序",70),
         HeroAgent("拉克丝","德玛西亚","法师","隐藏身份","保护秘密与自由",65),
@@ -442,7 +448,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -451,7 +457,7 @@ object WorldEngine {
         return heroSeeds.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
