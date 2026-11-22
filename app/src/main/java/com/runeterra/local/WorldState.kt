@@ -571,6 +571,39 @@ object WorldEngine {
                 }
                 // Influence changes only through concrete actions above, not monthly random jitter.
                 events.add("【重要人物行动·模拟】第 $day 日：${h.name}在${h.region}推进「${h.goal}」；当前状态：${h.status}。")
+                // A hero's public or local action may intersect with an ordinary resident, but contact is rare and geographically bounded.
+                val encounterEligible=setOf("盖伦","拉克丝","菲奥娜","卡特琳娜","德莱厄斯","斯维因","艾瑞莉娅","阿卡丽","慎","劫","厄运小姐","俄洛伊","瑟庄妮","艾希","塔莉垭","杰斯","凯特琳","蔚","艾克","奇亚娜","妮蔻","提莫","崔丝塔娜","黑默丁格")
+                if(h.name in encounterEligible && rng.nextInt(100)<8) {
+                    val candidates=pop.filter { resident ->
+                        resident.alive && resident.region==h.region &&
+                            resident.storyRecords.takeLast(80).none { raw ->
+                                runCatching {
+                                    val packet=JSONObject(raw)
+                                    packet.optString("detail").contains("与\${h.name}") &&
+                                        day-packet.optLong("day",day)<180L
+                                }.getOrDefault(false)
+                            }
+                    }
+                    if(candidates.isNotEmpty()) {
+                        val resident=candidates[rng.nextInt(candidates.size)]
+                        val encounter=when(h.name) {
+                            "盖伦","德莱厄斯","瑟庄妮","艾希" -> "在当地公共事务、巡防或部族行动中与\${h.name}发生短暂接触；档案不推定双方成为朋友或建立长期关系"
+                            "拉克丝","阿卡丽","慎","劫","妮蔻" -> "因当地社群事务、求助或行动路线与\${h.name}发生一次接触；接触本身不代表知晓其全部身份与秘密"
+                            "卡特琳娜","斯维因" -> "因军政事务、征募、物资或安全检查与\${h.name}发生有限接触；不推定居民知晓其秘密任务"
+                            "厄运小姐","俄洛伊" -> "在港口、航运或布胡鲁社群事务中与\${h.name}发生接触"
+                            "杰斯","黑默丁格" -> "因工坊、技术活动或公共研究事务与\${h.name}发生接触"
+                            "凯特琳","蔚" -> "在执法调查、街区安全或案件相关事务中与\${h.name}发生接触；不推定居民是案件当事人"
+                            "艾克" -> "在祖安街区互助、维修或社区安全事务中与\${h.name}发生接触"
+                            "奇亚娜" -> "因以绪塔尔地方事务或元素秩序相关活动与\${h.name}发生接触"
+                            "塔莉垭" -> "在沙漠旅途、村落互助或迁徙路线中与\${h.name}发生接触"
+                            "提莫","崔丝塔娜" -> "在边境巡查或跨界旅者活动中与\${h.name}短暂相遇；居民未必理解其约德尔人身份"
+                            else -> "在当地事务中与\${h.name}发生一次有限接触"
+                        }
+                        val detail="与\${h.name}发生交集：\${encounter}。这是本世界模拟生成的普通居民经历，不代表官方正史，也不自动意味着亲密关系、长期合作或英雄亲自改变其命运。"
+                        recordLife(resident,day,detail,"direct_hero_encounter")
+                        events.add("【英雄与居民交集·模拟】第 $day 日：\${resident.name}（\${resident.region}，\${resident.job}）与\${h.name}发生有限接触；具体关系与后果以双方后续模拟记录为准。")
+                    }
+                }
             }
         }
         saveHeroes(p,agents)
