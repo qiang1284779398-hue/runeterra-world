@@ -17,13 +17,18 @@ private data class Resident(
     var friendIds: MutableList<Int> = mutableListOf(),
     var mentorId: Int = -1,
     var studentIds: MutableList<Int> = mutableListOf(),
-    var settlement: String = ""
+    var settlement: String = "",
+     var travelOrigin: String = "",
+     var travelDestination: String = "",
+     var travelDaysRemaining: Int = 0,
+     var travelPurpose: String = "",
+     var jobBeforeTravel: String = ""
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -35,7 +40,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""))
     }
 }
 
@@ -565,7 +570,61 @@ object WorldEngine {
         "班德尔城" -> 0
         else -> 0
     }
-    private fun craftBonus(region:String):Int = when(region) {
+    
+    // Approximate inter-region travel graph; values are simulation days, not canonical measurements.
+    private val routeLinks=mapOf(
+        "德玛西亚" to listOf("诺克萨斯" to 5,"皮尔特沃夫" to 4,"弗雷尔卓德" to 6),
+        "诺克萨斯" to listOf("德玛西亚" to 5,"艾欧尼亚" to 7,"弗雷尔卓德" to 6,"恕瑞玛" to 8),
+        "艾欧尼亚" to listOf("诺克萨斯" to 7,"比尔吉沃特" to 5),
+        "皮尔特沃夫" to listOf("德玛西亚" to 4,"祖安" to 1,"比尔吉沃特" to 5),
+        "祖安" to listOf("皮尔特沃夫" to 1,"比尔吉沃特" to 6),
+        "弗雷尔卓德" to listOf("德玛西亚" to 6,"诺克萨斯" to 6),
+        "恕瑞玛" to listOf("诺克萨斯" to 8,"以绪塔尔" to 6,"比尔吉沃特" to 7,"巨神峰" to 5),
+        "巨神峰" to listOf("恕瑞玛" to 5,"以绪塔尔" to 6),
+        "比尔吉沃特" to listOf("皮尔特沃夫" to 5,"祖安" to 6,"艾欧尼亚" to 5,"恕瑞玛" to 7),
+        "以绪塔尔" to listOf("恕瑞玛" to 6,"巨神峰" to 6)
+    )
+    private fun routeDays(from:String,to:String):Int {
+        if(from==to)return 0
+        val distance=mutableMapOf(from to 0);val pending=mutableSetOf(from)
+        while(pending.isNotEmpty()) {
+            val current=pending.minByOrNull { distance[it]?:Int.MAX_VALUE } ?: break
+            pending.remove(current)
+            if(current==to)return distance[current]?:1
+            routeLinks[current].orEmpty().forEach { (next,cost) ->
+                val candidate=(distance[current]?:0)+cost
+                if(candidate<(distance[next]?:Int.MAX_VALUE)){distance[next]=candidate;pending.add(next)}
+            }
+        }
+        return 9
+    }
+    private fun beginTravel(r:Resident,destination:String,day:Long,events:MutableList<String>,purpose:String) {
+        if(r.travelDaysRemaining>0 || destination==r.region)return
+        r.travelOrigin=r.region;r.travelDestination=destination
+        r.travelDaysRemaining=routeDays(r.region,destination).coerceAtLeast(1)
+        r.travelPurpose=purpose;r.jobBeforeTravel=r.job;r.job="旅人"
+        recordLife(r,day,"从${r.region}出发，踏上前往${destination}的旅途，目的：${purpose}，预计约${r.travelDaysRemaining}个模拟日。")
+        events.add("【旅行·模拟】第 $day 日：${r.name}离开${r.region}，前往${destination}。")
+    }
+    private fun tickTravel(r:Resident,day:Long,events:MutableList<String>,rng:Random):Boolean {
+        if(r.travelDaysRemaining<=0)return false
+        r.travelDaysRemaining--
+        if(rng.nextInt(100)<2) {
+            r.health=(r.health-3).coerceAtLeast(0)
+            recordLife(r,day,"旅途中遭遇意外，健康受损。")
+            events.add("【旅途意外·模拟】第 $day 日：${r.name}在前往${r.travelDestination}的途中受伤。")
+        }
+        if(r.travelDaysRemaining<=0) {
+            val destination=r.travelDestination;val origin=r.travelOrigin
+            r.region=destination;r.settlement=defaultSettlement(destination,r.id)
+            r.job=if(r.jobBeforeTravel.isNotBlank())r.jobBeforeTravel else "旅人"
+            recordLife(r,day,"结束从${origin}到${destination}的旅程，抵达${r.settlement}。")
+            events.add("【旅行抵达·模拟】第 $day 日：${r.name}抵达${destination}的${r.settlement}。")
+            r.travelOrigin="";r.travelDestination="";r.travelPurpose="";r.jobBeforeTravel=""
+        }
+        return true
+    }
+private fun craftBonus(region:String):Int = when(region) {
         "皮尔特沃夫","祖安" -> 2
         "艾欧尼亚" -> 1
         else -> 0
@@ -643,6 +702,7 @@ object WorldEngine {
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
+                if(tickTravel(r,day,events,rng)) return@forEach
                 if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
                     "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(12+rng.nextInt(9)+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
@@ -706,12 +766,7 @@ object WorldEngine {
                         val crowd=pop.count { it.alive && it.region==candidate }
                         supply-crowd*2+(markets[candidate]?.wealth?:0)/100
                     } ?: oldRegion
-                    if(next!=oldRegion) {
-                        r.region=next
-                        r.settlement=defaultSettlement(next,r.id)
-                        recordLife(r,day,"因生计压力从${oldRegion}迁往${next}，选择当地相对更有粮食与生计条件的${r.settlement}。")
-                        events.add("第 $day 日：${r.name}因生计压力从${oldRegion}迁往${next}。")
-                    }
+                    if(next!=oldRegion) beginTravel(r,next,day,events,"粮食短缺与生计压力")
                 }
                 if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
                     r.alive=false
