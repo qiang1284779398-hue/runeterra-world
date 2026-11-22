@@ -1072,6 +1072,107 @@ object WorldEngine {
         }
         saveEcology(p,state)
     }
+    private const val KEY_FAUNA="regional_fauna_state"
+    private data class FaunaPopulation(
+        val id:String,val region:String,val guild:String,val role:String,
+        var abundance:Int,var health:Int
+    ){
+        fun json()=JSONObject().put("id",id).put("region",region).put("guild",guild)
+            .put("role",role).put("abundance",abundance).put("health",health)
+    }
+    // Guilds are broad ecological roles, not invented canon species or official census counts.
+    private fun faunaSeeds():List<FaunaPopulation>{
+        val seeds=mutableListOf<FaunaPopulation>()
+        fun add(region:String,guild:String,role:String,abundance:Int){
+            seeds.add(FaunaPopulation(region+"|"+guild,region,guild,role,abundance,70))
+        }
+        listOf("德玛西亚","诺克萨斯").forEach{r->
+            add(r,"草食兽群","植被消费者",62);add(r,"林地捕食者","中型捕食者",30);add(r,"鸟类与小型动物","种子传播与昆虫控制",55)
+        }
+        add("艾欧尼亚","森林草食动物","植被消费者",72);add("艾欧尼亚","林地捕食者","中型捕食者",34)
+        add("艾欧尼亚","灵性生态生物","与精神领域关联的特殊生态位",28)
+        add("皮尔特沃夫","沿岸鸟类","沿岸食物网",26);add("皮尔特沃夫","城市小型动物","城市适应型动物",35)
+        add("祖安","耐污染小型动物","受污染环境筛选的动物",16);add("祖安","地下捕食者","地下食物网",9)
+        add("弗雷尔卓德","苔原草食兽群","寒地植被消费者",48);add("弗雷尔卓德","寒地大型捕食者","顶级捕食者",24)
+        add("弗雷尔卓德","冰原鸟类","季节性活动动物",40)
+        add("恕瑞玛","沙漠草食动物","稀疏植被消费者",32);add("恕瑞玛","沙漠捕食者","干旱区捕食者",22)
+        add("恕瑞玛","绿洲水生与鸟类","依赖绿洲水源",28)
+        add("巨神峰","高山动物","高海拔植被消费者",38);add("巨神峰","山地捕食者","山地捕食者",20)
+        add("巨神峰","高山灵性生物","与巨神峰魔法环境相关",18)
+        add("比尔吉沃特","近海鱼群","海洋食物网基础",75);add("比尔吉沃特","海鸟与沿岸动物","海岸生态",62)
+        add("比尔吉沃特","大型海洋捕食者","海洋捕食者",30)
+        add("以绪塔尔","雨林草食动物","雨林植被消费者",82);add("以绪塔尔","雨林捕食者","雨林捕食者",42)
+        add("以绪塔尔","元素环境适应生物","特殊环境生态位",34)
+        add("班德尔城","精神领域小型生物","特殊领域生态",45)
+        add("暗影岛","黑雾衍生灵体","非自然灵体活动",12)
+        return seeds
+    }
+    private fun faunaState(p:android.content.SharedPreferences):MutableList<FaunaPopulation>{
+        val loaded=runCatching{
+            val a=JSONArray(p.getString(KEY_FAUNA,"[]"))
+            (0 until a.length()).map{i->val j=a.getJSONObject(i)
+                FaunaPopulation(j.optString("id"),j.optString("region"),j.optString("guild"),
+                    j.optString("role"),j.optInt("abundance",0),j.optInt("health",50))
+            }.toMutableList()
+        }.getOrDefault(mutableListOf())
+        val ids=loaded.map{it.id}.toSet()
+        faunaSeeds().forEach{seed->if(seed.id !in ids)loaded.add(seed.copy())}
+        return loaded
+    }
+    private fun saveFauna(p:android.content.SharedPreferences,state:List<FaunaPopulation>){
+        p.edit().putString(KEY_FAUNA,JSONArray().apply{state.forEach{put(it.json())}}.toString()).apply()
+    }
+    private fun tickFauna(day:Long,p:android.content.SharedPreferences,ecology:Map<String,Ecology>,pop:List<Resident>,events:MutableList<String>,rng:Random,fauna:MutableList<FaunaPopulation>){
+        if(day%30L!=0L)return
+        fauna.groupBy{it.region}.forEach{(region,groups)->
+            val e=ecology[region]?:return@forEach
+            val herbivores=groups.filter{it.role.contains("植被消费者")||it.role.contains("草食")}.sumOf{it.abundance}
+            groups.forEach{f->
+                val humanPressure=(pop.count{it.alive&&it.region==region}/45).coerceIn(0,4)
+                val habitat=when(f.role){
+                    "非自然灵体活动"->if(e.pollution>=80||e.vegetation<=5)75 else 20
+                    "特殊领域生态"->if(region=="班德尔城")75 else 35
+                    "与精神领域关联的特殊生态位","与巨神峰魔法环境相关","特殊环境生态位"->(e.vegetation+e.water+e.wildlife)/3
+                    "海洋食物网基础","大型海洋捕食者","海岸生态","沿岸食物网"->(e.water+e.wildlife)/2
+                    "依赖绿洲水源"->(e.water+e.vegetation)/2
+                    "寒地植被消费者","顶级捕食者","季节性活动动物"->(100-e.temperature+e.water)/2
+                    "干旱区捕食者","稀疏植被消费者"->(100-e.water+e.temperature)/2
+                    else->(e.vegetation+e.water+e.wildlife)/3
+                }.coerceIn(0,100)
+                val foodSupport=when{
+                    f.role.contains("捕食者")->(herbivores/3).coerceAtMost(100)
+                    f.role.contains("植被消费者")||f.role.contains("草食")->e.vegetation
+                    f.role.contains("海洋")->e.water
+                    else->(e.vegetation+e.water)/2
+                }
+                val target=((habitat*2+foodSupport)/3).coerceIn(0,100)
+                val drift=when{
+                    f.abundance<target-12->2
+                    f.abundance>target+12->-2
+                    else->0
+                }
+                val stress=if(humanPressure>=3)1 else 0
+                val predation=if(f.role.contains("捕食者")&&herbivores<35)2 else 0
+                val special=if(region=="暗影岛") {
+                    if(f.role=="非自然灵体活动") 1 else -4
+                } else 0
+                f.abundance=(f.abundance+drift-stress-predation+special+rng.nextInt(3)-1).coerceIn(0,100)
+                f.health=(f.health+(if(target>55)1 else -1)-stress).coerceIn(0,100)
+                if(f.abundance<=8&&target>=45&&day%360L==0L){
+                    events.add("【生态警讯·模拟】第 "+day+" 日："+region+"的"+f.guild+"数量降至极低水平，栖息地或食物网承受压力。")
+                }
+            }
+        }
+        saveFauna(p,fauna)
+    }
+    fun faunaDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val fauna=faunaState(p)
+        return fauna.groupBy{it.region}.toSortedMap().map{(region,groups)->
+            "【"+region+" · 野生生物群落】\\n"+groups.joinToString("\\n"){it.guild+"："+it.abundance+"/100（健康 "+it.health+"/100；"+it.role+"）"}+
+            "\\n说明：这是按生态功能划分的模拟种群指数，不是官方物种名录或真实数量；暗影岛灵体、班德尔城特殊领域生物不属于普通野生动物。"
+        }
+    }
     private fun foodBonus(region:String,ecology:Map<String,Ecology>):Int {
         val base=when(region) {
             "德玛西亚"->1;"弗雷尔卓德"->0;"恕瑞玛","比尔吉沃特"->-1
@@ -1368,6 +1469,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val households=householdStates(p,pop)
         val markets=markets(p)
         val ecology=ecologyState(p)
+        val fauna=faunaState(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
         var nextHouseholdId=(households.maxOfOrNull { it.id } ?: -1)+1
@@ -1385,6 +1487,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
             tickEcology(day,p,pop,events,rng,ecology)
+            tickFauna(day,p,ecology,pop,events,rng,fauna)
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
