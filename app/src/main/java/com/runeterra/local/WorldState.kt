@@ -51,7 +51,7 @@ object WorldEngine {
     private const val KEY_MAGIC="magic_regions"
     private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
         val raw=p.getString(KEY_MAGIC,null)
-        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.keys.containsAll(regions))return it}
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.isNotEmpty()){regions.filter{region->region !in it}.forEach{region->it[region]=when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;else->20}};saveMagic(p,it);return it}}
         return regions.associateWith{region->when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;else->20}}.toMutableMap().also{saveMagic(p,it)}
     }
     private fun saveMagic(p:android.content.SharedPreferences,m:Map<String,Int>){
@@ -152,9 +152,15 @@ object WorldEngine {
         if(raw!=null) runCatching {
             val a=JSONArray(raw);val map=mutableMapOf<String,Faction>()
             for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();val name=j.optString("name");val lore=factionLore[name];map[name]=Faction(name,j.optString("leader",lore?.leader?:"地方统治者"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list,j.optString("government",lore?.government?:"地方政体"),j.optString("rulingBloc",lore?.rulingBloc?:"地方统治集团"),j.optString("opposition",lore?.opposition?:"地方反对势力"),j.optString("policy",lore?.policy?:"维持地方秩序"),j.optInt("internalTension",20))}
-            if(map.size>=regions.size)return map
+            if(map.isNotEmpty()) {
+                regions.filter { it !in map }.forEach { r ->
+                    map[r]=Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30))
+                }
+                saveFactions(p,map)
+                return map
+            }
         }
-        val initial=regions.associateWith { r -> Faction(r,factionLore[r]?.leader?:"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?:"地方政体",factionLore[r]?.rulingBloc?:"地方统治集团",factionLore[r]?.opposition?:"地方反对势力",factionLore[r]?.policy?:"维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30)) }.toMutableMap()
+        val initial=regions.associateWith { r -> Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30)) }.toMutableMap()
         saveFactions(p,initial);return initial
     }
     private fun saveFactions(p:android.content.SharedPreferences,map:Map<String,Faction>){
@@ -504,7 +510,11 @@ object WorldEngine {
         if(raw!=null) runCatching {
             val a=JSONArray(raw); val map=mutableMapOf<String,Market>()
             for(i in 0 until a.length()) { val j=a.getJSONObject(i); map[j.optString("region")]=Market(j.optInt("food",300),j.optInt("wealth",1000)) }
-            if(map.keys.containsAll(regions)) return map
+            if(map.isNotEmpty()) {
+                regions.filter { it !in map }.forEach { region -> map[region]=Market(300+Random(region.hashCode().toLong()).nextInt(250),1000) }
+                saveMarkets(p,map)
+                return map
+            }
         }
         val fresh=regions.associateWith { Market(300+Random(it.hashCode().toLong()).nextInt(250),1000) }.toMutableMap()
         saveMarkets(p,fresh); return fresh
