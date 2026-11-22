@@ -48,8 +48,8 @@ class ZhipuActivity : Activity() {
             setSingleLine(true)
         }
         modelInput = EditText(this).apply {
-            setText(prefs.getString("model", "glm-4-flash"))
-            hint = "模型名称，例如 glm-4-flash"
+            setText(prefs.getString("model", "glm-5.3-flashx"))
+            hint = "模型名称，例如 glm-5.3-flashx"
             setSingleLine(true)
         }
         output = TextView(this).apply {
@@ -104,7 +104,7 @@ class ZhipuActivity : Activity() {
         prefs.edit()
             .putString("key_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
             .putString("iv_data", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .putString("model", modelInput.text.toString().trim().ifBlank { "glm-4-flash" })
+            .putString("model", modelInput.text.toString().trim().ifBlank { "glm-5.3-flashx" })
             .apply()
     }
 
