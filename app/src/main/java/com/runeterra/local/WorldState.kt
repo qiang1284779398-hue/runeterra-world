@@ -107,6 +107,22 @@ object WorldEngine {
             val thought="第${day}日：我观察到${observations.joinToString("；")}。我倾向于${selected}。"
             r.currentThought=thought
             r.intent=selected
+            // Residents can turn their private intention into a concrete livelihood decision.
+            if(day%180L==0L && r.travelDaysRemaining<=0 && r.age>=16 && r.age<70 && r.skill>=12 && r.job !in setOf("旅人","护卫","学徒")) {
+                val alternatives=when {
+                    foodPressure -> listOf("农夫","采集者","药师")
+                    wealthPressure -> listOf("商贩","工匠","矿工")
+                    r.mindTrait>=75 -> listOf("护卫","工匠","农夫")
+                    r.mindTrait<=25 -> listOf("商贩","采集者","海克斯技师")
+                    else -> listOf("工匠","采集者","商贩")
+                }.filter { it!=r.job }
+                if(alternatives.isNotEmpty() && r.mindTrait+r.skill/2>=65 && (foodPressure || wealthPressure || rng.nextInt(100)<12)) {
+                    val previousJob=r.job
+                    r.job=alternatives[rng.nextInt(alternatives.size)]
+                    r.goal="尝试通过${r.job}改善生活"
+                    recordLife(r,day,"经过个人评估后，决定离开${previousJob}，尝试从事${r.job}以改变生计。","resident_decision_action")
+                }
+            }
             if(foodPressure)r.belief="生存资源并不可靠，需要为短缺做准备"
             else if(healthPressure)r.belief="身体状况会限制我的选择"
             else if(wealthPressure)r.belief="没有积蓄就难以应对意外"
