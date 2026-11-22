@@ -1127,6 +1127,7 @@ object WorldEngine {
         fauna.groupBy{it.region}.forEach{(region,groups)->
             val e=ecology[region]?:return@forEach
             val herbivores=groups.filter{it.role.contains("植被消费者")||it.role.contains("草食")}.sumOf{it.abundance}
+            val predators=groups.filter{it.role.contains("捕食者")}.sumOf{it.abundance}
             groups.forEach{f->
                 val humanPressure=(pop.count{it.alive&&it.region==region}/45).coerceIn(0,4)
                 val habitat=when(f.role){
@@ -1152,7 +1153,7 @@ object WorldEngine {
                     else->0
                 }
                 val stress=if(humanPressure>=3)1 else 0
-                val predation=if(f.role.contains("捕食者")&&herbivores<35)2 else 0
+                val predation=when{f.role.contains("捕食者")&&herbivores<35->2;(f.role.contains("植被消费者")||f.role.contains("草食"))&&predators>45->2;else->0}
                 val special=if(region=="暗影岛") {
                     if(f.role=="非自然灵体活动") 1 else -4
                 } else 0
@@ -1162,6 +1163,9 @@ object WorldEngine {
                     events.add("【生态警讯·模拟】第 "+day+" 日："+region+"的"+f.guild+"数量降至极低水平，栖息地或食物网承受压力。")
                 }
             }
+            val meanAbundance=if(groups.isEmpty())0 else groups.map{it.abundance}.average().toInt()
+            e.wildlife=((e.wildlife*2+meanAbundance)/3).coerceIn(0,100)
+            if(herbivores>110 && region!="暗影岛" && region!="班德尔城") e.vegetation=(e.vegetation-1).coerceAtLeast(0)
         }
         saveFauna(p,fauna)
     }
