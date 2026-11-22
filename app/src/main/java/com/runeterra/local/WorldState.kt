@@ -629,6 +629,37 @@ object WorldEngine {
                 if(region!=null)pop.filter{it.alive&&it.region==region}.take(3).forEach{it.health=(it.health-1).coerceAtLeast(0)}
             }
         }
+        // Demacia's mage restrictions are a continuing social conflict, not a one-off scripted rebellion.
+        // Residents are recorded as witnesses; the simulation never presumes they are mages.
+        val demacia=states["德玛西亚"]
+        val seekers=groups.firstOrNull { it.id=="demacia_mage_seekers" }
+        val mageNetwork=groups.firstOrNull { it.id=="demacia_mage_resistance" }
+        if(demacia!=null && seekers!=null && mageNetwork!=null) {
+            val enforcement=seekers.influence+seekers.publicSupport/2
+            val underground=mageNetwork.influence+mageNetwork.publicSupport/2
+            if(enforcement>=underground+18 && demacia.internalTension>=30 && rng.nextInt(100)<18) {
+                seekers.resources=(seekers.resources-2).coerceAtLeast(0)
+                seekers.influence=(seekers.influence+1).coerceAtMost(100)
+                mageNetwork.influence=(mageNetwork.influence+2).coerceAtMost(100)
+                mageNetwork.resources=(mageNetwork.resources-1).coerceAtLeast(0)
+                demacia.internalTension=(demacia.internalTension+2).coerceAtMost(100)
+                demacia.policy="加强对未经许可魔法活动的搜查与登记；地方执行程度不一"
+                val witnesses=pop.filter { it.alive && it.region=="德玛西亚" }.shuffled(rng).take(1+rng.nextInt(2))
+                witnesses.forEach { recordLife(it,day,"在当地社区见到搜魔审查行动及其引发的恐惧与争议；本人是否具有魔法天赋未作预设。") }
+                events.add("【德玛西亚社会冲突·模拟】第 $day 日：搜魔人加强对魔法活动的审查；部分社区出现隐匿、互助与恐惧，法师地下联络网络因此获得新的支持。")
+            } else if(underground>=enforcement+15 && demacia.internalTension>=45 && mageNetwork.resources>=8 && rng.nextInt(100)<15) {
+                mageNetwork.resources=(mageNetwork.resources-3).coerceAtLeast(0)
+                mageNetwork.influence=(mageNetwork.influence+1).coerceAtMost(100)
+                mageNetwork.publicSupport=(mageNetwork.publicSupport+2).coerceAtMost(100)
+                seekers.publicSupport=(seekers.publicSupport-1).coerceAtLeast(0)
+                demacia.internalTension=(demacia.internalTension+1).coerceAtMost(100)
+                demacia.policy="地方出现隐匿与互助网络；王室与搜魔人面临执行尺度争议"
+                val witnesses=pop.filter { it.alive && it.region=="德玛西亚" }.shuffled(rng).take(1+rng.nextInt(2))
+                witnesses.forEach { recordLife(it,day,"在社区中听闻有人帮助受搜查威胁者转移或躲避审查；事件细节并不完全为外界所知。") }
+                events.add("【德玛西亚地下互助·模拟】第 $day 日：法师与同情者组成的地方联络网络帮助受审查威胁者躲避搜查；搜魔人对社区的控制受到局部挑战。")
+            }
+        }
+        saveOrganizations(p,groups)
         saveFactions(p,states)
     }
     private const val KEY_ORGANIZATIONS="organizations_state"
