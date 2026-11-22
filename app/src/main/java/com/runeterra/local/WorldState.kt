@@ -239,6 +239,86 @@ object WorldEngine {
                         markets["祖安"]?.let { it.wealth=(it.wealth+1).coerceAtMost(100000) }
                         h.status="推进机械进化研究，与祖安社会产生复杂影响"
                     }
+                    "嘉文四世" -> {
+                        factions["德玛西亚"]?.let { it.stability=(it.stability+1).coerceAtMost(100); it.internalTension=(it.internalTension-1).coerceAtLeast(0) }
+                        h.status="处理王位继承与王国危机"
+                    }
+                    "菲奥娜" -> {
+                        groups.firstOrNull { it.id=="demacia_crownguard" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="维护劳伦特家族荣誉并挑战贵族旧秩序"
+                    }
+                    "薇恩" -> h.status="追猎威胁德玛西亚民众的黑暗生物"
+                    "斯维因" -> {
+                        factions["诺克萨斯"]?.let { it.stability=(it.stability+1).coerceAtMost(100); it.internalTension=(it.internalTension-2).coerceAtLeast(0) }
+                        groups.firstOrNull { it.id=="noxus_trifarix" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="以崔法利议会统治原则整合帝国权力"
+                    }
+                    "德莱厄斯" -> {
+                        groups.firstOrNull { it.id=="noxus_legions" }?.let { it.resources=(it.resources+2).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="整顿军团并执行帝国军事任务"
+                    }
+                    "乐芙兰" -> {
+                        groups.firstOrNull { it.id=="noxus_black_rose" }?.let { it.influence=(it.influence+2).coerceAtMost(100) }
+                        factions["诺克萨斯"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
+                        h.status="通过黑色玫瑰的秘密网络影响帝国政治"
+                    }
+                    "慎" -> {
+                        groups.firstOrNull { it.id=="ionia_kinkou" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="调停物质领域与精神领域之间的失衡"
+                    }
+                    "劫" -> {
+                        groups.firstOrNull { it.id=="ionia_shadow_order" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.resources=(it.resources+1).coerceAtMost(100) }
+                        h.status="扩展影流行动网络并守护艾欧尼亚"
+                    }
+                    "艾希" -> {
+                        groups.firstOrNull { it.id=="freljord_avarosan" }?.let { it.influence=(it.influence+2).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="争取部族团结并推进阿瓦罗萨联盟"
+                    }
+                    "丽桑卓" -> {
+                        groups.firstOrNull { it.id=="freljord_frostguard" }?.let { it.resources=(it.resources+1).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="维持霜卫守望，压制监视者苏醒的威胁"
+                    }
+                    "阿兹尔" -> {
+                        groups.firstOrNull { it.id=="shurima_sun_disc" }?.let { it.influence=(it.influence+2).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="推动恕瑞玛帝国复兴并争取城邦承认"
+                    }
+                    "泽拉斯" -> {
+                        groups.firstOrNull { it.id=="shurima_xerath_followers" }?.let { it.influence=(it.influence+2).coerceAtMost(100) }
+                        h.status="扩张追随者网络并挑战阿兹尔的复兴秩序"
+                    }
+                    "塔莉垭" -> h.status="穿行沙漠，保护家园与普通恕瑞玛居民"
+                    "黛安娜" -> {
+                        groups.firstOrNull { it.id=="targon_lunari" }?.let { it.publicSupport=(it.publicSupport+1).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="追寻皎月力量并面对烈阳与皎月的历史冲突"
+                    }
+                    "蕾欧娜" -> {
+                        groups.firstOrNull { it.id=="targon_solari" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="维护烈阳教派秩序与拉阔尔传统"
+                    }
+                    "潘森" -> h.status="以凡人意志对抗星界命运与战争宿命"
+                    "凯特琳" -> {
+                        groups.firstOrNull { it.id=="piltover_council" }?.let { it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="调查皮尔特沃夫犯罪与双城跨区案件"
+                    }
+                    "蔚" -> h.status="执行执法行动，处理皮尔特沃夫与祖安之间的案件"
+                    "金克丝" -> {
+                        factions["皮尔特沃夫"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
+                        factions["祖安"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
+                        h.status="以不可预测的破坏行动冲击双城权力秩序"
+                    }
+                    "艾克" -> {
+                        groups.firstOrNull { it.id=="zaun_firelights" }?.let { it.publicSupport=(it.publicSupport+1).coerceAtMost(100); it.resources=(it.resources+1).coerceAtMost(100) }
+                        h.status="保护祖安街区与萤火社区"
+                    }
+                    "奇亚娜" -> {
+                        groups.firstOrNull { it.id=="ixtal_council" }?.let { it.internalTension=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="争取王族继承权并挑战以绪塔尔既有权力秩序"
+                    }
+                    "俄洛伊" -> {
+                        groups.firstOrNull { it.id=="bilgewater_buhru" }?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="履行娜迦卡波洛丝信仰使命并考验灵魂"
+                    }
+                    "妮蔻" -> h.status="寻找同伴并保护瓦斯塔亚族群"
                     else -> h.status="在所属地区推进个人目标"
                 }
                 h.influence=(h.influence+rng.nextInt(3)-1).coerceIn(0,100)
