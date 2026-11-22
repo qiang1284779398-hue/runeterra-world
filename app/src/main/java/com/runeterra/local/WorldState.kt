@@ -443,7 +443,21 @@ object WorldEngine {
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\\n所在领域：${it.region}\\n族类／本质：${heroLineage(it.name)}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n影响力指标：${it.influence}/100\\n说明：此处只记录世界模拟中的人物状态；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\\n所在领域：${it.region}\\n族类／本质：${heroLineage(it.name)}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n当前信念：${it.belief}\\n最近思考：${it.thought.ifBlank { "尚未获得本地AI思考记录" }}\\n当前意图：${it.intent}\\n最近AI思考日期：${if(it.lastThoughtDay>0) "第${it.lastThoughtDay}日" else "尚无"}\\n已记录个人经历：${it.history.size}条\\n影响力指标：${it.influence}/100\\n说明：官方背景身份与模拟分支经历分开记录；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+        }
+    }
+    fun heroBiographyExport(context:Context,name:String):String? {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val h=heroAgents(p).firstOrNull { it.name==name } ?: return null
+        return buildString {
+            append("符文之地 · 重要人物自主经历档案\\n")
+            append("人物：${h.name}\\n领域：${h.region}\\n族类／本质：${heroLineage(h.name)}\\n身份：${h.role}\\n")
+            append("当前状态：${h.status}\\n当前目标：${h.goal}\\n信念：${h.belief}\\n最近思考：${h.thought}\\n意图：${h.intent}\\n")
+            append("档案说明：官方人物背景是设定锚点；以下个人思考和经历是本模拟分支产生的记录，不代表官方正史。未记录的对白、心理和行动不得当作事实补写。\\n\\n")
+            append("【自主思考与记忆】\\n")
+            h.memory.forEach { append(it).append('\\n') }
+            append("\\n【模拟人生事件】\\n")
+            h.history.forEach { append(it).append('\\n') }
         }
     }
     fun heroRelationshipDirectory(context:Context):List<String>{
