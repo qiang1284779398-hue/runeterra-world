@@ -2956,7 +2956,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     }
                 }
                 val ecologicalYield=foodBonus(region,ecology)
-                val dailyHarvest=growers.sumOf { (6 + it.skill/25 + ecologicalYield).coerceIn(3,11) }
+                val dailyHarvest=growers.filter { it.dailyActivity.contains("耕作") || it.dailyActivity.contains("采集") }.sumOf { (6 + it.skill/25 + ecologicalYield).coerceIn(3,11) }
                 market.food=(market.food+dailyHarvest).coerceAtMost(5000)
             }
             val newborns=mutableListOf<Resident>()
@@ -2978,7 +2978,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     } else r.health=(r.health-2).coerceAtLeast(0)
                 }
                 val traveling=tickTravel(r,day,events,rng)
-                if(!traveling && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
+                if(!traveling && r.dailyActivity!="休息与恢复体力" && r.dailyActivity!="休养与寻求照料" && r.age>=6 && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
                     "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region,ecology)).coerceAtLeast(1);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
