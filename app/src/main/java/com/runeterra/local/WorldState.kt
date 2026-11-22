@@ -46,13 +46,14 @@ object WorldEngine {
         regions.forEach{region->
             val level=levels[region]?:20
             val change=rng.nextInt(11)-5
-            levels[region]=(level+change).coerceIn(0,100)
-            if(levels[region]>=80 && rng.nextInt(100)<12){
+            val newLevel=(level+change).coerceIn(0,100)
+            levels[region]=newLevel
+            if(newLevel>=80 && rng.nextInt(100)<12){
                 val residents=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(1+rng.nextInt(3))
                 residents.forEach{it.health=(it.health+rng.nextInt(8)-3).coerceIn(0,100)}
                 markets[region]?.let{it.food=(it.food-rng.nextInt(20)).coerceAtLeast(0)}
                 events.add("【魔法与符文·模拟】第 $day 日：${region}出现强烈魔法波动，影响${residents.size}名居民，区域魔法强度${levels[region]}。")
-            }else if(levels[region]<=15 && rng.nextInt(100)<10){
+            }else if(newLevel<=15 && rng.nextInt(100)<10){
                 events.add("【魔法与符文·模拟】第 $day 日：${region}魔法活动趋于沉寂，相关研究与仪式难以开展。")
             }
         }
@@ -112,7 +113,7 @@ object WorldEngine {
             for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();map[j.optString("name")]=Faction(j.optString("name"),j.optString("leader"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list)}
             if(map.size>=regions.size)return map
         }
-        val initial=regions.associate { r-> Faction(r,"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,r.let{mutableListOf(it)}) }.toMutableMap()
+        val initial=regions.associateWith { r -> Faction(r,"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r)) }.toMutableMap()
         saveFactions(p,initial);return initial
     }
     private fun saveFactions(p:android.content.SharedPreferences,map:Map<String,Faction>){
@@ -323,6 +324,7 @@ object WorldEngine {
         val pop=people(p)
         val markets=markets(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
+        var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
         repeat(days.coerceAtLeast(1)) {
             day++
             val rng=Random(day*7919L+17L)
@@ -333,7 +335,6 @@ object WorldEngine {
             tickHeroes(day,p,pop,markets,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
-            var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
