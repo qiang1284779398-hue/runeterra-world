@@ -179,7 +179,7 @@ object WorldEngine {
         HeroBond("厄运小姐","俄洛伊","比尔吉沃特权力现实与布胡鲁信仰之间的交集",54,28)
     )
     private const val KEY_HEROES="heroes_state"
-    private data class HeroAgent(val name:String,val region:String,val role:String,var status:String,var goal:String,var influence:Int)
+    private data class HeroAgent(val name:String,val region:String,var role:String,var status:String,var goal:String,var influence:Int)
     private val heroSeeds=listOf(
         HeroAgent("盖伦","德玛西亚","战士","活跃","维护德玛西亚秩序",70),
         HeroAgent("拉克丝","德玛西亚","法师","隐藏身份","保护秘密与自由",65),
