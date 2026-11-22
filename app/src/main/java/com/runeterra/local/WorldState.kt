@@ -644,6 +644,13 @@ object WorldEngine {
         recordLife(r,day,"从${r.region}出发，踏上前往${destination}的旅途，目的：${purpose}，预计约${r.travelDaysRemaining}个模拟日。")
         events.add("【旅行·模拟】第 $day 日：${r.name}离开${r.region}，前往${destination}。")
     }
+    private fun beginHouseholdTravel(r:Resident,destination:String,day:Long,events:MutableList<String>,purpose:String,pop:List<Resident>) {
+        if(r.travelDaysRemaining>0 || destination==r.region) return
+        val household=pop.filter { it.alive && it.householdId==r.householdId && it.region==r.region && it.settlement==r.settlement && it.travelDaysRemaining<=0 }
+        if(household.isEmpty()) { beginTravel(r,destination,day,events,purpose); return }
+        household.forEach { member -> beginTravel(member,destination,day,events,if(member.id==r.id) purpose else "随家庭迁徙：$purpose") }
+        if(household.size>1) events.add("【家庭迁徙·模拟】第 $day 日：${household.size} 名家庭成员共同离开${r.region}，前往${destination}。")
+    }
     private fun tickTravel(r:Resident,day:Long,events:MutableList<String>,rng:Random):Boolean {
         if(r.travelDaysRemaining<=0)return false
         r.travelDaysRemaining--
@@ -816,20 +823,32 @@ private fun craftBonus(region:String):Int = when(region) {
             val a=JSONArray(raw); (0 until a.length()).map { i -> a.getJSONObject(i).let { Household(it.optInt("id"),it.optInt("foodReserve"),it.optInt("sharedWealth"),it.optLong("foundedDay",1L)) } }.toMutableList()
         }.getOrDefault(mutableListOf())
         var next=(stored.maxOfOrNull { it.id } ?: -1)+1
+        val redirects=mutableMapOf<Int,Int>()
+        fun root(id:Int):Int {
+            var current=id
+            while(redirects.containsKey(current)) current=redirects[current]!!
+            return current
+        }
         pop.filter { it.householdId>=0 }.forEach { r ->
             val partner=pop.firstOrNull { it.id==r.partnerId && it.householdId>=0 && it.region==r.region && it.settlement==r.settlement }
-            if(partner!=null && partner.householdId!=r.householdId) {
-                val keep=minOf(r.householdId,partner.householdId); val drop=maxOf(r.householdId,partner.householdId)
-                pop.filter { it.householdId==drop }.forEach { it.householdId=keep }
+            if(partner!=null && root(partner.householdId)!=root(r.householdId)) {
+                val keep=minOf(root(r.householdId),root(partner.householdId))
+                val drop=maxOf(root(r.householdId),root(partner.householdId))
+                redirects[drop]=keep
+                redirects.entries.toList().forEach { (key,value) -> if(value==drop) redirects[key]=keep }
+                pop.filter { root(it.householdId)==drop }.forEach { it.householdId=keep }
             }
         }
+        pop.forEach { if(it.householdId>=0) it.householdId=root(it.householdId) }
         pop.filter { it.householdId<0 }.forEach { r ->
             val related=pop.firstOrNull { other -> other.id!=r.id && other.householdId>=0 && other.region==r.region && other.settlement==r.settlement &&
                 (other.id==r.partnerId || other.id in r.parentIds || other.id in r.childIds || r.id in other.parentIds || r.id in other.childIds) }
             r.householdId=related?.householdId ?: next++
         }
         val ids=pop.map { it.householdId }.distinct().filter { it>=0 }
-        val map=stored.associateBy { it.id }
+        val map=stored.groupBy { root(it.id) }.mapValues { (id,items) ->
+            Household(id,items.sumOf { it.foodReserve },items.sumOf { it.sharedWealth },items.minOfOrNull { it.foundedDay } ?: p.getLong(KEY_DAY,1L))
+        }
         val result=ids.map { id -> map[id] ?: Household(id,foundedDay=p.getLong(KEY_DAY,1L)) }.toMutableList()
         if(result.size!=stored.size || stored.map { it.id }.toSet()!=ids.toSet()) {
             saveHouseholds(p,result); savePeople(p,pop)
@@ -872,7 +891,13 @@ private fun craftBonus(region:String):Int = when(region) {
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
                 r.food=(r.food-1).coerceAtLeast(0)
-                if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
+                if(r.food==0) {
+                    val household=households.firstOrNull { it.id==r.householdId }
+                    if(household!=null && household.foodReserve>0) {
+                        household.foodReserve--
+                        r.food=1
+                    } else r.health=(r.health-2).coerceAtLeast(0)
+                }
                 val traveling=tickTravel(r,day,events,rng)
                 if(!traveling && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
                     "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
@@ -925,7 +950,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     events.add("第 $day 日：${r.name}在${r.region}凭经验开始经营贸易。")
                 }
                 if(day%30L==0L && r.alive && r.partnerId<0 && r.age in 20..35 && rng.nextInt(1000)<2) {
-                    val candidate=pop.firstOrNull { it.alive && it.id!=r.id && it.region==r.region && it.partnerId<0 && it.age in 20..35 }
+                    val candidate=pop.firstOrNull { it.alive && it.id!=r.id && it.region==r.region && it.settlement==r.settlement && it.partnerId<0 && it.age in 20..35 }
                     if(candidate!=null) { r.partnerId=candidate.id;candidate.partnerId=r.id
                         val mergedHousehold=minOf(r.householdId,candidate.householdId)
                         val formerHouseholds=setOf(r.householdId,candidate.householdId)
@@ -960,7 +985,7 @@ private fun craftBonus(region:String):Int = when(region) {
                         val crowd=pop.count { it.alive && it.region==candidate }
                         supply-crowd*2+(markets[candidate]?.wealth?:0)/100
                     } ?: oldRegion
-                    if(next!=oldRegion) beginTravel(r,next,day,events,"粮食短缺与生计压力")
+                    if(next!=oldRegion) beginHouseholdTravel(r,next,day,events,"粮食短缺与生计压力",pop)
                 }
                 if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
                     r.alive=false
@@ -979,6 +1004,21 @@ private fun craftBonus(region:String):Int = when(region) {
                 if(r.alive && rng.nextInt(1000)<2) { recordLife(r,day,"实现阶段目标「${r.goal}」，开始追寻新的方向。");events.add("第 $day 日：${r.name}在${r.region}达成「${r.goal}」，开始追寻新的方向。") }
             }
             pop.addAll(newborns)
+            if(day%30L==0L) {
+                households.forEach { household ->
+                    val members=pop.filter { it.alive && it.householdId==household.id }
+                    if(members.isNotEmpty()) {
+                        val contributors=members.filter { it.coins>=3 && it.travelDaysRemaining<=0 }
+                        contributors.forEach { it.coins--; household.sharedWealth++ }
+                        val foodDonor=members.filter { it.food>4 && it.travelDaysRemaining<=0 }.maxByOrNull { it.food }
+                        if(foodDonor!=null) { foodDonor.food--; household.foodReserve++ }
+                        if(contributors.isNotEmpty() || foodDonor!=null) {
+                            val location=members.groupBy { it.region }.maxByOrNull { it.value.size }?.key ?: "未知地区"
+                            events.add("【家庭经济·模拟】第 $day 日：${location}的家庭${household.id}完成共同储备；缴入${contributors.size}枚金币，储粮${if(foodDonor!=null)1 else 0}单位。")
+                        }
+                    }
+                }
+            }
             regions.forEach { region ->
                 val market=markets[region] ?: return@forEach
                 market.food=market.food.coerceAtLeast(0)
@@ -1033,7 +1073,7 @@ private fun craftBonus(region:String):Int = when(region) {
         }
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
-        saveHouseholds(p,householdStates(p,pop))
+        saveHouseholds(p,households)
         saveMarkets(p,markets)
         val arr=JSONArray();events.forEach{arr.put(it)}
         p.edit().putInt(KEY_NEXT_ID,nextId)
@@ -1087,7 +1127,7 @@ private fun craftBonus(region:String):Int = when(region) {
             val members=all.filter { it.householdId==h.id }; val living=members.filter { it.alive }
             val location=living.groupBy { it.region+" · "+it.settlement }.maxByOrNull { it.value.size }?.key ?: "无在世成员"
             val names=living.sortedBy { it.age }.joinToString("、") { it.name }.ifBlank { "无在世成员" }
-            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭已作为独立社会实体建档；共同储粮与共同资产目前仅为预留账目，尚未参与居民消费和工资结算。"
+            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；个人食物耗尽时可消耗家庭储粮。共同资产仍未接入市场采购、住房和工资制度。"
         }.sortedBy { it.substringBefore("】") }
     }
     fun residentDirectory(context:Context):List<String> {
