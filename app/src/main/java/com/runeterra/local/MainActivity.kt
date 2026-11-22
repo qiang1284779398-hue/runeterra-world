@@ -56,14 +56,22 @@ class MainActivity : Activity() {
         val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
         val caravans = Button(this).apply { text = "商队 / 贸易 / 地区市场"; setOnClickListener { showCaravanDirectory() } }
         val households = Button(this).apply { text = "家庭 / 家庭成员 / 共同资产档案"; setOnClickListener { showHouseholdDirectory() } }
-        val localModel = Button(this).apply { text = "加载本地 AI 模型（GGUF）"; setOnClickListener { pickLocalModel() } }
+        val localModel = Button(this).apply { text = "导入并加载 8B 本地 AI 模型（GGUF）"; setOnClickListener { pickLocalModel() } }
+        val unloadAI = Button(this).apply {
+            text = "卸载本地模型（释放运行内存）"
+            setOnClickListener {
+                ResidentAI.unload()
+                Toast.makeText(this@MainActivity,"已请求卸载模型；推理结束后释放内存。",Toast.LENGTH_LONG).show()
+                refresh()
+            }
+        }
         val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
         val biographies = Button(this).apply {
             text = "居民传记导出 / 查看居民人生（点击进入）"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, testAI, biographies, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, unloadAI, testAI, biographies, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
@@ -387,7 +395,7 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val s = WorldEngine.load(this)
-        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 5 秒 = 世界 1 天"
+        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 200 个世界日\n本地 AI：${if (ResidentAI.isLoaded()) "8B 模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
         log.text = "最近世界记录\n" + (s.events.takeLast(12).asReversed().joinToString("\n") { "• $it" }.ifBlank { "尚无事件。启动世界后将逐步产生记录。" })
     }
 
