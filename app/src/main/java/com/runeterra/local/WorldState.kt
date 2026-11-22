@@ -51,6 +51,11 @@ object WorldEngine {
     private const val PREFS="runeterra_world"
     private fun recordLife(r:Resident,day:Long,detail:String){ r.history.add("第${day}日：${detail}") }
     private const val KEY_DAY="day"
+    private const val KEY_ERA="world_era"
+    private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
+    private const val KEY_IONIA_WAR_ENDED="ionia_war_ended"
+    private const val KEY_LORE_TRIGGER_DAYS="lore_trigger_days"
+    private const val ERA_PRE_IONIA="pre_ionia_invasion"
     private const val KEY_EVENTS="events"
     private const val KEY_RUNNING="running"
     private const val KEY_PEOPLE="people"
@@ -75,6 +80,23 @@ object WorldEngine {
         RegionalLore("暗影岛","福光岛灾变后被破败诅咒与黑雾侵蚀的区域","黑雾、亡灵与灵魂束缚是核心威胁，不是普通魔法天气","黑雾、亡灵、破败诅咒与抵抗侵蚀的力量","福光岛与赫利亚是历史遗址，不生成普通人类常住人口"),
         RegionalLore("虚空","跨越地区边界的异界威胁，不是符文之地上的普通国家","虚空侵蚀现实、吞噬生命并扭曲生态","虚空生物、监视者、虚空先知及抵御虚空的守护者","不得当作第十三个普通地区或常规外交国家")
     )
+    fun timelineDirectory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val day=p.getLong(KEY_DAY,1L)
+        val stored=p.getString(KEY_ERA,null)
+        val era=stored ?: if(day<=1L) ERA_PRE_IONIA else "legacy_unanchored"
+        if(stored==null) p.edit().putString(KEY_ERA,era).apply()
+        val phase=when(era) {
+            ERA_PRE_IONIA -> "诺克萨斯第一次入侵艾欧尼亚之前"
+            else -> "旧存档：未能确认历史起点；建议重置后从指定时代开始"
+        }
+        return listOf(
+            "【当前历史锚点】\\n$phase\\n模拟纪年：第${day}日（不是官方公历年份）\\n官方时间线定位：以诺克萨斯第一次入侵艾欧尼亚之前作为起点；官方背景没有给出可直接换算的统一公历日期。",
+            "【历史事实与模拟分支的边界】\\n福光岛灾变／破败之咒属于遥远的既往历史，不会在本次模拟中作为新发生的事件重演；暗影岛的黑雾与佛耶戈封印状态属于开局背景。\\n诺克萨斯第一次入侵艾欧尼亚是未来可能发生的重大历史转折，必须由外交、军政、补给与组织条件共同促成。",
+            "【后续事件原则】\\n重大事件不按固定模拟日强制播放。事件触发需要满足前置条件；战事结束后才记录战后余波。模拟产生的结果属于本世界分支历史，不冒充官方正史。",
+            "【存档提示】\\n如果这是在旧版本中已经运行过的存档，单纯显示新历史锚点不会改写旧人物经历；如需严格从该时期开始，请使用重置世界建立新存档。"
+        )
+    }
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
@@ -164,20 +186,20 @@ object WorldEngine {
         HeroAgent("菲奥娜","德玛西亚","决斗家","家族事务","维护劳伦特家族荣誉并挑战贵族旧秩序",62),
         HeroAgent("薇恩","德玛西亚","猎魔人","追猎","追猎黑暗生物与威胁家园的怪物",58),
         HeroAgent("卡特琳娜","诺克萨斯","刺客","行动中","执行家族与帝国任务",70),
-        HeroAgent("斯维因","诺克萨斯","统治者","执掌崔法利议会","以远见、力量与谋略维系帝国",86),
+        HeroAgent("斯维因","诺克萨斯","诺克萨斯将领（尚未掌握帝国最高权力）","军政体系内的将领，尚未建立崔法利议会","通过军事与战略能力提升地位",76),
         HeroAgent("德莱厄斯","诺克萨斯","军团统帅","军事行动","以诺克萨斯军团推进帝国利益",76),
         HeroAgent("乐芙兰","诺克萨斯","秘密结社领袖","暗中布局","通过黑色玫瑰操纵帝国深层权力",82),
-        HeroAgent("艾瑞莉娅","艾欧尼亚","抵抗者","活动","守护艾欧尼亚",80),
+        HeroAgent("艾瑞莉娅","艾欧尼亚","艾欧尼亚地方居民与舞者","生活于家乡，尚未成为战争中的抵抗象征","守护家人与故乡的文化传统",45),
         HeroAgent("阿卡丽","艾欧尼亚","刺客","游走","追寻自己的道路",65),
         HeroAgent("慎","艾欧尼亚","均衡教派首领","维持均衡","守护物质领域与精神领域之间的均衡",68),
         HeroAgent("劫","艾欧尼亚","影流领袖","扩张影流影响","以自己的道路守护艾欧尼亚",72),
         HeroAgent("厄运小姐","比尔吉沃特","船长","掌权","掌控港口与海上势力",70),
         HeroAgent("俄洛伊","比尔吉沃特","布胡鲁大祭司","履行信仰使命","传播娜迦卡波洛丝的意志并考验灵魂",68),
-        HeroAgent("瑟庄妮","弗雷尔卓德","部族首领","活动","带领凛冬之爪",70),
-        HeroAgent("艾希","弗雷尔卓德","战母","部族联盟","团结阿瓦罗萨部族并争取弗雷尔卓德未来",78),
+        HeroAgent("瑟庄妮","弗雷尔卓德","凛冬之爪部族成员（尚未确立战母地位）","在严酷冰原中磨炼生存与领导能力","维护部族生存与独立",48),
+        HeroAgent("艾希","弗雷尔卓德","阿瓦罗萨部族成员（尚未成为战母）","在部族传统与未来道路之间成长","寻求部族间更稳定的生存与合作",48),
         HeroAgent("丽桑卓","弗雷尔卓德","霜卫领袖","守望冰封威胁","维持远古冰封秘密并阻止监视者苏醒",84),
-        HeroAgent("阿兹尔","恕瑞玛","飞升者皇帝","帝国复兴","重建恕瑞玛帝国并恢复太阳圆盘荣光",82),
-        HeroAgent("泽拉斯","恕瑞玛","飞升者","争夺力量","追求超越凡人的力量并对抗阿兹尔",78),
+        HeroAgent("阿兹尔","恕瑞玛","古代恕瑞玛皇帝（历史人物）","沉寂于古代遗迹与飞升者历史中的力量，尚未进入本模拟当代活动","其复兴是否发生取决于古代仪式、遗迹与相关势力条件",82),
+        HeroAgent("泽拉斯","恕瑞玛","古代飞升者（历史遗留威胁）","沉寂于古代封印与遗迹相关历史中，尚未进入本模拟当代活动","寻求力量与摆脱束缚",78),
         HeroAgent("塔莉垭","恕瑞玛","岩石编织者","游历","保护家园与普通沙漠居民",62),
         HeroAgent("黛安娜","巨神峰","皎月教派相关人物","探索与冲突","追寻皎月力量并面对烈阳教派",64),
         HeroAgent("蕾欧娜","巨神峰","烈阳战士","守护信仰","维护烈阳教派与拉阔尔传统",66),
@@ -314,6 +336,9 @@ object WorldEngine {
         val groups=organizations(p)
         val factions=factionStates(p)
         agents.forEach { h ->
+            if(h.name=="阿兹尔" || h.name=="泽拉斯") {
+                if(h.status.startsWith("沉寂") || h.status.startsWith("古代恕瑞玛") || h.status.startsWith("古代飞升者")) return@forEach
+            }
             if(rng.nextInt(100)<18) {
                 val group=when(h.name) {
                     "盖伦" -> groups.firstOrNull { it.id=="demacia_vanguard" }
@@ -337,8 +362,7 @@ object WorldEngine {
                         h.status="执行秘密任务；具体行动不为外界所知"
                     }
                     "艾瑞莉娅" -> {
-                        h.influence=(h.influence+1).coerceAtMost(100)
-                        h.status="协调艾欧尼亚地方抵抗力量"
+                        h.status="生活于艾欧尼亚地方社群；尚未因诺克萨斯入侵而成为抵抗运动领袖"
                     }
                     "阿卡丽" -> {
                         h.status="独立行动；不受均衡教派或影流直接指挥"
@@ -348,8 +372,7 @@ object WorldEngine {
                         h.status="争夺比尔吉沃特港口与航路影响力"
                     }
                     "瑟庄妮" -> {
-                        group?.let { it.resources=(it.resources+2).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
-                        h.status="带领凛冬之爪进行生存与征战行动"
+                        h.status="在凛冬之爪部族中成长并参与生存行动；尚未确立战母统治地位"
                     }
                     "凯莎" -> {
                         h.status="追踪并阻止虚空威胁"
@@ -373,9 +396,7 @@ object WorldEngine {
                     }
                     "薇恩" -> h.status="追猎威胁德玛西亚民众的黑暗生物"
                     "斯维因" -> {
-                        factions["诺克萨斯"]?.let { it.stability=(it.stability+1).coerceAtMost(100); it.internalTension=(it.internalTension-2).coerceAtLeast(0) }
-                        groups.firstOrNull { it.id=="noxus_trifarix" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
-                        h.status="以崔法利议会统治原则整合帝国权力"
+                        h.status="作为诺克萨斯将领观察帝国军政局势；尚未建立崔法利议会或成为最高统治者"
                     }
                     "德莱厄斯" -> {
                         groups.firstOrNull { it.id=="noxus_legions" }?.let { it.resources=(it.resources+2).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
@@ -395,21 +416,14 @@ object WorldEngine {
                         h.status="扩展影流行动网络并守护艾欧尼亚"
                     }
                     "艾希" -> {
-                        groups.firstOrNull { it.id=="freljord_avarosan" }?.let { it.influence=(it.influence+2).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
-                        h.status="争取部族团结并推进阿瓦罗萨联盟"
+                        h.status="在阿瓦罗萨部族传统中成长；尚未以战母身份建立联盟"
                     }
                     "丽桑卓" -> {
                         groups.firstOrNull { it.id=="freljord_frostguard" }?.let { it.resources=(it.resources+1).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
                         h.status="维持霜卫守望，压制监视者苏醒的威胁"
                     }
-                    "阿兹尔" -> {
-                        groups.firstOrNull { it.id=="shurima_sun_disc" }?.let { it.influence=(it.influence+2).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
-                        h.status="推动恕瑞玛帝国复兴并争取城邦承认"
-                    }
-                    "泽拉斯" -> {
-                        groups.firstOrNull { it.id=="shurima_xerath_followers" }?.let { it.influence=(it.influence+2).coerceAtMost(100) }
-                        h.status="扩张追随者网络并挑战阿兹尔的复兴秩序"
-                    }
+                    "阿兹尔" -> h.status="古代恕瑞玛皇帝的历史遗产；复兴尚未在当前世界发生"
+                    "泽拉斯" -> h.status="古代飞升者与封印历史的遗留威胁；尚未在当前世界公开活动"
                     "塔莉垭" -> h.status="穿行沙漠，保护家园与普通恕瑞玛居民"
                     "黛安娜" -> {
                         groups.firstOrNull { it.id=="targon_lunari" }?.let { it.publicSupport=(it.publicSupport+1).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
@@ -743,6 +757,10 @@ object WorldEngine {
                 rel.tension=(rel.tension+rng.nextInt(7)-3+(if(structuralPressure>=4)1 else 0)).coerceIn(0,100)
                 if(rel.tension>=85 && rng.nextInt(100)<18) {
                     rel.war=true
+                    if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")) {
+                        p.edit().putBoolean(KEY_IONIA_INVASION_STARTED,true).apply()
+                        events.add("【历史转折·模拟分支】第 $day 日：诺克萨斯与艾欧尼亚之间的结构性冲突升级为军事入侵。此时点由本世界的外交、军政与组织条件促成，不代表官方正史日期。")
+                    }
                     rel.warMonths=0
                     rel.exhaustionA=0
                     rel.exhaustionB=0
@@ -791,6 +809,10 @@ object WorldEngine {
                 }
                 if(negotiationChance>0 && rng.nextInt(100)<negotiationChance) {
                     rel.war=false
+                    if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚") && p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
+                        p.edit().putBoolean(KEY_IONIA_WAR_ENDED,true).apply()
+                        events.add("【历史阶段变化·模拟分支】第 $day 日：诺克萨斯—艾欧尼亚战事进入停战阶段；战后影响将在后续依据居民、地方组织与资源状况展开。")
+                    }
                     rel.tension=(rel.tension-18).coerceAtLeast(45)
                     events.add("【停战谈判·模拟分支】第 $day 日：长期战争造成的财政、军力与社会压力迫使${rel.a}和${rel.b}接受暂时停火；边界争端与政治敌意尚未解决。")
                     rel.warMonths=0
@@ -852,12 +874,13 @@ object WorldEngine {
         val groups=organizations(p)
         val factions=factionStates(p)
         val relations=diplomacy(p)
+        val triggerDays=runCatching { JSONObject(p.getString(KEY_LORE_TRIGGER_DAYS,"{}")) }.getOrDefault(JSONObject())
         fun group(id:String)=groups.firstOrNull { it.id==id }
         fun ready(id:String):Boolean=when(id) {
-            "ionia_war" -> relations.any { setOf(it.a,it.b)==setOf("诺克萨斯","艾欧尼亚") && (it.war || it.tension>=78) }
+            "ionia_war" -> p.getBoolean(KEY_IONIA_WAR_ENDED,false)
             "demacia_mage" -> (group("demacia_mage_resistance")?.influence?:0)>=58 || (factions["德玛西亚"]?.internalTension?:0)>=58
             "shurima_rise" -> (group("shurima_sun_disc")?.influence?:0)>=64 && (group("shurima_city_leagues")?.influence?:0)>=45
-            "ruination" -> day>=300L && (group("shadow_black_mist")?.influence?:0)>=78
+            "ruination" -> false // The Ruination is ancient background history, not a future event to replay in this era.
             "piltover_zaun" -> day>=180L && (group("zaun_chem_barons")?.influence?:0)>=78 && (group("zaun_firelights")?.publicSupport?:0)>=55
             "freljord" -> (markets["弗雷尔卓德"]?.food?:1000)<90 && (group("freljord_winter_claw")?.influence?:0)>=60
             "bilgewater" -> (group("bilgewater_captains")?.influence?:0)>=64 && (group("bilgewater_sailors")?.influence?:0)>=58
@@ -881,27 +904,30 @@ object WorldEngine {
             }
             events.add("【世界演化·模拟分支】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人迁离${pulse.region}。事件由当前势力与社会条件触发，不是预设的官方正史时间表。")
             triggered.add(pulse.id)
+            triggerDays.put(pulse.id,day)
         }
-        p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).apply()
+        p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).putString(KEY_LORE_TRIGGER_DAYS,triggerDays.toString()).apply()
         saveOrganizations(p,groups)
         saveFactions(p,factions)
     }
     private data class LoreChainStage(val day:Long,val id:String,val title:String,val region:String,val foodDelta:Int,val healthDelta:Int,val migrationChance:Int)
     // Multi-stage event arcs; dates are simulation days, not canon chronology.
+    // These are relative offsets from the root event, never absolute world-day dates.
     private val chainStages=listOf(
-        LoreChainStage(121L,"ionia_front","战线扩大：艾欧尼亚村落受到波及","艾欧尼亚",-45,-2,24),
-        LoreChainStage(180L,"ionia_resistance","抵抗网络形成：当地居民开始组织互助","艾欧尼亚",20,0,0),
-        LoreChainStage(300L,"ionia_recovery","战后重建或长期创伤：结果取决于人口与资源","艾欧尼亚",30,1,0),
-        LoreChainStage(541L,"ruination_spread","黑雾扩散：港口周边出现新的失踪与逃亡","比尔吉沃特",-60,-4,35),
-        LoreChainStage(600L,"ruination_survivors","幸存者组织临时避难与补给","比尔吉沃特",15,0,0),
-        LoreChainStage(660L,"ruination_aftermath","危机余波：商路恢复或继续衰退","比尔吉沃特",25,1,0),
-        LoreChainStage(721L,"zaun_incident","祖安工业事故：底层居民承受健康与经济损失","祖安",-20,-3,12),
-        LoreChainStage(780L,"zaun_response","社区互助与工坊自救","祖安",15,0,0),
-        LoreChainStage(840L,"zaun_reform","治理与技术路线变化，模拟社会恢复","祖安",20,1,0)
+        LoreChainStage(30L,"ionia_front","战线扩大：艾欧尼亚村落受到波及","艾欧尼亚",-45,-2,24),
+        LoreChainStage(90L,"ionia_resistance","抵抗网络形成：当地居民开始组织互助","艾欧尼亚",20,0,0),
+        LoreChainStage(180L,"ionia_recovery","战后重建或长期创伤：结果取决于人口与资源","艾欧尼亚",30,1,0),
+        LoreChainStage(30L,"ruination_spread","黑雾扩散：港口周边出现新的失踪与逃亡","比尔吉沃特",-60,-4,35),
+        LoreChainStage(90L,"ruination_survivors","幸存者组织临时避难与补给","比尔吉沃特",15,0,0),
+        LoreChainStage(150L,"ruination_aftermath","危机余波：商路恢复或继续衰退","比尔吉沃特",25,1,0),
+        LoreChainStage(30L,"zaun_incident","祖安工业事故：底层居民承受健康与经济损失","祖安",-20,-3,12),
+        LoreChainStage(90L,"zaun_response","社区互助与工坊自救","祖安",15,0,0),
+        LoreChainStage(150L,"zaun_reform","治理与技术路线变化，模拟社会恢复","祖安",20,1,0)
     )
     private fun applyLoreChainStage(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         val done=runCatching { JSONArray(p.getString("lore_chain_done","[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toMutableSet() } }.getOrDefault(mutableSetOf())
         val triggered=runCatching { JSONArray(p.getString(KEY_LORE,"[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } }.getOrDefault(emptySet())
+        val triggerDays=runCatching { JSONObject(p.getString(KEY_LORE_TRIGGER_DAYS,"{}")) }.getOrDefault(JSONObject())
         chainStages.filter { stage ->
             val root=when {
                 stage.id.startsWith("ionia_") -> "ionia_war"
@@ -909,7 +935,8 @@ object WorldEngine {
                 stage.id.startsWith("zaun_") -> "piltover_zaun"
                 else -> ""
             }
-            stage.day==day && stage.id !in done && root in triggered
+            val rootDay=triggerDays.optLong(root,-1L)
+            rootDay>=0L && day==rootDay+stage.day && stage.id !in done && root in triggered
         }.forEach { stage ->
             markets[stage.region]?.let { it.food=(it.food+stage.foodDelta).coerceAtLeast(0) }
             val residents=pop.filter { it.alive && it.region==stage.region }
@@ -1463,6 +1490,7 @@ private fun craftBonus(region:String):Int = when(region) {
     }
     fun load(context: Context): WorldSnapshot {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        if(p.getString(KEY_ERA,null)==null) p.edit().putString(KEY_ERA,if(p.getLong(KEY_DAY,1L)<=1L) ERA_PRE_IONIA else "legacy_unanchored").apply()
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
         return WorldSnapshot(p.getLong(KEY_DAY,1L),people(p).count { it.alive },events,p.getBoolean(KEY_RUNNING,false))
     }
@@ -1815,6 +1843,6 @@ private fun craftBonus(region:String):Int = when(region) {
         context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean(KEY_RUNNING,running).apply()
     }
     fun reset(context: Context) {
-        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().putLong(KEY_DAY,1L).apply()
+        context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().clear().putLong(KEY_DAY,1L).putString(KEY_ERA,ERA_PRE_IONIA).apply()
     }
 }
