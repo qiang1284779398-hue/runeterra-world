@@ -25,13 +25,14 @@ private data class Resident(
      var jobBeforeTravel: String = "",
      var householdId: Int = -1,
      var lineage: String = "人类",
-     var lifespanYears: Int = 95
+     var lifespanYears: Int = 95,
+     var storyRecords: MutableList<String> = mutableListOf()
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords))
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -43,13 +44,24 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList())
     }
 }
 
 object WorldEngine {
     private const val PREFS="runeterra_world"
-    private fun recordLife(r:Resident,day:Long,detail:String){ r.history.add("第${day}日：${detail}") }
+    // Save a factual scene packet alongside the compact timeline entry for future novelization.
+    private fun recordLife(r:Resident,day:Long,detail:String){
+        r.history.add("第${day}日：${detail}")
+        val packet=JSONObject().put("day",day).put("age",r.age).put("region",r.region)
+            .put("settlement",r.settlement).put("job",r.job).put("health",r.health)
+            .put("skill",r.skill).put("coins",r.coins).put("food",r.food).put("alive",r.alive)
+            .put("detail",detail).put("travelOrigin",r.travelOrigin)
+            .put("travelDestination",r.travelDestination).put("travelPurpose",r.travelPurpose)
+            .put("partnerId",r.partnerId).put("householdId",r.householdId)
+        r.storyRecords.add(packet.toString())
+        while(r.storyRecords.size>5000) r.storyRecords.removeAt(0)
+    }
     // Story entries are selective: record only residents whose region or role plausibly intersects a meaningful event.
     private fun recordLocalStory(pop:List<Resident>,day:Long,region:String,detail:String,rng:Random,limit:Int=3,roles:Set<String> = emptySet()) {
         val candidates=pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
@@ -2081,28 +2093,42 @@ private fun craftBonus(region:String):Int = when(region) {
         val all=people(p)
         val r=all.firstOrNull{it.id==id} ?: return "未找到该居民档案。"
         val partner=all.firstOrNull{it.id==r.partnerId}
+        val parents=all.filter { it.id in r.parentIds }
+        val children=all.filter { it.id in r.childIds }
+        val friends=all.filter { it.id in r.friendIds }
+        val mentor=all.firstOrNull{it.id==r.mentorId}
+        val students=all.filter{it.id in r.studentIds}
+        val groups=organizations(p).filter { r.id in it.members }
+        val worldEvents=runCatching {
+            val a=JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]")
+            (0 until a.length()).map { a.getString(it) }
+        }.getOrDefault(emptyList())
+        val packets=r.storyRecords.mapNotNull { raw -> runCatching { JSONObject(raw) }.getOrNull() }.sortedBy { it.optLong("day") }
         return buildString {
-            append("人物档案：${r.name}\n")
-            append("居民编号：${r.id}\n年龄：${r.age}岁\n生命类别：${r.lineage}\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n地区：${r.region}\n聚落：${r.settlement}\n职业：${r.job}\n")
-            if(r.travelDaysRemaining>0) append("旅行状态：途中，${r.travelOrigin}→${r.travelDestination}，剩余约${r.travelDaysRemaining}个模拟日\\n旅行目的：${r.travelPurpose}\\n")
-            append("健康：${r.health}/100\n技能：${r.skill}\n财富：${r.coins}\n")
-            append("人生状态：${if(r.alive)"在世" else "已故"}\n")
-            append("伴侣：${partner?.name ?: if(r.partnerId>=0)"关系对象档案不可用" else "暂无记录"}\n")
-            val parents=all.filter { it.id in r.parentIds }
-            val children=all.filter { it.id in r.childIds }
-            val friends=all.filter { it.id in r.friendIds }
-            val mentor=all.firstOrNull{it.id==r.mentorId}
-            val students=all.filter{it.id in r.studentIds}
-            append("父母：${parents.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
-            append("子女：${children.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
-            append("朋友：${friends.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
-            append("师长：${mentor?.name ?: "暂无记录"}\n")
-            append("学生：${students.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
-            val memberships=organizations(p).filter { r.id in it.members }.map { it.name }
-            append("所属组织：${memberships.joinToString("、").ifBlank { "暂无记录" }}\n")
-            append("家庭子女计数：${r.familyCount}\n\n人生时间线\n")
-            if(r.history.isEmpty()) append("暂时没有人生事件记录。")
-            else r.history.forEach { append("• ").append(it).append("\n") }
+            append("符文之地 · 居民完整人生档案\n档案编号：${r.id}｜姓名：${r.name}\n")
+            append("档案用途：供长篇小说创作使用的模拟事实素材。只记录真实保存的状态和事件，不补写未发生的对白、动作或心理活动。\n\n")
+            append("【人物基础资料】\n生命类别：${r.lineage}\n年龄：${r.age}岁\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n")
+            append("当前地区：${r.region}\n当前聚落：${r.settlement.ifBlank { "未记录" }}\n当前职业：${r.job}\n")
+            append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
+            if(r.travelDaysRemaining>0) append("旅途：${r.travelOrigin}→${r.travelDestination}；剩余${r.travelDaysRemaining}日；目的：${r.travelPurpose}\n")
+            append("\n【人物关系网络】\n伴侣：${partner?.name ?: if(r.partnerId>=0) "关系对象档案不可用" else "暂无记录"}\n")
+            append("父母：${parents.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n子女：${children.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
+            append("朋友：${friends.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n师长：${mentor?.name ?: "暂无记录"}\n")
+            append("学生：${students.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n所属组织：${groups.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n家庭编号：${r.householdId}\n")
+            append("\n【人生事件 · 结构化场景素材】\n个人事件：${r.history.size}条｜结构化场景包：${packets.size}条\n")
+            if(packets.isEmpty()) append("旧存档尚无结构化场景包；不会对缺失历史进行虚构补写。\n")
+            packets.forEachIndexed { index,e ->
+                append("\n场景素材 ${index+1}｜第${e.optLong("day")}日｜${e.optInt("age")}岁\n")
+                append("地点：${e.optString("region")} · ${e.optString("settlement").ifBlank { "聚落未记录" }}\n")
+                append("当时身份：${e.optString("job")}｜健康${e.optInt("health")}/100｜技能${e.optInt("skill")}/100｜财富${e.optInt("coins")}｜粮食${e.optInt("food")}\n")
+                append("事实记录：${e.optString("detail")}\n")
+                val d=e.optLong("day"); val region=e.optString("region")
+                val context=worldEvents.filter { (it.contains("第 $d 日") || it.contains("第$d日")) && (it.contains(region) || it.contains(r.name)) }
+                if(context.isNotEmpty()) { append("同日相关世界背景：\n"); context.take(4).forEach { append("· ").append(it).append("\n") } }
+            }
+            append("\n【旧版本人生时间线】\n")
+            if(r.history.isEmpty()) append("暂无旧版人生事件。\n") else r.history.forEach { append("• ").append(it).append("\n") }
+            append("\n【创作边界】\n档案可用于组织人物成长、时代背景、迁徙、职业、关系和重大事件章节。未记录的对白、具体动作、心理活动及旧版本缺失经历均属于未知，不能冒充既成事实。\n")
         }
     }
     fun setRunning(context: Context,running:Boolean) {
