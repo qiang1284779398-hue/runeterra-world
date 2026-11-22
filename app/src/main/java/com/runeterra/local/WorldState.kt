@@ -319,17 +319,18 @@ object WorldEngine {
 2 erase_person：target必填，将目标从世界中抹杀。
 3 resurrect_person：target必填，复活目标。
 4 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
-5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。
+5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。replace表示直接改写其主观人生记忆，可植入任意虚构/跨世界人物身份与完整经历；目标会把它当作自己的记忆，但身体仍是符文之地原身体。
 6 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
 7 create_character：name、region、role必填；可选status、goal、gender、appearance、abilities、lineage、age、health、skill。创建可独立思考的英雄或特殊人物。
 8 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
 9 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
 10 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
 11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。
+13 swap_souls：target与other_target必填。交换两个人的灵魂认知层：记忆、信念、目标、思考、意图与人格倾向；身体、姓名、外貌、性别、能力、健康、位置、社会关系和身体经历档案不交换。两者必须都是英雄，或都是普通居民；不允许跨类别交换。
 12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1,"head_severed":false,"survive":false}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1,"head_severed":false,"survive":false,"other_target":""}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
@@ -394,6 +395,31 @@ object WorldEngine {
             val hero=findHero(target)
             val resident=findResident(target)
             when(type) {
+                "swap_souls" -> {
+                    val otherTarget=op.optString("other_target").trim()
+                    val otherHero=findHero(otherTarget)
+                    val otherResident=findResident(otherTarget)
+                    if(hero!=null && otherHero!=null && hero!==otherHero) {
+                        val goal=hero.goal; hero.goal=otherHero.goal; otherHero.goal=goal
+                        val belief=hero.belief; hero.belief=otherHero.belief; otherHero.belief=belief
+                        val thought=hero.thought; hero.thought=otherHero.thought; otherHero.thought=thought
+                        val intent=hero.intent; hero.intent=otherHero.intent; otherHero.intent=intent
+                        val memory=hero.memory.toMutableList(); hero.memory.clear(); hero.memory.addAll(otherHero.memory); otherHero.memory.clear(); otherHero.memory.addAll(memory)
+                        appendHeroEvent(hero,"与${otherHero.name}互换灵魂；当前意识、记忆、信念、目标与意图来自对方，身体及身体经历保持原样。")
+                        appendHeroEvent(otherHero,"与${hero.name}互换灵魂；当前意识、记忆、信念、目标与意图来自对方，身体及身体经历保持原样。")
+                        outcomes.add("已互换${hero.name}与${otherHero.name}的灵魂认知层；两人的身体没有互换。"); successful++
+                    } else if(resident!=null && otherResident!=null && resident!==otherResident) {
+                        val goal=resident.goal; resident.goal=otherResident.goal; otherResident.goal=goal
+                        val belief=resident.belief; resident.belief=otherResident.belief; otherResident.belief=belief
+                        val thought=resident.currentThought; resident.currentThought=otherResident.currentThought; otherResident.currentThought=thought
+                        val intent=resident.intent; resident.intent=otherResident.intent; otherResident.intent=intent
+                        val trait=resident.mindTrait; resident.mindTrait=otherResident.mindTrait; otherResident.mindTrait=trait
+                        val memory=resident.mindMemory.toMutableList(); resident.mindMemory.clear(); resident.mindMemory.addAll(otherResident.mindMemory); otherResident.mindMemory.clear(); otherResident.mindMemory.addAll(memory)
+                        appendResidentEvent(resident,"与${otherResident.name}互换灵魂；当前意识、记忆、信念、目标、意图与人格倾向来自对方，身体及身体经历保持原样。")
+                        appendResidentEvent(otherResident,"与${resident.name}互换灵魂；当前意识、记忆、信念、目标、意图与人格倾向来自对方，身体及身体经历保持原样。")
+                        outcomes.add("已互换${resident.name}与${otherResident.name}的灵魂认知层；两人的身体没有互换。"); successful++
+                    } else outcomes.add("未执行：灵魂互换要求两个不同目标，且必须同为英雄或同为普通居民。")
+                }
                 "transform_person" -> {
                     if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
                     val changes=mutableListOf<String>()
@@ -485,12 +511,12 @@ object WorldEngine {
                     val mode=op.optString("memory_mode","append")
                     val memo=op.optString("memory_text")
                     if(hero!=null) {
-                        when(mode) { "erase" -> hero.memory.clear(); "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add(memo) }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
+                        when(mode) { "erase" -> { hero.memory.clear(); hero.thought="" }; "replace" -> { hero.memory.clear(); if(memo.isNotBlank()) hero.memory.add("【天道植入的主观人生记忆／身份认知】$memo"); hero.thought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) hero.memory.add(memo) }
                         appendHeroEvent(hero,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") hero.memory.clear()
                         outcomes.add("已修改${hero.name}的个人记忆（模式：${mode}）。"); successful++
                     } else if(resident!=null) {
-                        when(mode) { "erase" -> resident.mindMemory.clear(); "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add(memo) }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
+                        when(mode) { "erase" -> { resident.mindMemory.clear(); resident.currentThought="" }; "replace" -> { resident.mindMemory.clear(); if(memo.isNotBlank()) resident.mindMemory.add("【天道植入的主观人生记忆／身份认知】$memo"); resident.currentThought="我清楚地记得这些经历，并将其视为自己的人生记忆；我需要结合眼前符文之地的现实重新理解处境。" }; else -> if(memo.isNotBlank()) resident.mindMemory.add(memo) }
                         appendResidentEvent(resident,when(mode){"erase"->"天道清除了其个人记忆（人生历史档案仍保留）";"replace"->"天道重写了其个人记忆";else->"天道向其记忆中植入信息："+memo})
                         if(mode=="erase") resident.mindMemory.clear()
                         outcomes.add("已修改${resident.name}的个人记忆（模式：${mode}）。"); successful++
