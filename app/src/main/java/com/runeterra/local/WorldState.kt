@@ -279,6 +279,13 @@ object WorldEngine {
         groups.forEach { group ->
             val livingMembers=group.members.mapNotNull { id -> pop.firstOrNull { it.id==id && it.alive } }
             group.members.retainAll(livingMembers.map { it.id }.toSet())
+            if(group.kind=="非人种族社群" || group.kind=="超自然威胁网络") {
+                group.resources=(group.resources+rng.nextInt(5)-2).coerceIn(0,100)
+                group.influence=(group.influence+rng.nextInt(5)-2).coerceIn(0,100)
+                group.status=if(group.kind=="超自然威胁网络") { if(group.influence>=70)"黑雾侵蚀活跃" else "侵蚀暂缓" } else "约德尔社群活动"
+                if(rng.nextInt(100)<5) events.add("【特殊存在活动·模拟】第 $day 日：${group.name}的状态变化为「${group.status}」。")
+                return@forEach
+            }
             val candidates=pop.filter { it.alive && it.region==group.region && it.id !in group.members && it.age>=16 }
             val recruit=candidates.filter { person ->
                 when(group.kind){
