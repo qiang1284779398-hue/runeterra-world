@@ -178,6 +178,109 @@ object WorldEngine {
         }
         saveFactions(p,states)
     }
+    private const val KEY_ORGANIZATIONS="organizations_state"
+    private data class Organization(
+        val id:String,val name:String,val region:String,val kind:String,val agenda:String,
+        val rivals:MutableList<String>,val allies:MutableList<String>,
+        var leader:String,var influence:Int,var resources:Int,var publicSupport:Int,
+        var status:String="活跃",val members:MutableList<Int> = mutableListOf()
+    )
+    // Organizations are independent actors, not interchangeable with whole regions or states.
+    private val organizationSeeds=listOf(
+        Organization("demacia_crown","德玛西亚王室与王国机构","德玛西亚","国家机构","维护王国统治、法律秩序与边境安全",mutableListOf("demacia_mage_seekers"),mutableListOf(), "王室与王国官员",78,85,72),
+        Organization("demacia_crownguard","冕卫家族","德玛西亚","贵族家族","维护家族地位、军事传统与王国影响力",mutableListOf("demacia_mage_seekers"),mutableListOf("demacia_crown"),"冕卫家族长",62,72,55),
+        Organization("demacia_mage_seekers","搜魔人组织","德玛西亚","国家组织","执行针对非法魔法活动的搜查与管制",mutableListOf("demacia_crownguard"),mutableListOf("demacia_crown"),"搜魔人高阶官员",55,65,48),
+        Organization("demacia_vanguard","无畏先锋","德玛西亚","军事组织","保卫德玛西亚并承担高风险军事任务",mutableListOf(),mutableListOf("demacia_crown","demacia_crownguard"),"无畏先锋军官",68,70,76),
+        Organization("noxus_trifarix","崔法利议会","诺克萨斯","最高统治机构","以力量、远见与狡诈的权力原则统治帝国",mutableListOf("noxus_black_rose"),mutableListOf("noxus_legions"),"三人议会",90,95,65),
+        Organization("noxus_legions","诺克萨斯军团","诺克萨斯","军事组织","扩张帝国疆域并维持军事控制",mutableListOf(),mutableListOf("noxus_trifarix"),"军团统帅",82,90,70),
+        Organization("noxus_black_rose","黑色玫瑰","诺克萨斯","秘密结社","通过秘密网络与古老力量影响权力格局",mutableListOf("noxus_trifarix"),mutableListOf(),"秘密议会",76,82,20),
+        Organization("ionia_kinkou","均衡教派","艾欧尼亚","宗教与武术组织","维护精神领域与物质领域之间的均衡",mutableListOf("ionia_shadow_order"),mutableListOf(),"教派长老",62,45,60),
+        Organization("ionia_shadow_order","影流","艾欧尼亚","武装组织","以激进手段守护艾欧尼亚并追求力量",mutableListOf("ionia_kinkou"),mutableListOf(),"影流领袖",58,58,35),
+        Organization("freljord_avarosan","阿瓦罗萨部族联盟","弗雷尔卓德","部族联盟","团结部族并争取和平与生存空间",mutableListOf("freljord_winter_claw"),mutableListOf(),"部族联盟领袖",64,50,65),
+        Organization("freljord_winter_claw","凛冬之爪","弗雷尔卓德","部族联盟","以强硬的生存法则与征战维系部族",mutableListOf("freljord_avarosan"),mutableListOf(),"战母",61,55,54),
+        Organization("zaun_chem_barons","祖安化学男爵势力","祖安","商业与帮派联盟","控制工业、炼金资源与地下贸易网络",mutableListOf("zaun_firelights"),mutableListOf(),"化学男爵议会",75,88,32),
+        Organization("zaun_firelights","萤火","祖安","地下抵抗组织","保护社区并反抗压迫与环境破坏",mutableListOf("zaun_chem_barons"),mutableListOf(),"社区行动者",42,28,68),
+        Organization("piltover_council","皮尔特沃夫议会与贸易家族","皮尔特沃夫","政治与商业联盟","维护城邦贸易、海克斯科技与精英秩序",mutableListOf(),mutableListOf(),"议会代表",78,92,62),
+        Organization("bilgewater_captains","比尔吉沃特船长与港口势力","比尔吉沃特","港口联盟","争夺港口、航线、悬赏与海上贸易",mutableListOf(),mutableListOf(),"港口头目",60,62,45),
+        Organization("shurima_sun_disc","恕瑞玛复兴势力","恕瑞玛","帝国复兴运动","争夺古代遗产、绿洲与帝国合法性",mutableListOf(),mutableListOf(),"复兴派代表",58,52,48),
+        Organization("targon_solari","烈阳教派","巨神峰","宗教组织","维护烈阳信仰与相关宗教秩序",mutableListOf("targon_lunari"),mutableListOf(),"烈阳教长",57,45,55),
+        Organization("targon_lunari","皎月教派","巨神峰","宗教组织","守护皎月信仰与其信徒",mutableListOf("targon_solari"),mutableListOf(),"皎月教派代表",45,30,35),
+        Organization("ixtal_council","以绪奥肯统治阶层","以绪塔尔","统治机构","维护隐秘、元素知识与城邦秩序",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70)
+    )
+    private fun organizations(p:android.content.SharedPreferences):MutableList<Organization>{
+        val raw=p.getString(KEY_ORGANIZATIONS,null)
+        if(raw!=null) runCatching {
+            val a=JSONArray(raw)
+            return (0 until a.length()).map { i ->
+                val j=a.getJSONObject(i)
+                fun strings(key:String)= (0 until (j.optJSONArray(key)?.length()?:0)).map { j.getJSONArray(key).getString(it) }.toMutableList()
+                val members=(0 until (j.optJSONArray("members")?.length()?:0)).map { j.getJSONArray("members").getInt(it) }.toMutableList()
+                Organization(j.optString("id"),j.optString("name"),j.optString("region"),j.optString("kind"),j.optString("agenda"),strings("rivals"),strings("allies"),j.optString("leader"),j.optInt("influence",30),j.optInt("resources",20),j.optInt("publicSupport",30),j.optString("status","活跃"),members)
+            }.toMutableList()
+        }
+        return organizationSeeds.map { it.copy(rivals=it.rivals.toMutableList(),allies=it.allies.toMutableList(),members=mutableListOf()) }.toMutableList().also { saveOrganizations(p,it) }
+    }
+    private fun saveOrganizations(p:android.content.SharedPreferences,list:List<Organization>){
+        p.edit().putString(KEY_ORGANIZATIONS,JSONArray().apply { list.forEach { o ->
+            put(JSONObject().put("id",o.id).put("name",o.name).put("region",o.region).put("kind",o.kind).put("agenda",o.agenda)
+                .put("rivals",JSONArray(o.rivals)).put("allies",JSONArray(o.allies)).put("leader",o.leader)
+                .put("influence",o.influence).put("resources",o.resources).put("publicSupport",o.publicSupport)
+                .put("status",o.status).put("members",JSONArray(o.members)))
+        }}.toString()).apply()
+    }
+    private fun tickOrganizations(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,events:MutableList<String>,rng:Random){
+        if(day%30L!=0L)return
+        val groups=organizations(p)
+        groups.forEach { group ->
+            val livingMembers=group.members.mapNotNull { id -> pop.firstOrNull { it.id==id && it.alive } }
+            group.members.retainAll(livingMembers.map { it.id }.toSet())
+            val candidates=pop.filter { it.alive && it.region==group.region && it.id !in group.members && it.age>=16 }
+            val recruit=candidates.filter { person ->
+                when(group.kind){
+                    "军事组织" -> person.job=="护卫" || person.goal.contains("守护") || person.goal.contains("战")
+                    "宗教组织","宗教与武术组织" -> person.goal.contains("信仰") || person.goal.contains("修行") || person.job=="学徒"
+                    "贵族家族" -> person.coins>=20 || person.job=="护卫"
+                    "商业与帮派联盟","政治与商业联盟" -> person.job=="商贩" || person.job=="工匠"
+                    "地下抵抗组织","武装组织" -> person.goal.contains("自由") || person.goal.contains("复仇") || person.job=="护卫"
+                    "国家机构","最高统治机构","统治机构" -> person.job=="护卫" || person.job=="工匠" || person.job=="商贩"
+                    else -> person.job in listOf("商贩","工匠","护卫","学徒")
+                }
+            }.randomOrNull()
+            if(recruit!=null && group.members.size<80 && rng.nextInt(100)<24){
+                group.members.add(recruit.id)
+                recordLife(recruit,day,"加入组织「"+group.name+"」，开始参与其活动。")
+                events.add("【组织活动·模拟】第 "+day+" 日："+recruit.name+"加入"+group.name+"。")
+            }
+            group.resources=(group.resources+(livingMembers.size/8)+(if(group.kind.contains("商业")||group.kind.contains("帮派"))rng.nextInt(4) else 0)-rng.nextInt(3)).coerceIn(0,100)
+            group.publicSupport=(group.publicSupport+(if(group.resources<15)-1 else if(group.agenda.contains("保护")||group.agenda.contains("团结"))1 else 0)+rng.nextInt(3)-1).coerceIn(0,100)
+            group.influence=(group.influence+(livingMembers.size/10)+(group.publicSupport/35)-2+rng.nextInt(3)).coerceIn(0,100)
+            if(group.resources==0 || group.influence<8) group.status="衰弱"
+            else if(group.members.size>=45 && group.influence>=75) group.status="强盛"
+            else group.status="活跃"
+            if(group.influence>=70 && rng.nextInt(100)<8) events.add("【组织政治·模拟】第 "+day+" 日："+group.name+"影响力上升，开始更积极地推动「"+group.agenda+"」。")
+        }
+        groups.forEach { group ->
+            group.rivals.forEach { rivalId ->
+                val rival=groups.firstOrNull { it.id==rivalId }
+                if(rival!=null && group.influence>=65 && rival.influence>=65 && rng.nextInt(100)<4){
+                    events.add("【组织冲突·模拟】第 "+day+" 日："+group.name+"与"+rival.name+"围绕理念、地盘或资源发生冲突。")
+                    group.resources=(group.resources-2).coerceAtLeast(0)
+                    rival.resources=(rival.resources-2).coerceAtLeast(0)
+                }
+            }
+        }
+        saveOrganizations(p,groups)
+    }
+    fun organizationDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val allPeople=people(p)
+        val groups=organizations(p)
+        return groups.sortedByDescending { it.influence }.map { o ->
+            val memberNames=o.members.mapNotNull { id -> allPeople.firstOrNull { it.id==id && it.alive }?.name }
+            "【"+o.name+"】\n所属地区："+o.region+"\n组织性质："+o.kind+"\n核心目标："+o.agenda+"\n领袖/机构："+o.leader+"\n成员："+o.members.size+"人\n影响力："+o.influence+"｜资源："+o.resources+"｜公众支持："+o.publicSupport+"\n状态："+o.status+"\n盟友："+o.allies.joinToString("、").ifBlank { "暂无" }+"\n竞争/敌对组织："+o.rivals.joinToString("、").ifBlank { "暂无" }+"\n成员示例："+memberNames.take(8).joinToString("、").ifBlank { "尚无成员" }+"\n（组织的后续变化属于模拟历史分支。）"
+        }
+    }
+
     private const val KEY_DIPLO="diplomacy"
     private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false,var aWins:Int=0,var bWins:Int=0)
     private val factionRegions=mapOf("德玛西亚" to "德玛西亚","诺克萨斯" to "诺克萨斯","艾欧尼亚" to "艾欧尼亚","皮尔特沃夫" to "皮尔特沃夫","祖安" to "祖安","弗雷尔卓德" to "弗雷尔卓德","恕瑞玛" to "恕瑞玛","巨神峰" to "巨神峰","比尔吉沃特" to "比尔吉沃特","以绪塔尔" to "以绪塔尔")
@@ -415,6 +518,7 @@ object WorldEngine {
             applyLoreChainStage(day,p,pop,markets,events,rng)
             tickDiplomacy(day,p,pop,markets,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
+            tickOrganizations(day,p,pop,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
             tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
@@ -558,6 +662,8 @@ object WorldEngine {
             append("朋友：${friends.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
             append("师长：${mentor?.name ?: "暂无记录"}\n")
             append("学生：${students.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
+            val memberships=organizations(p).filter { r.id in it.members }.map { it.name }
+            append("所属组织：${memberships.joinToString("、").ifBlank { "暂无记录" }}\n")
             append("家庭子女计数：${r.familyCount}\n\n人生时间线\n")
             if(r.history.isEmpty()) append("暂时没有人生事件记录。")
             else r.history.forEach { append("• ").append(it).append("\n") }
