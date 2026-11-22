@@ -137,12 +137,12 @@ class MainActivity : Activity() {
                 when(which) {
                     0 -> chooseHeavenlyMode("全世界",-1,"")
                     1 -> {
-                        val residents=WorldEngine.residentDirectory(this).filter { it.contains("｜在世") || it.contains("｜") }
+                        val residents=WorldEngine.residentDirectory(this).filter { it.contains("｜在世") }
                         AlertDialog.Builder(this).setTitle("选择接收神谕的居民")
                             .setItems(residents.toTypedArray()) { _, index ->
-                                val id=residents[index].substringBefore("｜").toIntOrNull() ?: return@setItems
+                                val id=residents[index].substringBefore("｜").toIntOrNull()
                                 val name=residents[index].substringAfter("｜").substringBefore("｜")
-                                chooseHeavenlyMode("指定居民",id,name)
+                                if(id!=null) chooseHeavenlyMode("指定居民",id,name)
                             }.setNegativeButton("取消",null).show()
                     }
                     2 -> {
@@ -156,11 +156,11 @@ class MainActivity : Activity() {
                     3 -> {
                         val history=WorldEngine.heavenlyInterventionHistory(this)
                         AlertDialog.Builder(this).setTitle("天道干预历史")
-                            .setMessage(history.joinToString("\\n\\n").ifBlank { "尚无天道干预记录。" })
+                            .setMessage(history.joinToString("\n\n").ifBlank { "尚无天道干预记录。" })
                             .setPositiveButton("关闭",null).show()
                     }
                     4 -> AlertDialog.Builder(this).setTitle("天道系统状态")
-                        .setMessage(statusLines.joinToString("\\n\\n"))
+                        .setMessage(statusLines.joinToString("\n\n"))
                         .setPositiveButton("关闭",null).show()
                 }
             }
