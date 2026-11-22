@@ -94,7 +94,7 @@ class MainActivity : Activity() {
             setPadding(24,12,24,8)
         }
         val hint=TextView(this).apply {
-            text="选择英雄或居民，查看已保存的思考、当前活动、意图和人生事件。内容每 2 秒自动刷新。"
+            text="切换英雄、居民、世界事件或人物互动。人物状态每 2 秒刷新；事件列表显示已保存记录。"
             textSize=13f
             setPadding(0,0,0,12)
         }
@@ -103,6 +103,11 @@ class MainActivity : Activity() {
         val residentsButton=Button(this).apply { text="居民"; isAllCaps=false }
         switches.addView(heroesButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         switches.addView(residentsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        val eventSwitches=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        val worldEventsButton=Button(this).apply { text="世界事件"; isAllCaps=false }
+        val interactionsButton=Button(this).apply { text="人物互动"; isAllCaps=false }
+        eventSwitches.addView(worldEventsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        eventSwitches.addView(interactionsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val spinner=Spinner(this)
         val output=TextView(this).apply {
             textSize=14f
@@ -114,6 +119,7 @@ class MainActivity : Activity() {
         }
         panel.addView(hint)
         panel.addView(switches)
+        panel.addView(eventSwitches)
         panel.addView(spinner,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         panel.addView(scroll,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         val dialog=AlertDialog.Builder(this)
@@ -148,6 +154,8 @@ class MainActivity : Activity() {
         }
         heroesButton.setOnClickListener { loadKind("英雄") }
         residentsButton.setOnClickListener { loadKind("居民") }
+        worldEventsButton.setOnClickListener { loadKind("世界事件") }
+        interactionsButton.setOnClickListener { loadKind("人物互动") }
         loadKind("英雄")
         val refreshTask=object:Runnable {
             override fun run() {
