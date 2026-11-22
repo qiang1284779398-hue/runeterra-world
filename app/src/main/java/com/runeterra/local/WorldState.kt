@@ -937,8 +937,8 @@ object WorldEngine {
                     }
                     rel.tension=(rel.tension-18).coerceAtLeast(45)
                     events.add("【停战谈判·模拟分支】第 $day 日：长期战争造成的财政、军力与社会压力迫使${rel.a}和${rel.b}接受暂时停火；边界争端与政治敌意尚未解决。")
-                    recordLocalStory(pop,regionA,regionA,"停战消息传来；居民开始评估失散亲友、贸易恢复与家园重建的可能。",rng,5)
-                    recordLocalStory(pop,regionB,regionB,"停战消息传来；居民对边境是否安全、军队是否撤离仍抱有疑虑。",rng,5)
+                    recordLocalStory(pop,day,regionA,"停战消息传来；居民开始评估失散亲友、贸易恢复与家园重建的可能。",rng,5)
+                    recordLocalStory(pop,day,regionB,"停战消息传来；居民对边境是否安全、军队是否撤离仍抱有疑虑。",rng,5)
                     rel.warMonths=0
                     rel.exhaustionA=0
                     rel.exhaustionB=0
