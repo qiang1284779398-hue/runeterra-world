@@ -22,13 +22,14 @@ private data class Resident(
      var travelDestination: String = "",
      var travelDaysRemaining: Int = 0,
      var travelPurpose: String = "",
-     var jobBeforeTravel: String = ""
+     var jobBeforeTravel: String = "",
+     var householdId: Int = -1
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -40,7 +41,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1))
     }
 }
 
@@ -807,6 +808,39 @@ private fun craftBonus(region:String):Int = when(region) {
         p.edit().putInt(KEY_NEXT_ID,240).apply()
         savePeople(p,list); return list
     }
+    private const val KEY_HOUSEHOLDS="households_state"
+    private data class Household(val id:Int,var foodReserve:Int=0,var sharedWealth:Int=0,var foundedDay:Long=1L)
+    private fun householdStates(p:android.content.SharedPreferences,pop:MutableList<Resident>):MutableList<Household>{
+        val raw=p.getString(KEY_HOUSEHOLDS,null)
+        val stored=if(raw==null) mutableListOf() else runCatching {
+            val a=JSONArray(raw); (0 until a.length()).map { i -> a.getJSONObject(i).let { Household(it.optInt("id"),it.optInt("foodReserve"),it.optInt("sharedWealth"),it.optLong("foundedDay",1L)) } }.toMutableList()
+        }.getOrDefault(mutableListOf())
+        var next=(stored.maxOfOrNull { it.id } ?: -1)+1
+        pop.filter { it.householdId>=0 }.forEach { r ->
+            val partner=pop.firstOrNull { it.id==r.partnerId && it.householdId>=0 && it.region==r.region && it.settlement==r.settlement }
+            if(partner!=null && partner.householdId!=r.householdId) {
+                val keep=minOf(r.householdId,partner.householdId); val drop=maxOf(r.householdId,partner.householdId)
+                pop.filter { it.householdId==drop }.forEach { it.householdId=keep }
+            }
+        }
+        pop.filter { it.householdId<0 }.forEach { r ->
+            val related=pop.firstOrNull { other -> other.id!=r.id && other.householdId>=0 && other.region==r.region && other.settlement==r.settlement &&
+                (other.id==r.partnerId || other.id in r.parentIds || other.id in r.childIds || r.id in other.parentIds || r.id in other.childIds) }
+            r.householdId=related?.householdId ?: next++
+        }
+        val ids=pop.map { it.householdId }.distinct().filter { it>=0 }
+        val map=stored.associateBy { it.id }
+        val result=ids.map { id -> map[id] ?: Household(id,foundedDay=p.getLong(KEY_DAY,1L)) }.toMutableList()
+        if(result.size!=stored.size || stored.map { it.id }.toSet()!=ids.toSet()) {
+            saveHouseholds(p,result); savePeople(p,pop)
+        }
+        return result
+    }
+    private fun saveHouseholds(p:android.content.SharedPreferences,items:List<Household>){
+        p.edit().putString(KEY_HOUSEHOLDS,JSONArray().apply { items.forEach { h ->
+            put(JSONObject().put("id",h.id).put("foodReserve",h.foodReserve).put("sharedWealth",h.sharedWealth).put("foundedDay",h.foundedDay))
+        }}.toString()).apply()
+    }
     private fun savePeople(p: android.content.SharedPreferences, list: List<Resident>) {
         val a=JSONArray(); list.forEach { a.put(it.json()) }; p.edit().putString(KEY_PEOPLE,a.toString()).apply()
     }
@@ -819,6 +853,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
         val pop=people(p)
+        householdStates(p,pop)
         val markets=markets(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
@@ -892,6 +927,9 @@ private fun craftBonus(region:String):Int = when(region) {
                 if(day%30L==0L && r.alive && r.partnerId<0 && r.age in 20..35 && rng.nextInt(1000)<2) {
                     val candidate=pop.firstOrNull { it.alive && it.id!=r.id && it.region==r.region && it.partnerId<0 && it.age in 20..35 }
                     if(candidate!=null) { r.partnerId=candidate.id;candidate.partnerId=r.id
+                        val mergedHousehold=minOf(r.householdId,candidate.householdId)
+                        val formerHouseholds=setOf(r.householdId,candidate.householdId)
+                        pop.filter { it.householdId in formerHouseholds }.forEach { it.householdId=mergedHousehold }
                         recordLife(r,day,"与${candidate.name}建立伴侣关系。");recordLife(candidate,day,"与${r.name}建立伴侣关系。")
                         events.add("第 $day 日：${r.region}的${r.name}与${candidate.name}建立伴侣关系。") }
                 }
@@ -900,7 +938,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     val mate=pop.firstOrNull { it.id==r.partnerId && it.alive }
                     if(mate!=null) mate.familyCount=r.familyCount
                     val id=nextId++
-                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement)
+                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement,householdId=r.householdId)
                     child.parentIds.add(r.id)
                     r.childIds.add(id)
                     recordLife(r,day,"家庭迎来孩子${child.name}（居民编号$id）。")
@@ -995,6 +1033,7 @@ private fun craftBonus(region:String):Int = when(region) {
         }
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
+        saveHouseholds(p,householdStates(p,pop))
         saveMarkets(p,markets)
         val arr=JSONArray();events.forEach{arr.put(it)}
         p.edit().putInt(KEY_NEXT_ID,nextId)
@@ -1040,6 +1079,16 @@ private fun craftBonus(region:String):Int = when(region) {
                 goods.filter { it!="粮食" }.joinToString("、") { good -> "${good}${m.stock[good]?:0}（价${goodPrice(m,good)}）" }
         })
         return rows
+    }
+    fun householdDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val all=people(p); val households=householdStates(p,all)
+        return households.map { h ->
+            val members=all.filter { it.householdId==h.id }; val living=members.filter { it.alive }
+            val location=living.groupBy { it.region+" · "+it.settlement }.maxByOrNull { it.value.size }?.key ?: "无在世成员"
+            val names=living.sortedBy { it.age }.joinToString("、") { it.name }.ifBlank { "无在世成员" }
+            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭已作为独立社会实体建档；共同储粮与共同资产目前仅为预留账目，尚未参与居民消费和工资结算。"
+        }.sortedBy { it.substringBefore("】") }
     }
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
