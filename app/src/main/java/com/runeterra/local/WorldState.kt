@@ -31,6 +31,38 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_FACTIONS="factions_state"
+    private data class Faction(var name:String,var leader:String,var military:Int,var stability:Int,var treasury:Int,var territory:MutableList<String>)
+    private fun factionStates(p:android.content.SharedPreferences):MutableMap<String,Faction> {
+        val raw=p.getString(KEY_FACTIONS,null)
+        if(raw!=null) runCatching {
+            val a=JSONArray(raw);val map=mutableMapOf<String,Faction>()
+            for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();map[j.optString("name")]=Faction(j.optString("name"),j.optString("leader"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list)}
+            if(map.size>=regions.size)return map
+        }
+        val initial=regions.associate { r-> Faction(r,"地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,r.let{mutableListOf(it)}) }.toMutableMap()
+        saveFactions(p,initial);return initial
+    }
+    private fun saveFactions(p:android.content.SharedPreferences,map:Map<String,Faction>){
+        p.edit().putString(KEY_FACTIONS,JSONArray().apply{map.values.forEach{f->put(JSONObject().put("name",f.name).put("leader",f.leader).put("military",f.military).put("stability",f.stability).put("treasury",f.treasury).put("territory",JSONArray(f.territory)))}}.toString()).apply()
+    }
+    private fun tickFactionGovernance(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
+        if(day%30L!=0L)return
+        val states=factionStates(p)
+        states.values.forEach { f ->
+            val count=pop.count{it.alive&&it.region in f.territory}
+            val marketWealth=f.territory.sumOf{markets[it]?.wealth?:0}
+            f.treasury=(f.treasury+count/5+marketWealth/1000-rng.nextInt(8)).coerceAtLeast(0)
+            f.stability=(f.stability+(if(count>0)1 else -2)+(if(f.treasury<150)-3 else 1)).coerceIn(0,100)
+            f.military=(f.military+if(f.treasury>800 && rng.nextInt(100)<10)5 else 0).coerceAtMost(10000)
+            if(f.stability<25 && rng.nextInt(100)<12){
+                events.add("【政局】第 $day 日：${f.name}局势动荡，财政${f.treasury}，稳定度${f.stability}；出现抗议、权力斗争或地方自治迹象。")
+                val region=f.territory.randomOrNull()
+                if(region!=null)pop.filter{it.alive&&it.region==region}.take(3).forEach{it.health=(it.health-1).coerceAtLeast(0)}
+            }
+        }
+        saveFactions(p,states)
+    }
     private const val KEY_DIPLO="diplomacy"
     private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false)
     private val factionRegions=mapOf("德玛西亚" to "德玛西亚","诺克萨斯" to "诺克萨斯","艾欧尼亚" to "艾欧尼亚","皮尔特沃夫" to "皮尔特沃夫","祖安" to "祖安","弗雷尔卓德" to "弗雷尔卓德","恕瑞玛" to "恕瑞玛","巨神峰" to "巨神峰","比尔吉沃特" to "比尔吉沃特","以绪塔尔" to "以绪塔尔")
@@ -185,6 +217,7 @@ object WorldEngine {
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
             tickDiplomacy(day,p,pop,markets,events,rng)
+            tickFactionGovernance(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
