@@ -1005,6 +1005,9 @@ private fun craftBonus(region:String):Int = when(region) {
             }
             pop.addAll(newborns)
             if(day%30L==0L) {
+                var savingHouseholds=0
+                var contributedCoins=0
+                var contributedFood=0
                 households.forEach { household ->
                     val members=pop.filter { it.alive && it.householdId==household.id }
                     if(members.isNotEmpty()) {
@@ -1013,11 +1016,13 @@ private fun craftBonus(region:String):Int = when(region) {
                         val foodDonor=members.filter { it.food>4 && it.travelDaysRemaining<=0 }.maxByOrNull { it.food }
                         if(foodDonor!=null) { foodDonor.food--; household.foodReserve++ }
                         if(contributors.isNotEmpty() || foodDonor!=null) {
-                            val location=members.groupBy { it.region }.maxByOrNull { it.value.size }?.key ?: "未知地区"
-                            events.add("【家庭经济·模拟】第 $day 日：${location}的家庭${household.id}完成共同储备；缴入${contributors.size}枚金币，储粮${if(foodDonor!=null)1 else 0}单位。")
+                            savingHouseholds++
+                            contributedCoins+=contributors.size
+                            if(foodDonor!=null) contributedFood++
                         }
                     }
                 }
+                if(savingHouseholds>0) events.add("【家庭经济·模拟】第 $day 日：$savingHouseholds 个家庭向共同储备转入$contributedCoins 枚金币与$contributedFood 单位粮食；这些资产已从成员个人库存扣除。")
             }
             regions.forEach { region ->
                 val market=markets[region] ?: return@forEach
