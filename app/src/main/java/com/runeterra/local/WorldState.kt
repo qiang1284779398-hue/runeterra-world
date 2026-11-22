@@ -1988,6 +1988,11 @@ private fun craftBonus(region:String):Int = when(region) {
             "${it.id}｜${it.name}｜${it.lineage}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
         }
     }
+    // Stable export API: returns recorded biography text, or null when the resident does not exist.
+    fun residentBiographyExport(context:Context,id:Int):String? {
+        val exists=people(context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)).any { it.id==id }
+        return if(exists) residentHistory(context,id) else null
+    }
     fun residentHistory(context:Context,id:Int):String {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=people(p)
