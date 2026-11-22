@@ -197,9 +197,23 @@ class ChatGPTWebActivity : Activity() {
                 const turns=candidates.filter(x=>x.el.getAttribute('data-testid') && x.el.getAttribute('data-testid').startsWith('conversation-turn-'));
                 if (turns.length) { chosen=turns[turns.length-1]; method='deep-conversation-turn'; }
               }
-              const bodyText=textOf(document.body);
+              const rootBodies = roots.map((root, index) => {
+                let body = '';
+                try { body = textOf(root.body || root.documentElement); } catch (_) {}
+                return {index, length:body.length, preview:body.slice(-1800), text:body};
+              });
+              const bodyText = rootBodies.map(x=>x.text).filter(Boolean).join('\\n');
               const shadowHosts=all.filter(e=>!!e.shadowRoot).length;
-              const iframeInfo=Array.from(document.querySelectorAll('iframe')).map(f=>({src:(f.getAttribute('src')||'').slice(0,120),accessible:(function(){try{return !!f.contentDocument}catch(_){return false}})()}));
+              const iframeInfo=Array.from(document.querySelectorAll('iframe')).map((f,index)=>{
+                let body='', title='', url='';
+                try { const d=f.contentDocument; if(d){body=textOf(d.body || d.documentElement);title=d.title||'';url=d.location.href||'';} } catch(_){}
+                return {index,src:(f.getAttribute('src')||'').slice(0,180),accessible:!!(function(){try{return f.contentDocument}catch(_){return null}})(),title,url,bodyLength:body.length,bodyPreview:body.slice(-1200)};
+              });
+              if (!chosen) {
+                const frameBody = rootBodies.filter(x=>x.index>0 && x.text.length>20).sort((a,b)=>b.length-a.length)[0];
+                const usefulBody = frameBody || rootBodies.filter(x=>x.text.length>80 && !/登录\\s*$/.test(x.text)).sort((a,b)=>b.length-a.length)[0];
+                if (usefulBody) { chosen={txt:usefulBody.text,role:'',kind:'body'}; method='iframe-body-fallback'; }
+              }
               const stop=roots.some(root=>{try{return !!root.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]')}catch(_){return false}});
               return JSON.stringify({
                 text:chosen?chosen.txt:'',
@@ -209,7 +223,7 @@ class ChatGPTWebActivity : Activity() {
                 turnCount:candidates.filter(x=>x.el.getAttribute('data-testid')&&x.el.getAttribute('data-testid').startsWith('conversation-turn-')).length,
                 articleCount:candidates.filter(x=>x.kind==='article').length,
                 rootCount:roots.length, shadowHostCount:shadowHosts, iframeCount:iframeInfo.length, iframeInfo:iframeInfo,
-                elementCount:all.length, bodyLength:bodyText.length, bodyPreview:bodyText.slice(-900),
+                elementCount:all.length, bodyLength:bodyText.length, bodyPreview:bodyText.slice(-1800), rootBodies:rootBodies.map(x=>({index:x.index,length:x.length,preview:x.preview})),
                 method:method, title:document.title, url:location.href, ready:document.readyState
               });
             })();
@@ -243,7 +257,7 @@ class ChatGPTWebActivity : Activity() {
                 }
             } else if (force) {
                 val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(140)
-                status.text = "未找到回答：元素=" + elements + "，DOM根=" + roots + "，Shadow=" + shadowHosts + "，iframe=" + frames + "，body字符=" + bodyLength + "；页面=" + data.optString("url") + "；预览=" + preview
+                status.text = "未找到回答：元素=" + elements + "，DOM根=" + roots + "，Shadow=" + shadowHosts + "，iframe=" + frames + "，body字符=" + bodyLength + "；页面=" + data.optString("url") + "；预览=" + preview + "；框架=" + data.optJSONArray("iframeInfo")
             }
         }
     }
