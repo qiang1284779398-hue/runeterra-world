@@ -74,25 +74,9 @@ class MainActivity : Activity() {
         val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
         val aiDiagnostics = Button(this).apply { text = "查看 / 复制 AI 推理诊断日志"; setOnClickListener { showAiDiagnostics() } }
         val gptWebTest = Button(this).apply {
-            text = "GPT 网页后台能力测试"
+            text = "GPT 网页爬虫 / 自动收发测试"
             setOnClickListener {
-                if (!ChatGPTAccessibilityService.isEnabled(this@MainActivity)) {
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("启用网页桥接辅助服务")
-                        .setMessage("请启用「符文之地 GPT 网页桥接」，然后返回本应用再次点击此按钮。")
-                        .setPositiveButton("打开无障碍设置") { _, _ ->
-                            startActivity(Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                        }.setNegativeButton("取消", null).show()
-                } else {
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chatgpt.com/")).apply {
-                            setPackage("com.android.chrome")
-                        })
-                        Toast.makeText(this@MainActivity, "登录 ChatGPT 后切回本应用，再查看桥接日志。", Toast.LENGTH_LONG).show()
-                    } catch (_: Exception) {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://chatgpt.com/")))
-                    }
-                }
+                startActivity(Intent(this@MainActivity, ChatGPTWebActivity::class.java))
             }
         }
         val gptWebLog = Button(this).apply {
