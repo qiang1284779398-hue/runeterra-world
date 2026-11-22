@@ -221,21 +221,62 @@ class MainActivity : Activity() {
     }
 
     private fun importLocalModel(uri: Uri) {
-        Toast.makeText(this,"正在复制模型到本地存储，请保持应用打开…",Toast.LENGTH_LONG).show()
+        Toast.makeText(this,"正在安全导入模型；旧模型会先保留，请保持应用打开…",Toast.LENGTH_LONG).show()
         Thread {
+            var tempFile: File? = null
             try {
                 val modelsDir=File(filesDir,"models").apply { mkdirs() }
                 val modelFile=File(modelsDir,"resident-model.gguf")
+                tempFile=File(modelsDir,"resident-model.gguf.importing")
+                tempFile.delete()
                 contentResolver.openInputStream(uri)?.use { input ->
-                    FileOutputStream(modelFile).use { output -> input.copyTo(output, 1024*1024) }
+                    FileOutputStream(tempFile).use { output -> input.copyTo(output, 1024*1024); output.fd.sync() }
                 } ?: throw IllegalStateException("无法读取所选文件")
-                ResidentAI.load(this,modelFile.absolutePath) { error ->
-                    runOnUiThread {
-                        Toast.makeText(this, if(error==null) "本地模型加载成功" else "模型加载失败：$error",Toast.LENGTH_LONG).show()
+                if(tempFile.length()<1024*1024) throw IllegalStateException("文件过小，不像有效的 GGUF 模型")
+                val magic=ByteArray(4)
+                java.io.RandomAccessFile(tempFile,"r").use { it.readFully(magic) }
+                if(String(magic,Charsets.US_ASCII)!="GGUF") throw IllegalStateException("文件头不是 GGUF；原模型未被覆盖")
+                val staged=tempFile
+                runOnUiThread {
+                    val replaceAndLoad = {
+                        try {
+                            val backup=File(modelsDir,"resident-model.gguf.previous")
+                            if(backup.exists()) backup.delete()
+                            if(modelFile.exists() && !modelFile.renameTo(backup)) throw IllegalStateException("无法备份旧模型；已取消覆盖")
+                            if(!staged.renameTo(modelFile)) {
+                                if(backup.exists()) backup.renameTo(modelFile)
+                                throw IllegalStateException("无法安装新模型；已尝试恢复旧模型")
+                            }
+                            Toast.makeText(this,"模型文件已安全替换，正在加载并校验…",Toast.LENGTH_LONG).show()
+                            ResidentAI.load(this,modelFile.absolutePath) { error ->
+                                runOnUiThread {
+                                    if(error==null) {
+                                        backup.delete()
+                                        Toast.makeText(this,"模型导入并加载成功",Toast.LENGTH_LONG).show()
+                                    } else {
+                                        Toast.makeText(this,"新模型加载失败：$error。旧模型备份保留在应用内部，请勿删除。",Toast.LENGTH_LONG).show()
+                                    }
+                                    refresh()
+                                }
+                            }
+                        } catch(e:Throwable) {
+                            Toast.makeText(this,"模型替换失败：${e.message}",Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    if(ResidentAI.isLoaded()) {
+                        ResidentAI.unload { ok, result ->
+                            runOnUiThread {
+                                if(ok) replaceAndLoad()
+                                else Toast.makeText(this,"旧模型释放失败，未覆盖文件：$result",Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    } else {
+                        replaceAndLoad()
                     }
                 }
             } catch(e:Throwable) {
-                runOnUiThread { Toast.makeText(this,"模型导入失败：${e.message}",Toast.LENGTH_LONG).show() }
+                tempFile?.delete()
+                runOnUiThread { Toast.makeText(this,"模型导入失败：${e.message}；原模型未被覆盖。",Toast.LENGTH_LONG).show() }
             }
         }.start()
     }
