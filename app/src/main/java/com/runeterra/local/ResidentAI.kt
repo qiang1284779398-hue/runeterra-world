@@ -44,9 +44,9 @@ object ResidentAI {
                         contextSize = 2048,
                         threads = 4,
                         gpuLayers = 0,
-                        temperature = 0.75f,
-                        topP = 0.9f,
-                        topK = 40
+                        temperature = 0.55f,
+                        topP = 0.85f,
+                        topK = 30
                     )
                 )
                 model = loaded
@@ -105,8 +105,10 @@ object ResidentAI {
                 try {
                     val result=Llama.complete(
                         model=active,
-                        prompt=prompt,
-                        systemPrompt=systemPrompt,
+                        // Qwen3 otherwise may spend most of its token budget in a visible
+                        // <think> block and never reach the JSON consumed by the simulator.
+                        prompt=if (prompt.contains("/no_think")) prompt else "$prompt\n/no_think",
+                        systemPrompt="$systemPrompt\n不要展示思维链，不要复述系统指令，不要解释任务；直接输出最终JSON。",
                         maxTokens=maxTokens
                     )
                     callback(result.text.trim())
