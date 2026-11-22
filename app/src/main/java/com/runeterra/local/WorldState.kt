@@ -253,7 +253,8 @@ object WorldEngine {
             }
             group.resources=(group.resources+(livingMembers.size/8)+(if(group.kind.contains("商业")||group.kind.contains("帮派"))rng.nextInt(4) else 0)-rng.nextInt(3)).coerceIn(0,100)
             group.publicSupport=(group.publicSupport+(if(group.resources<15)-1 else if(group.agenda.contains("保护")||group.agenda.contains("团结"))1 else 0)+rng.nextInt(3)-1).coerceIn(0,100)
-            group.influence=(group.influence+(livingMembers.size/10)+(group.publicSupport/35)-2+rng.nextInt(3)).coerceIn(0,100)
+            val supportShift=if(group.publicSupport>=75)1 else if(group.publicSupport<=25)-1 else 0
+            group.influence=(group.influence+(livingMembers.size/20)+supportShift+rng.nextInt(3)-1).coerceIn(0,100)
             if(group.resources==0 || group.influence<8) group.status="衰弱"
             else if(group.members.size>=45 && group.influence>=75) group.status="强盛"
             else group.status="活跃"
