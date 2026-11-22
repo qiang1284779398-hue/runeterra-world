@@ -51,7 +51,7 @@ object WorldEngine {
     private const val KEY_MAGIC="magic_regions"
     private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
         val raw=p.getString(KEY_MAGIC,null)
-        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.isNotEmpty()){regions.filter{region->region !in it}.forEach{region->it[region]=when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;else->20}};saveMagic(p,it);return it}}
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.isNotEmpty()){regions.filter{region->region !in it}.forEach{region->it[region]=when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;"班德尔城"->90;"暗影岛"->100;else->20}};saveMagic(p,it);return it}}
         return regions.associateWith{region->when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;else->20}}.toMutableMap().also{saveMagic(p,it)}
     }
     private fun saveMagic(p:android.content.SharedPreferences,m:Map<String,Int>){
@@ -443,7 +443,7 @@ object WorldEngine {
             affected.forEach { r -> r.health=(r.health-pulse.healthLoss).coerceAtLeast(0); recordLife(r,day,"经历历史事件「${pulse.title}」的冲击，身处${pulse.region}。") }
             val moved=affected.filter { rng.nextInt(100)<18 }
             moved.forEach { r ->
-                val dest=regions[(regions.indexOf(pulse.region)+1)%regions.size]
+                val dest=residentRegions[(residentRegions.indexOf(pulse.region).coerceAtLeast(0)+1)%residentRegions.size]
                 r.region=dest
                 recordLife(r,day,"因「${pulse.title}」引发的动荡，从${pulse.region}迁往${dest}。")
             }
@@ -473,7 +473,7 @@ object WorldEngine {
             residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100); recordLife(r,day,"受到历史事件「${stage.title}」影响，身处${stage.region}。") }
             val displaced=residents.filter { rng.nextInt(100)<stage.migrationChance }
             displaced.forEach { r ->
-                val destination=regions[(regions.indexOf(stage.region)+1)%regions.size]
+                val destination=residentRegions[(residentRegions.indexOf(stage.region).coerceAtLeast(0)+1)%residentRegions.size]
                 r.region=destination
                 recordLife(r,day,"因「${stage.title}」从${stage.region}迁往${destination}。")
             }
@@ -484,6 +484,8 @@ object WorldEngine {
     }
     // The simulation includes the ten core political/cultural regions plus Bandle City and the Shadow Isles; the Void is a transregional threat, not a conventional state.
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔","班德尔城","暗影岛")
+    // Ordinary human resident generation and migration must not treat the spirit-realm Bandle City or cursed Shadow Isles as normal human provinces.
+    private val residentRegions=regions.filterNot { it=="班德尔城" || it=="暗影岛" }
     // Canon-named places are used only where Riot lore identifies them; generic settlements are explicitly simulation placeholders.
     private val settlementSeeds=mapOf("德玛西亚" to listOf("德玛西亚雄都","高银沼","未命名边境村镇（模拟）"),"诺克萨斯" to listOf("不朽堡垒","诺克萨斯军团驻地（模拟）","帝国行省聚落（模拟）"),"艾欧尼亚" to listOf("普雷西典","均衡教派寺院（泛称）","艾欧尼亚地方村落（模拟）"),"皮尔特沃夫" to listOf("皮尔特沃夫城","太阳之门","海港与工坊区（模拟）"),"祖安" to listOf("海滨长廊区（Promenade）","中层区（Entresol）","污水坑区（Sump）"),"弗雷尔卓德" to listOf("霜卫要塞","拉克尔斯泰克","阿瓦罗萨／凛冬之爪流动营地（模拟）"),"恕瑞玛" to listOf("太阳圆盘遗址","纳施拉美","绿洲与商路聚落（模拟）"),"巨神峰" to listOf("烈阳教派圣所（模拟）","皎月信徒隐居地（模拟）","山麓朝圣聚落（模拟）"),"比尔吉沃特" to listOf("屠夫之桥","屠宰码头","布胡鲁神庙"),"以绪塔尔" to listOf("以绪奥肯","奥姆卡（Ohmka）","索伦（Xolen）／帕雷萨（Paretha）"),"班德尔城" to listOf("班德尔城","符文之地班德尔入口（模拟）","班德尔居民聚落（模拟）"),"暗影岛" to listOf("福光岛遗迹（Blessed Isles）","赫利亚遗迹（Helia）","黑雾侵蚀区域（模拟）"))
     private fun defaultSettlement(region:String,id:Int):String { val options=settlementSeeds[region] ?: listOf(region+"聚落"); return options[Math.floorMod(id,options.size)] }
@@ -537,7 +539,7 @@ object WorldEngine {
         }
         val rng=Random(24681357L)
         val list=(0 until 240).map { i ->
-            val region=regions[i%regions.size]
+            val region=residentRegions[i%residentRegions.size]
             val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i))
             recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}的${resident.settlement}，职业为${resident.job}。")
             resident
