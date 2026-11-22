@@ -2,12 +2,11 @@ from pathlib import Path
 
 p = Path("llama-android/library/src/main/jni/llama_jni.cpp")
 s = p.read_text(encoding="utf-8")
+
+# Convert UTF-8 output into Java UTF-16; JNI NewStringUTF only accepts
+# Modified UTF-8 and is unsafe for arbitrary model output.
 needle = 'std::string json_escape(const std::string &in) {'
 helper = r"""
-// Convert arbitrary UTF-8 bytes to UTF-16 explicitly. Model token pieces may
-// end on a partial/malformed UTF-8 sequence; NewStringUTF expects Modified UTF-8
-// and aborts the Android process on malformed input. NewString(jchar*) avoids
-// that ABI trap entirely. Invalid bytes are replaced with U+FFFD.
 jstring new_string_from_utf8(JNIEnv *env, const std::string &input) {
     std::vector<jchar> out;
     out.reserve(input.size());
@@ -21,7 +20,6 @@ jstring new_string_from_utf8(JNIEnv *env, const std::string &input) {
         else if (c >= 0xE0 && c <= 0xEF) { cp = c & 0x0F; len = 3; }
         else if (c >= 0xF0 && c <= 0xF4) { cp = c & 0x07; len = 4; }
         else { out.push_back(0xFFFD); ++i; continue; }
-
         if (i + len > input.size()) { out.push_back(0xFFFD); break; }
         bool valid = true;
         for (size_t k = 1; k < len; ++k) {
@@ -52,6 +50,57 @@ if "new_string_from_utf8" not in s:
     assert needle in s
     s = s.replace(needle, helper + needle, 1)
 old = 'return env->NewStringUTF(json.c_str());'
-assert old in s
-s = s.replace(old, 'return new_string_from_utf8(env, json);', 1)
+if old in s:
+    s = s.replace(old, 'return new_string_from_utf8(env, json);', 1)
+
+# A chat template already emits its own BOS marker (Qwen3 uses <|im_start|>).
+# Return whether a template was applied so the tokenizer does not prepend BOS again.
+s=s.replace(
+'''std::string build_prompt(const llama_model *model, const std::string &system,
+                         const std::string &user) {''',
+'''std::pair<std::string, bool> build_prompt(const llama_model *model, const std::string &system,
+                                         const std::string &user) {'''
+)
+s=s.replace(
+'''        return system.empty() ? user : (system + "\\n\\n" + user);''',
+'''        return {system.empty() ? user : (system + "\\n\\n" + user), false};'''
+)
+s=s.replace(
+'''    if (n < 0) return system.empty() ? user : (system + "\\n\\n" + user);
+    return std::string(buf.data(), n);''',
+'''    if (n < 0) return {system.empty() ? user : (system + "\\n\\n" + user), false};
+    return {std::string(buf.data(), n), true};'''
+)
+
+# Token pieces can exceed a fixed stack buffer. Retry with the exact required size.
+s=s.replace(
+'''    char buf[256];
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
+    if (n < 0) return {};
+    return std::string(buf, n);''',
+'''    char buf[256];
+    int n = llama_token_to_piece(vocab, token, buf, sizeof(buf), 0, true);
+    if (n >= 0) return std::string(buf, n);
+    std::vector<char> large(static_cast<size_t>(-n));
+    n = llama_token_to_piece(vocab, token, large.data(), static_cast<int32_t>(large.size()), 0, true);
+    if (n < 0) return {};
+    return std::string(large.data(), static_cast<size_t>(n));'''
+)
+
+s=s.replace(
+'''    const std::string text = build_prompt(h->model, jstr(env, system), jstr(env, prompt));''',
+'''    const auto formatted = build_prompt(h->model, jstr(env, system), jstr(env, prompt));
+    const std::string &text = formatted.first;'''
+)
+s=s.replace(
+'''    std::vector<llama_token> tokens = tokenize(vocab, text, true);''',
+'''    // Template-formatted prompts already contain their BOS token. Only add BOS
+    // for plain fallback prompts, otherwise Qwen3 receives a duplicated BOS.
+    std::vector<llama_token> tokens = tokenize(vocab, text, !formatted.second);''',
+1
+)
+
+assert "std::pair<std::string, bool> build_prompt" in s, "build_prompt patch failed"
+assert "tokenize(vocab, text, !formatted.second)" in s, "BOS patch failed"
+assert "return new_string_from_utf8(env, json);" in s, "UTF-8 patch failed"
 p.write_text(s, encoding="utf-8")
