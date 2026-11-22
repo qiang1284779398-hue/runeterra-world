@@ -38,6 +38,7 @@ class MainActivity : Activity() {
             setOnClickListener { WorldEngine.reset(this@MainActivity); refresh() }
         }
         val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
+        val lore = Button(this).apply { text = "符文之地 / 官方世界观设定"; setOnClickListener { showRegionalLoreDirectory() } }
         val settlements = Button(this).apply { text = "城市 / 村庄 / 聚落档案"; setOnClickListener { showSettlementDirectory() } }
         val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
         val caravans = Button(this).apply { text = "商队 / 贸易 / 地区市场"; setOnClickListener { showCaravanDirectory() } }
@@ -47,11 +48,26 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, lore, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showRegionalLoreDirectory() {
+        val entries=WorldEngine.regionalLoreDirectory()
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 世界观设定锚点")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("地区与超自然设定")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
     }
 
     private fun showHouseholdDirectory() {
