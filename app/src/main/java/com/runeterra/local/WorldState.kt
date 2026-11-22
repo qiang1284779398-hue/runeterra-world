@@ -134,7 +134,7 @@ object WorldEngine {
     )
     // Lore-grounded institutional identities. Simulated political changes are alternate history, not canon.
     private val factionLore=mapOf(
-        "德玛西亚" to FactionLore("王国君主制","冕卫家族与王室支持者","法师社群、改革派贵族与反禁魔者","维护王国秩序；围绕魔法管制产生持续政治争议","嘉文四世"),
+        "德玛西亚" to FactionLore("王国君主制；王位继承处于政治动荡","王室与各大贵族家族","法师社群、改革派贵族与反禁魔者","王位继承、贵族认可与魔法管制共同影响王国秩序","王子嘉文四世（继承尚未获贵族一致认可）"),
         "诺克萨斯" to FactionLore("扩张型帝国；崔法利议会主导","崔法利议会与诺克萨斯军方","地方总督、旧贵族及反扩张势力","以力量与功绩晋升，持续争夺边境与影响力","崔法利议会"),
         "艾欧尼亚" to FactionLore("多地灵性传统并存；无统一中央政权","地方长老、寺院与抵抗组织","亲诺克萨斯合作者、地方割据者与路线分歧派","守护土地与精神传统，同时处理战争创伤和自治分歧","地方议会与长老"),
         "皮尔特沃夫" to FactionLore("城邦议会与精英家族影响","议会、贸易家族与工坊巨头","底层工人、改革派与反垄断团体","推动海克斯科技、贸易和城市秩序，承受阶层压力","皮尔特沃夫议会"),
@@ -143,7 +143,7 @@ object WorldEngine {
         "恕瑞玛" to FactionLore("帝国复兴与绿洲城邦并存","太阳圆盘信仰者、复兴势力与地方统治者","独立城邦、反帝国势力与掠夺集团","争夺古代遗产、水源、商路与帝国合法性","复兴势力代表"),
         "巨神峰" to FactionLore("山地城邦、宗教组织与星灵影响","烈阳教派与地方守护者","皎月教派及不同信仰群体","信仰、登山朝圣与星灵力量影响地方秩序","烈阳教派长老"),
         "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","敌对海盗船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
-        "以绪塔尔" to FactionLore("隐秘城邦与元素魔法贵族治理","以绪奥肯统治阶层与元素法师","边境探索者、异议者与外来势力","维持隔绝与元素秩序，防止外界发现其文明","以绪奥肯统治者"),
+        "以绪塔尔" to FactionLore("以绪奥肯为核心的隐秘元素魔法文明","云塔（Yun Tal）统治阶层与元素法师","边境村镇居民、异议者与外来势力","维护元素知识、城邦秩序与对外隔绝","云塔统治阶层"),
         "班德尔城" to FactionLore("班德尔城及其通往符文之地各处的班德尔入口；约德尔人社会","约德尔社群与各地入口守护者","外界威胁、入口失序与误入者带来的风险","维护班德尔城与各入口的联系及约德尔社群生活","约德尔社群代表（模拟）"),
         "暗影岛" to FactionLore("受黑雾与破败诅咒影响的岛屿；并非普通主权国家","亡灵势力与黑雾影响（非统一政府）","生者、幸存者与抵抗黑雾的力量","黑雾侵蚀、灵魂束缚与生者避险","无统一统治者")
     )
@@ -233,7 +233,7 @@ object WorldEngine {
         Organization("shurima_sun_disc","恕瑞玛复兴势力","恕瑞玛","帝国复兴运动","争夺古代遗产、绿洲与帝国合法性",mutableListOf(),mutableListOf(),"复兴派代表",58,52,48),
         Organization("targon_solari","烈阳教派","巨神峰","宗教组织","维护烈阳信仰与相关宗教秩序",mutableListOf("targon_lunari"),mutableListOf(),"烈阳教长",57,45,55),
         Organization("targon_lunari","皎月教派","巨神峰","宗教组织","守护皎月信仰与其信徒",mutableListOf("targon_solari"),mutableListOf(),"皎月教派代表",45,30,35),
-        Organization("ixtal_council","以绪奥肯统治阶层","以绪塔尔","统治机构","维护隐秘、元素知识与城邦秩序",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70)
+        Organization("ixtal_council","云塔（Yun Tal）","以绪塔尔","统治阶层","维护元素知识、以绪奥肯秩序与对外隔绝",mutableListOf(),mutableListOf(),"统治阶层代表",80,75,70)
     )
     private fun organizations(p:android.content.SharedPreferences):MutableList<Organization>{
         val raw=p.getString(KEY_ORGANIZATIONS,null)
@@ -481,7 +481,7 @@ object WorldEngine {
     // The simulation includes the ten core political/cultural regions plus Bandle City and the Shadow Isles; the Void is a transregional threat, not a conventional state.
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔","班德尔城","暗影岛")
     // Canon-named places are used only where Riot lore identifies them; generic settlements are explicitly simulation placeholders.
-    private val settlementSeeds=mapOf("德玛西亚" to listOf("德玛西亚雄都","高银沼","未命名边境村镇"),"诺克萨斯" to listOf("不朽堡垒","诺克萨斯军团驻地（模拟）","帝国行省聚落（模拟）"),"艾欧尼亚" to listOf("纳沃利圣所","普雷西典","艾欧尼亚地方村落（模拟）"),"皮尔特沃夫" to listOf("皮尔特沃夫城","太阳之门","海港与工坊区（模拟）"),"祖安" to listOf("祖安上层城区","裂沟与底层城区（模拟）","炼金工坊聚落（模拟）"),"弗雷尔卓德" to listOf("霜卫要塞","拉克尔斯泰克","流动部族营地（模拟）"),"恕瑞玛" to listOf("太阳圆盘遗址","纳施拉美","绿洲与商路聚落（模拟）"),"巨神峰" to listOf("烈阳教派圣所（模拟）","皎月信徒隐居地（模拟）","山麓朝圣聚落（模拟）"),"比尔吉沃特" to listOf("屠夫之桥","屠宰码头","布胡鲁神庙"),"以绪塔尔" to listOf("以绪奥肯","元素法师聚落（模拟）","边境隐居村（模拟）"),"班德尔城" to listOf("班德尔城","符文之地班德尔入口（模拟）","班德尔居民聚落（模拟）"),"暗影岛" to listOf("破败王城遗迹（模拟）","幽魂侵蚀地带（模拟）","暗影海岸（模拟）"))
+    private val settlementSeeds=mapOf("德玛西亚" to listOf("德玛西亚雄都","高银沼","未命名边境村镇（模拟）"),"诺克萨斯" to listOf("不朽堡垒","诺克萨斯军团驻地（模拟）","帝国行省聚落（模拟）"),"艾欧尼亚" to listOf("普雷西典","均衡教派寺院（泛称）","艾欧尼亚地方村落（模拟）"),"皮尔特沃夫" to listOf("皮尔特沃夫城","太阳之门","海港与工坊区（模拟）"),"祖安" to listOf("海滨长廊区（Promenade）","中层区（Entresol）","污水坑区（Sump）"),"弗雷尔卓德" to listOf("霜卫要塞","拉克尔斯泰克","阿瓦罗萨／凛冬之爪流动营地（模拟）"),"恕瑞玛" to listOf("太阳圆盘遗址","纳施拉美","绿洲与商路聚落（模拟）"),"巨神峰" to listOf("烈阳教派圣所（模拟）","皎月信徒隐居地（模拟）","山麓朝圣聚落（模拟）"),"比尔吉沃特" to listOf("屠夫之桥","屠宰码头","布胡鲁神庙"),"以绪塔尔" to listOf("以绪奥肯","奥姆卡（Ohmka）","索伦（Xolen）／帕雷萨（Paretha）"),"班德尔城" to listOf("班德尔城","符文之地班德尔入口（模拟）","班德尔居民聚落（模拟）"),"暗影岛" to listOf("福光岛遗迹（Blessed Isles）","赫利亚遗迹（Helia）","黑雾侵蚀区域（模拟）"))
     private fun defaultSettlement(region:String,id:Int):String { val options=settlementSeeds[region] ?: listOf(region+"聚落"); return options[Math.floorMod(id,options.size)] }
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
