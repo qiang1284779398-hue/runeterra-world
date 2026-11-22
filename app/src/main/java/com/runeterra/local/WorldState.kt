@@ -2670,7 +2670,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 val ch=text[index]
                 if(inString) {
                     if(escaped) escaped=false
-                    else if(ch=='\\\\') escaped=true
+                    else if(ch=='\\') escaped=true
                     else if(ch=='"') inString=false
                 } else {
                     when(ch) {
