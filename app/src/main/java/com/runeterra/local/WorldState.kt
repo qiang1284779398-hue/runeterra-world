@@ -90,6 +90,18 @@ object WorldEngine {
                     else -> {if(r.coins>0)r.coins--;if(rng.nextInt(100)<20)r.food++}
                 }
                 if(day%360L==0L) r.age++
+                if(day%90L==0L && r.alive && r.skill>=10 && r.job=="学徒") {
+                    r.job="工匠"
+                    events.add("第 $day 日：${r.name}在${r.region}完成学徒阶段，成为工匠。")
+                }
+                if(day%90L==0L && r.alive && r.skill>=25 && r.job=="旅人") {
+                    r.job="护卫"
+                    events.add("第 $day 日：${r.name}在${r.region}积累经验，转为护卫。")
+                }
+                if(day%90L==0L && r.alive && r.skill>=50 && r.job=="采集者") {
+                    r.job="商贩"
+                    events.add("第 $day 日：${r.name}在${r.region}凭经验开始经营贸易。")
+                }
                 if(day%30L==0L && r.alive && r.partnerId<0 && r.age in 20..35 && rng.nextInt(1000)<2) {
                     val candidate=pop.firstOrNull { it.alive && it.id!=r.id && it.region==r.region && it.partnerId<0 && it.age in 20..35 }
                     if(candidate!=null) { r.partnerId=candidate.id;candidate.partnerId=r.id
