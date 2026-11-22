@@ -5,11 +5,11 @@ plugins {
 
 android {
     namespace = "com.runeterra.local"
-    compileSdk = 37
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.runeterra.local"
-        minSdk = 30
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
