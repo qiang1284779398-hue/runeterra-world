@@ -554,7 +554,7 @@ object WorldEngine {
         val options=(settlementSeeds[region] ?: listOf(region+"聚落")).filter { settlementMeta(region,it).habitable }
         return options.getOrElse(Math.floorMod(id,options.size.coerceAtLeast(1))) { region+"聚落（模拟）" }
     }
-    private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
+    private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人","伐木工","矿工","药师","魔法材料采集者","海克斯技师")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
     private val goods=listOf("粮食","木材","矿石","药材","工具","魔法材料","海克斯器件")
@@ -840,9 +840,10 @@ private fun craftBonus(region:String):Int = when(region) {
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
                 val traveling=tickTravel(r,day,events,rng)
                 if(!traveling && rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
-                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(12+rng.nextInt(9)+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
                     "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "伐木工","矿工","药师","魔法材料采集者","海克斯技师" -> {r.coins+=1+if(r.job=="海克斯技师")craftBonus(r.region).coerceAtLeast(0) else 0;r.skill=(r.skill+1).coerceAtMost(100)}
                     "护卫" -> {r.coins++;if(rng.nextInt(100)<4)r.health=(r.health-3).coerceAtLeast(0)}
                     else -> {r.coins++;if(rng.nextInt(100)<20)r.food++}
                 }
@@ -931,17 +932,22 @@ private fun craftBonus(region:String):Int = when(region) {
                 market.food=market.food.coerceAtLeast(0)
                 if(day%30L==0L) {
                     val local=pop.filter { it.alive && it.region==region }
-                    val artisans=local.count { it.job=="工匠" }
                     val farmers=local.count { it.job=="农夫" || it.job=="采集者" }
+                    val artisans=local.count { it.job=="工匠" }
                     val guards=local.count { it.job=="护卫" }
-                    regionalGoods(region).forEach { (good,baseOutput) ->
+                    regionalGoods(region).forEach { (good,capacity) ->
                         val workers=when(good) {
                             "粮食" -> farmers
-                            "木材","矿石","药材" -> farmers/2+artisans/3
-                            "工具","海克斯器件","魔法材料" -> artisans
+                            "木材" -> local.count { it.job=="伐木工" }
+                            "矿石" -> local.count { it.job=="矿工" }
+                            "药材" -> local.count { it.job=="药师" }
+                            "工具" -> artisans
+                            "魔法材料" -> local.count { it.job=="魔法材料采集者" }
+                            "海克斯器件" -> local.count { it.job=="海克斯技师" }
                             else -> 0
                         }
-                        val amount=(baseOutput+workers/12).coerceAtMost(baseOutput+8)
+                        // Regional capacity shapes output, but goods are not created without actual resident labor.
+                        val amount=if(workers==0) 0 else (workers*capacity/2).coerceAtLeast(1).coerceAtMost(capacity+8)
                         if(good=="粮食") market.food+=amount
                         else market.stock[good]=(market.stock[good]?:0)+amount
                     }
