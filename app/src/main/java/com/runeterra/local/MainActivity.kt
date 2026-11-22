@@ -14,6 +14,11 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.EditText
+import android.widget.ArrayAdapter
+import android.widget.ScrollView
+import android.widget.Spinner
+import android.os.Handler
+import android.os.Looper
 import android.net.Uri
 import java.io.File
 import java.io.FileOutputStream
@@ -67,16 +72,98 @@ class MainActivity : Activity() {
             }
         }
         val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
+        val observation = Button(this).apply { text = "人物思考 / 行动实时观察窗口"; setOnClickListener { showObservationConsole() } }
         val biographies = Button(this).apply {
             text = "居民传记导出 / 查看居民人生（点击进入）"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, unloadAI, testAI, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, unloadAI, testAI, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showObservationConsole() {
+        var kind="英雄"
+        var selectedKey=""
+        val handler=Handler(Looper.getMainLooper())
+        val panel=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            setPadding(24,12,24,8)
+        }
+        val hint=TextView(this).apply {
+            text="选择英雄或居民，查看已保存的思考、当前活动、意图和人生事件。内容每 2 秒自动刷新。"
+            textSize=13f
+            setPadding(0,0,0,12)
+        }
+        val switches=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
+        val heroesButton=Button(this).apply { text="英雄"; isAllCaps=false }
+        val residentsButton=Button(this).apply { text="居民"; isAllCaps=false }
+        switches.addView(heroesButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        switches.addView(residentsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+        val spinner=Spinner(this)
+        val output=TextView(this).apply {
+            textSize=14f
+            setTextIsSelectable(true)
+            setPadding(8,12,8,20)
+        }
+        val scroll=ScrollView(this).apply {
+            addView(output,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        panel.addView(hint)
+        panel.addView(switches)
+        panel.addView(spinner,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
+        panel.addView(scroll,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+        val dialog=AlertDialog.Builder(this)
+            .setTitle("人物思考与行动观察台")
+            .setView(panel)
+            .setPositiveButton("关闭",null)
+            .create()
+
+        fun showSelected() {
+            if(selectedKey.isBlank()) {
+                output.text="当前类别没有可观察的人物。"
+            } else {
+                output.text=WorldEngine.observationText(this,kind,selectedKey)
+            }
+        }
+        fun loadKind(nextKind:String) {
+            kind=nextKind
+            val names=WorldEngine.observationNames(this,kind)
+            val adapter=ArrayAdapter(this,android.R.layout.simple_spinner_item,names).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            spinner.adapter=adapter
+            selectedKey=names.firstOrNull().orEmpty()
+            showSelected()
+        }
+        spinner.onItemSelectedListener=object:android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent:android.widget.AdapterView<*>?,view:android.view.View?,position:Int,id:Long) {
+                selectedKey=parent?.getItemAtPosition(position)?.toString().orEmpty()
+                showSelected()
+            }
+            override fun onNothingSelected(parent:android.widget.AdapterView<*>?) { selectedKey="" }
+        }
+        heroesButton.setOnClickListener { loadKind("英雄") }
+        residentsButton.setOnClickListener { loadKind("居民") }
+        loadKind("英雄")
+        val refreshTask=object:Runnable {
+            override fun run() {
+                if(dialog.isShowing) {
+                    showSelected()
+                    handler.postDelayed(this,2000L)
+                }
+            }
+        }
+        dialog.setOnShowListener { handler.postDelayed(refreshTask,2000L) }
+        dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
+        dialog.show()
+        dialog.window?.setLayout(
+            (resources.displayMetrics.widthPixels*0.94f).toInt(),
+            (resources.displayMetrics.heightPixels*0.82f).toInt()
+        )
     }
 
     private fun pickLocalModel() {
