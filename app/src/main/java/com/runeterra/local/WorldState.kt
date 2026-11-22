@@ -74,7 +74,7 @@ object WorldEngine {
         RegionalLore("虚空","跨越地区边界的异界威胁，不是符文之地上的普通国家","虚空侵蚀现实、吞噬生命并扭曲生态","虚空生物、监视者、虚空先知及抵御虚空的守护者","不得当作第十三个普通地区或常规外交国家")
     )
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
-        "【${lore.name}】\\n政治与社会：${lore.political}\\n魔法与超自然：${lore.magic}\\n核心力量：${lore.forces}\\n模拟边界：${lore.boundary}\\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
+        "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
     private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
         val raw=p.getString(KEY_MAGIC,null)
