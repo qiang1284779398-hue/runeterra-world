@@ -626,11 +626,11 @@ object WorldEngine {
     }
 
     private const val KEY_DIPLO="diplomacy"
-    private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false,var aWins:Int=0,var bWins:Int=0)
+    private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false,var aWins:Int=0,var bWins:Int=0,var warMonths:Int=0,var exhaustionA:Int=0,var exhaustionB:Int=0)
     private val factionRegions=mapOf("德玛西亚" to "德玛西亚","诺克萨斯" to "诺克萨斯","艾欧尼亚" to "艾欧尼亚","皮尔特沃夫" to "皮尔特沃夫","祖安" to "祖安","弗雷尔卓德" to "弗雷尔卓德","恕瑞玛" to "恕瑞玛","巨神峰" to "巨神峰","比尔吉沃特" to "比尔吉沃特","以绪塔尔" to "以绪塔尔")
     private fun diplomacy(p:android.content.SharedPreferences):MutableList<PairTension> {
         val raw=p.getString(KEY_DIPLO,null)
-        if(raw!=null) runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { PairTension(it.optString("a"),it.optString("b"),it.optInt("tension",10),it.optBoolean("war",false),it.optInt("aWins",0),it.optInt("bWins",0)) }.toMutableList() } }.getOrNull()?.let { if(it.isNotEmpty()) {
+        if(raw!=null) runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { PairTension(it.optString("a"),it.optString("b"),it.optInt("tension",10),it.optBoolean("war",false),it.optInt("aWins",0),it.optInt("bWins",0),it.optInt("warMonths",0),it.optInt("exhaustionA",0),it.optInt("exhaustionB",0)) }.toMutableList() } }.getOrNull()?.let { if(it.isNotEmpty()) {
             val corrected=it.filterNot { relation -> setOf(relation.a,relation.b)==setOf("皮尔特沃夫","祖安") }.toMutableList()
             if(corrected.size!=it.size) saveDiplomacy(p,corrected)
             return corrected
@@ -638,70 +638,77 @@ object WorldEngine {
         return mutableListOf(PairTension("诺克萨斯","艾欧尼亚",72),PairTension("诺克萨斯","德玛西亚",58),PairTension("弗雷尔卓德","诺克萨斯",32),PairTension("恕瑞玛","诺克萨斯",28),PairTension("比尔吉沃特","诺克萨斯",24)).also { saveDiplomacy(p,it) }
     }
     private fun saveDiplomacy(p:android.content.SharedPreferences,relations:List<PairTension>) {
-        p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war).put("aWins",it.aWins).put("bWins",it.bWins)) } }.toString()).apply()
+        p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war).put("aWins",it.aWins).put("bWins",it.bWins).put("warMonths",it.warMonths).put("exhaustionA",it.exhaustionA).put("exhaustionB",it.exhaustionB)) } }.toString()).apply()
     }
     private fun tickDiplomacy(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         if(day%30L!=0L)return
         val relations=diplomacy(p)
+        val factions=factionStates(p)
         relations.forEach { rel ->
-            if(!rel.war) rel.tension=(rel.tension+(rng.nextInt(7)-3)).coerceIn(0,100)
-            if(!rel.war && rel.tension>=85 && rng.nextInt(100)<18) {
-                rel.war=true
-                events.add("【模拟外交】第 $day 日：${rel.a}与${rel.b}冲突升级为战争。")
-            } else if(rel.war && rng.nextInt(100)<4) {
-                rel.war=false; rel.tension=(rel.tension-35).coerceAtLeast(20)
-                events.add("【模拟外交】第 $day 日：${rel.a}与${rel.b}暂时停战，局势仍不稳定。")
+            val sideA=factions[rel.a]
+            val sideB=factions[rel.b]
+            if(!rel.war) {
+                val structuralPressure=((sideA?.internalTension?:20)+(sideB?.internalTension?:20))/35
+                rel.tension=(rel.tension+rng.nextInt(7)-3+(if(structuralPressure>=4)1 else 0)).coerceIn(0,100)
+                if(rel.tension>=85 && rng.nextInt(100)<18) {
+                    rel.war=true
+                    rel.warMonths=0
+                    rel.exhaustionA=0
+                    rel.exhaustionB=0
+                    rel.aWins=0
+                    rel.bWins=0
+                    events.add("【战争爆发·模拟分支】第 $day 日：${rel.a}与${rel.b}的外交危机升级为公开战争。战争目标、补给与国内政治将共同影响后续进程。")
+                }
             }
-            if(rel.war) {
-                val factions=factionStates(p)
-                val attacker=factions[rel.a]
-                val defender=factions[rel.b]
-                if(attacker!=null && defender!=null) {
-                    val powerA=attacker.military+rng.nextInt(100)
-                    val powerB=defender.military+rng.nextInt(100)
-                    attacker.military=(attacker.military-(2+rng.nextInt(8))).coerceAtLeast(0)
-                    defender.military=(defender.military-(2+rng.nextInt(8))).coerceAtLeast(0)
-                    attacker.treasury=(attacker.treasury-(8+rng.nextInt(18))).coerceAtLeast(0)
-                    defender.treasury=(defender.treasury-(8+rng.nextInt(18))).coerceAtLeast(0)
-                    if(powerA>=powerB) {
-                        rel.aWins++
-                        defender.stability=(defender.stability-2).coerceAtLeast(0)
-                        events.add("【战场结算·模拟】第 $day 日：${rel.a}在与${rel.b}的交战中取得局部胜利（${rel.aWins}比${rel.bWins}）。")
-                    } else {
-                        rel.bWins++
-                        attacker.stability=(attacker.stability-2).coerceAtLeast(0)
-                        events.add("【战场结算·模拟】第 $day 日：${rel.b}击退${rel.a}的进攻（${rel.aWins}比${rel.bWins}）。")
+            if(rel.war && sideA!=null && sideB!=null) {
+                rel.warMonths++
+                val pressureA=(100-sideA.stability)/30+(if(sideA.treasury<100)2 else 0)+(if(sideA.military<45)2 else 0)
+                val pressureB=(100-sideB.stability)/30+(if(sideB.treasury<100)2 else 0)+(if(sideB.military<45)2 else 0)
+                rel.exhaustionA=(rel.exhaustionA+1+pressureA+rng.nextInt(3)).coerceAtMost(100)
+                rel.exhaustionB=(rel.exhaustionB+1+pressureB+rng.nextInt(3)).coerceAtMost(100)
+                val militaryCostA=(1+rng.nextInt(4)+(if(rel.exhaustionA>65)1 else 0)).coerceAtMost(sideA.military)
+                val militaryCostB=(1+rng.nextInt(4)+(if(rel.exhaustionB>65)1 else 0)).coerceAtMost(sideB.military)
+                sideA.military=(sideA.military-militaryCostA).coerceAtLeast(0)
+                sideB.military=(sideB.military-militaryCostB).coerceAtLeast(0)
+                val treasuryCostA=(5+rng.nextInt(12)).coerceAtMost(sideA.treasury)
+                val treasuryCostB=(5+rng.nextInt(12)).coerceAtMost(sideB.treasury)
+                sideA.treasury=(sideA.treasury-treasuryCostA).coerceAtLeast(0)
+                sideB.treasury=(sideB.treasury-treasuryCostB).coerceAtLeast(0)
+                sideA.stability=(sideA.stability-(if(rel.exhaustionA>60)2 else 1)).coerceAtLeast(0)
+                sideB.stability=(sideB.stability-(if(rel.exhaustionB>60)2 else 1)).coerceAtLeast(0)
+                val regionA=factionRegions[rel.a]?:rel.a
+                val regionB=factionRegions[rel.b]?:rel.b
+                if(rng.nextInt(100)<38) {
+                    val region=if(rng.nextBoolean())regionA else regionB
+                    val victims=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(1+rng.nextInt(2))
+                    victims.forEach{r->
+                        r.health=(r.health-2-rng.nextInt(7)).coerceAtLeast(0)
+                        recordLife(r,day,"战争持续影响${region}，遭遇冲突、征用或补给中断。")
                     }
-                    val winner=when { rel.aWins>=3 -> rel.a; rel.bWins>=3 -> rel.b; else -> null }
-                    if(winner!=null) {
-                        val loser=if(winner==rel.a) rel.b else rel.a
-                        val losingFaction=factions[loser]
-                        val winningFaction=factions[winner]
-                        val lostRegion=losingFaction?.territory?.firstOrNull()
-                        if(lostRegion!=null && winningFaction!=null && losingFaction!=null) {
-                            losingFaction.territory.remove(lostRegion)
-                            if(lostRegion !in winningFaction.territory) winningFaction.territory.add(lostRegion)
-                            events.add("【领土变化·模拟】第 $day 日：${winner}取得战局优势，${lostRegion}的控制权转移；这属于本模拟世界的历史分支。")
-                        }
-                        rel.war=false
-                        rel.tension=35
-                        rel.aWins=0
-                        rel.bWins=0
-                        events.add("【战争结束·模拟】第 $day 日：${winner}与${loser}结束本轮战争，双方开始承受战后重建压力。")
-                    }
+                    markets[region]?.let{it.food=(it.food-5-rng.nextInt(16)).coerceAtLeast(0);it.wealth=(it.wealth-2-rng.nextInt(8)).coerceAtLeast(0)}
+                    if(victims.isNotEmpty())events.add("【战争与平民生活·模拟】第 $day 日：${region}的战事与征用影响${victims.size}名居民，地方市场补给承压。")
                 }
-                if(rng.nextInt(100)<20) {
-                    val regionA=factionRegions[rel.a] ?: rel.a; val regionB=factionRegions[rel.b] ?: rel.b
-                    listOf(regionA,regionB).forEach { region ->
-                        val victims=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(4))
-                        victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0); recordLife(r,day,"战争波及${region}，在冲突中受伤。") }
-                        markets[region]?.let { it.food=(it.food-15-rng.nextInt(30)).coerceAtLeast(0) }
-                        if(victims.isNotEmpty()) events.add("【战争损害】第 $day 日：${region}遭冲突波及，${victims.size}名居民受伤，粮食储备下降。")
-                    }
+                if(rel.warMonths%3==0)events.add("【战争进程·模拟】第 $day 日：${rel.a}与${rel.b}的战争已持续${rel.warMonths}个月；双方军力、财政与社会稳定持续消耗。")
+                val exhaustion=rel.exhaustionA+rel.exhaustionB
+                val domesticCrisis=sideA.stability<25 || sideB.stability<25 || sideA.treasury<35 || sideB.treasury<35
+                val negotiationChance=when{
+                    rel.warMonths<3 -> 0
+                    exhaustion>=130 || domesticCrisis -> 35
+                    exhaustion>=95 -> 22
+                    exhaustion>=70 -> 12
+                    else -> 0
                 }
-                saveFactions(p,factions)
+                if(negotiationChance>0 && rng.nextInt(100)<negotiationChance) {
+                    rel.war=false
+                    rel.tension=(rel.tension-18).coerceAtLeast(45)
+                    events.add("【停战谈判·模拟分支】第 $day 日：长期战争造成的财政、军力与社会压力迫使${rel.a}和${rel.b}接受暂时停火；边界争端与政治敌意尚未解决。")
+                    rel.warMonths=0
+                    rel.exhaustionA=0
+                    rel.exhaustionB=0
+                }
             }
         }
+        saveFactions(p,factions)
         saveDiplomacy(p,relations)
     }
     private fun tickSocialRelations(day:Long,pop:MutableList<Resident>,events:MutableList<String>,rng:Random) {
