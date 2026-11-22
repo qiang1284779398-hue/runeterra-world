@@ -175,6 +175,8 @@ object WorldEngine {
     }
     // Individual cognition: residents evaluate their own situation, update beliefs/intents, and retain bounded private memory.
     private fun thinkIndividually(day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
+        // The rule-based fallback is only a no-model simulation. Never let it overwrite or imitate local-LLM cognition.
+        if(ResidentAI.isLoaded()) return
         if(day%30L!=0L)return
         pop.filter{it.alive}.forEach { r ->
             // Preserve the resident's latest private LLM cognition instead of replacing it with fallback heuristics.
@@ -2635,6 +2637,54 @@ private fun craftBonus(region:String):Int = when(region) {
     @Volatile private var localInferenceBusy=false
     private const val KEY_AI_CURSOR="resident_ai_cursor"
     private const val KEY_AI_NEXT_SIDE="world_ai_next_side"
+    private const val KEY_AI_ACTIVE_TARGET="ai_active_target"
+    private const val KEY_AI_STARTED_AT="ai_started_at"
+    private const val KEY_AI_LAST_TARGET="ai_last_target"
+    private const val KEY_AI_LAST_DURATION="ai_last_duration"
+    private const val KEY_AI_LAST_RESULT="ai_last_result"
+    private const val KEY_AI_LAST_ERROR="ai_last_error"
+    private const val KEY_AI_SUCCESS_COUNT="ai_success_count"
+    private const val KEY_AI_FAILURE_COUNT="ai_failure_count"
+
+    private fun beginLocalInference(p:android.content.SharedPreferences,target:String) {
+        val now=System.currentTimeMillis()
+        p.edit().putString(KEY_AI_ACTIVE_TARGET,target).putString(KEY_AI_LAST_TARGET,target)
+            .putLong(KEY_AI_STARTED_AT,now).apply()
+    }
+
+    private fun finishLocalInference(p:android.content.SharedPreferences,success:Boolean,detail:String) {
+        val now=System.currentTimeMillis()
+        val started=p.getLong(KEY_AI_STARTED_AT,now)
+        val elapsed=(now-started).coerceAtLeast(0L)
+        val editor=p.edit().putString(KEY_AI_ACTIVE_TARGET,"")
+            .putLong(KEY_AI_LAST_DURATION,elapsed).putString(KEY_AI_LAST_RESULT,detail)
+        if(success) {
+            editor.putLong(KEY_AI_SUCCESS_COUNT,p.getLong(KEY_AI_SUCCESS_COUNT,0L)+1L)
+                .putString(KEY_AI_LAST_ERROR,"")
+        } else {
+            editor.putLong(KEY_AI_FAILURE_COUNT,p.getLong(KEY_AI_FAILURE_COUNT,0L)+1L)
+                .putString(KEY_AI_LAST_ERROR,detail)
+        }
+        editor.apply()
+    }
+
+    fun localAiStatus(context:Context):String {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val heroes=heroAgents(p).count { it.alive }
+        val residents=people(p).count { it.alive }
+        val success=p.getLong(KEY_AI_SUCCESS_COUNT,0L)
+        val failure=p.getLong(KEY_AI_FAILURE_COUNT,0L)
+        val active=p.getString(KEY_AI_ACTIVE_TARGET,"").orEmpty()
+        val last=p.getString(KEY_AI_LAST_TARGET,"尚无").orEmpty()
+        val elapsed=p.getLong(KEY_AI_LAST_DURATION,0L)
+        val result=p.getString(KEY_AI_LAST_RESULT,"尚无推理结果").orEmpty()
+        val state=when {
+            !ResidentAI.isLoaded() -> "本地模型未加载"
+            active.isNotBlank() -> "正在推理：$active"
+            else -> "模型已加载，等待下一轮调度"
+        }
+        return "AI调度：$state\n可调度人物：英雄${heroes}位／居民${residents}位\n推理统计：成功${success}次／失败${failure}次\n最近对象：${last}；耗时${"%.1f".format(elapsed/1000.0)}秒\n最近结果：${result}"
+    }
 
     /** Fairly alternates heroes and residents. A busy model does not consume or skip a turn. */
     fun requestNextLocalThinking(context:Context) {
@@ -2707,14 +2757,18 @@ private fun craftBonus(region:String):Int = when(region) {
 请结合至少两项此人的具体身份、经历、关系或资源，作出真正属于此人的判断。不要让所有居民都追求成长、社交或研究；可以拒绝、犹豫、害怕、坚持旧习或维持现状。行动要符合健康、年龄、技能、资源和当地条件。
 只输出一个JSON对象：thought（第一人称1-2句，具体而非口号）、belief、intent、goal、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一）、new_job、target_id。不得附加Markdown。"""
         localInferenceBusy=true
+        beginLocalInference(p,"居民：${r.name}（编号${r.id}）")
+        var inferenceSucceeded=false
+        var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=384,
+            maxTokens=256,
             systemPrompt="你是居民编号${r.id}、姓名${r.name}的独立个人认知引擎。只依据该居民自己的经历和处境推理；不得套用通用模板。只输出完整JSON对象，不要输出Markdown。"
         ) { raw ->
             fun recordResidentInferenceIssue(message:String) {
+                inferenceResult=message.take(180)
                 val latest=people(p).firstOrNull { it.id==r.id } ?: return
-                latest.currentThought="【推理状态】本次没有生成有效思考记录：${message.take(180)}。请检查模型是否正常加载，并保持世界运行后重试。"
+                if(latest.currentThought.isBlank()) latest.currentThought="【推理状态】本次没有生成有效思考记录：${message.take(180)}。请检查模型是否正常加载，并保持世界运行后重试。"
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
             try {
@@ -2872,6 +2926,8 @@ private fun craftBonus(region:String):Int = when(region) {
                             while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
                             val latestPopulation=people(p).map { if(it.id==latest.id) latest else it }
                             savePeople(p,latestPopulation)
+                            inferenceSucceeded=true
+                            inferenceResult="思考、意图与行动结果已保存"
                         }
                     }
                 }
@@ -2879,6 +2935,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 recordResidentInferenceIssue(e.message ?: e.toString())
             } finally {
                 localInferenceBusy=false
+                finishLocalInference(p,inferenceSucceeded,"居民：${r.name}（编号${r.id}）｜${inferenceResult}")
             }
         }
     }
@@ -2922,14 +2979,18 @@ private fun craftBonus(region:String):Int = when(region) {
 若记忆中有历史事件接驳机会，评估是否回应；参与只代表决定，不代表瞬间抵达或成功。隐居、封印或沉寂状态会限制感知和行动，不会自动取消其个人判断。没有新信息时不要改写旧思考凑数。
 只输出完整JSON：thought（第一人称2-3句，必须体现该英雄的个人身份或具体处境）、belief、intent、goal、action（stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一）、reason。不要输出Markdown。"""
         localInferenceBusy=true
+        beginLocalInference(p,"英雄：${hero.name}")
+        var inferenceSucceeded=false
+        var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=384,
+            maxTokens=256,
             systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
         ) { raw ->
             fun recordInferenceIssue(message:String) {
+                inferenceResult=message.take(180)
                 val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
-                latest.thought="【推理状态】本次没有生成可保存的思考记录：${message.take(180)}。请确认本地模型已加载，并保持世界运行后重试。"
+                if(latest.thought.isBlank()) latest.thought="【推理状态】本次没有生成可保存的思考记录：${message.take(180)}。请确认本地模型已加载，并保持世界运行后重试。"
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
             try {
@@ -2940,7 +3001,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 }
                 if(a>=0 && b>a) {
                     val result=JSONObject(raw.substring(a,b+1))
-                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@askStructured
+                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: run { inferenceResult="推理期间人物档案已变化"; return@askStructured }
                     val thought=result.optString("thought").take(700)
                     if(thought.isNotBlank()) {
                         heroNow.thought=thought
@@ -3001,13 +3062,18 @@ private fun craftBonus(region:String):Int = when(region) {
                         events.put("【英雄自主思考·本地AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
                         while(events.length()>300) events.remove(0)
                         p.edit().putString(KEY_EVENTS,events.toString()).apply()
+                        inferenceSucceeded=true
+                        inferenceResult="思考、意图与行动结果已保存"
                     } else {
                         recordInferenceIssue("JSON中缺少非空thought字段")
                     }
                 }
             } catch(e:Throwable) {
                 recordInferenceIssue(e.message ?: e.toString())
-            } finally { localInferenceBusy=false }
+            } finally {
+                localInferenceBusy=false
+                finishLocalInference(p,inferenceSucceeded,"英雄：${hero.name}｜${inferenceResult}")
+            }
         }
     }
 
