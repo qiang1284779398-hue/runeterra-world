@@ -2693,8 +2693,42 @@ private fun craftBonus(region:String):Int = when(region) {
 
     private fun isMetaCharacterThought(thought:String):Boolean {
         val value=thought.lowercase()
-        val forbidden=listOf("用户让","用户要求","系统要求","系统提示","提示词","json格式","json对象","字段为","按照要求输出","扮演符文之地","你是符文之地","接下来我需要","作为语言模型","作为ai")
+        val forbidden=listOf(
+            "用户让","用户要求","用户希望","系统要求","系统提示","提示词","json格式","json对象",
+            "字段为","按照要求输出","根据要求输出","扮演符文之地","你是符文之地",
+            "接下来我需要","作为语言模型","作为ai","作为人工智能","我将扮演","我需要输出",
+            "下面是我的回答","以下是json","让我分析一下任务"
+        )
         return forbidden.any { value.contains(it) } || value.contains("<think>") || value.contains("</think>")
+    }
+
+    /**
+     * A syntactically valid JSON object is not proof of character POV.
+     * Require a first-person, situation-specific thought and reject near-verbatim repetition.
+     */
+    private fun characterPerspectiveFailure(thought:String,previousThought:String,characterName:String):String? {
+        val value=thought.trim()
+        if(value.isBlank()) return "JSON中的thought为空；本轮未写入人物档案。"
+        if(isMetaCharacterThought(value))
+            return "模型复述了提示词、任务或输出格式，没有进入人物视角；本轮未写入人物档案。"
+        if(!listOf("我","我的","自己","自身").any { value.contains(it) })
+            return "thought没有第一人称自我视角，仍像旁白或角色介绍；本轮未写入人物档案。"
+        val compact=value.replace(Regex("[\\s，。！？、；：,.!?;:'\"“”‘’（）()【】\\[\\]—-]"),"")
+        if(compact.length<14)
+            return "thought过短，没有形成具体的个人判断；本轮未写入人物档案。"
+        val previous=previousThought
+            .replace(Regex("^第\\d+日（本地模型推理）："),"")
+            .replace(Regex("^第\\d+日："),"")
+            .replace(Regex("[\\s，。！？、；：,.!?;:'\"“”‘’（）()【】\\[\\]—-]"),"")
+        if(previous.length>=18 && compact.length>=18) {
+            fun bigrams(s:String):Set<String> = (0 until s.length-1).map { s.substring(it,it+2) }.toSet()
+            val a=bigrams(compact)
+            val b=bigrams(previous)
+            val overlap=if(a.isEmpty()) 0.0 else a.intersect(b).size.toDouble()/a.size.coerceAtLeast(1)
+            if(overlap>=0.78)
+                return "thought与上一轮几乎重复，只是换词或原样复述；本轮未写入人物档案。"
+        }
+        return null
     }
 
     private fun characterOutputFailure(raw:String):String {
@@ -2841,7 +2875,8 @@ private fun craftBonus(region:String):Int = when(region) {
                     val latest=people(p).firstOrNull { it.id==r.id && it.alive }
                     if(latest!=null) {
                         val thought=result.optString("thought").trim().take(420)
-                        if(thought.isNotBlank() && !isMetaCharacterThought(thought)) {
+                        val perspectiveFailure=characterPerspectiveFailure(thought,r.currentThought,r.name)
+                        if(perspectiveFailure==null) {
                             latest.currentThought="第${day}日（本地模型推理）：${thought}"
                             latest.belief=result.optString("belief",latest.belief).take(180)
                             latest.intent=result.optString("intent",latest.intent).take(180)
@@ -2987,7 +3022,7 @@ private fun craftBonus(region:String):Int = when(region) {
                             inferenceSucceeded=true
                             inferenceResult="思考、意图与行动结果已保存"
                         } else {
-                            recordResidentInferenceIssue(if(thought.isBlank()) "JSON缺少thought字段" else characterOutputFailure(thought))
+                            recordResidentInferenceIssue(perspectiveFailure ?: "人物视角校验未通过；本轮未写入人物档案。")
                         }
                     } else {
                         inferenceResult="推理期间该居民已不存在或不再存活，本轮未提交。"
@@ -3066,7 +3101,8 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                 run {
                     val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: run { inferenceResult="推理期间人物档案已变化"; return@rawCallback }
                     val thought=result.optString("thought").trim().take(420)
-                    if(thought.isNotBlank() && !isMetaCharacterThought(thought)) {
+                    val perspectiveFailure=characterPerspectiveFailure(thought,hero.thought,hero.name)
+                    if(perspectiveFailure==null) {
                         heroNow.thought=thought
                         heroNow.belief=result.optString("belief",heroNow.belief).take(220)
                         heroNow.intent=result.optString("intent",heroNow.intent).take(220)
@@ -3128,7 +3164,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         inferenceSucceeded=true
                         inferenceResult="思考、意图与行动结果已保存"
                     } else {
-                        recordInferenceIssue(if(thought.isBlank()) "JSON缺少thought字段" else characterOutputFailure(thought))
+                        recordInferenceIssue(perspectiveFailure ?: "人物视角校验未通过；本轮未写入人物档案。")
                     }
                 }
             } catch(e:Throwable) {
