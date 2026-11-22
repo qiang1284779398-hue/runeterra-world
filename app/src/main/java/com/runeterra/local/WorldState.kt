@@ -876,6 +876,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val markets=markets(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
+        var nextHouseholdId=(households.maxOfOrNull { it.id } ?: -1)+1
         repeat(days.coerceAtLeast(1)) {
             day++
             val rng=Random(day*7919L+17L)
@@ -919,7 +920,23 @@ private fun craftBonus(region:String):Int = when(region) {
                         }
                     }
                 }
-                if(day%360L==0L) r.age++
+                if(day%360L==0L) {
+                    r.age++
+                    if(r.alive && r.age in 18..25 && r.partnerId<0 && r.householdId>=0 &&
+                        day%30L==0L && rng.nextInt(1000)<8 &&
+                        (r.coins>=8 || r.skill>=30) &&
+                        pop.any { it.alive && it.id in r.parentIds && it.householdId==r.householdId }) {
+                        val previousHousehold=r.householdId
+                        val independent=Household(nextHouseholdId++,foundedDay=day)
+                        households.add(independent)
+                        r.householdId=independent.id
+                        recordLife(r,day,"成年后离开原生家庭，建立独立生活与经济单位（家庭${independent.id}）。")
+                        pop.filter { it.id in r.parentIds && it.householdId==previousHousehold }.forEach { parent ->
+                            recordLife(parent,day,"子女${r.name}成年后离开家庭，开始独立生活。")
+                        }
+                        events.add("【家庭分立·模拟】第 $day 日：${r.name}在${r.region}离开原生家庭，建立独立家庭${independent.id}。")
+                    }
+                }
                 if(day%90L==0L && r.alive && !traveling && r.skill>=10 && r.job=="学徒") {
                     r.job="工匠"
                     recordLife(r,day,"在${r.region}完成学徒阶段，成为工匠。")
