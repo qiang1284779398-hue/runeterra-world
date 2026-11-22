@@ -2647,6 +2647,66 @@ private fun craftBonus(region:String):Int = when(region) {
     private const val KEY_AI_SUCCESS_COUNT="ai_success_count"
     private const val KEY_AI_FAILURE_COUNT="ai_failure_count"
 
+
+    /** Extract only the final character JSON. Qwen3 reasoning text is deliberately discarded. */
+    private fun extractCharacterJson(raw:String):JSONObject? {
+        var text=raw.trim()
+        text=text.replace(Regex("(?is)<think>.*?</think>"), "")
+        val openThink=text.indexOf("<think>", ignoreCase=true)
+        if(openThink>=0) {
+            val closeThink=text.indexOf("</think>",openThink,ignoreCase=true)
+            if(closeThink<0) return null
+            text=text.removeRange(openThink,closeThink+8)
+        }
+        text=text.replace(Regex("<\\|[^|]+\\|>"), "")
+            .replace(Regex("(?i)^```\\s*(json)?"), "")
+            .replace("```","").trim()
+        for(start in text.indices) {
+            if(text[start]!='{') continue
+            var depth=0
+            var inString=false
+            var escaped=false
+            for(index in start until text.length) {
+                val ch=text[index]
+                if(inString) {
+                    if(escaped) escaped=false
+                    else if(ch=='\\\\') escaped=true
+                    else if(ch=='"') inString=false
+                } else {
+                    when(ch) {
+                        '"' -> inString=true
+                        '{' -> depth++
+                        '}' -> {
+                            depth--
+                            if(depth==0) {
+                                val candidate=runCatching { JSONObject(text.substring(start,index+1)) }.getOrNull()
+                                if(candidate!=null && candidate.has("thought")) return candidate
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun isMetaCharacterThought(thought:String):Boolean {
+        val value=thought.lowercase()
+        val forbidden=listOf("用户让","用户要求","系统要求","系统提示","提示词","json格式","json对象","字段为","按照要求输出","扮演符文之地","你是符文之地","接下来我需要","作为语言模型","作为ai")
+        return forbidden.any { value.contains(it) } || value.contains("<think>") || value.contains("</think>")
+    }
+
+    private fun characterOutputFailure(raw:String):String {
+        val value=raw.trim()
+        if(value.isBlank()) return "模型返回空内容，没有生成角色回答。"
+        if(value.contains("<think>",true) && !value.contains("</think>",true))
+            return "模型只生成了内部推理片段，没有生成最终角色回答；本轮未写入人物档案。"
+        if(isMetaCharacterThought(value))
+            return "模型复述了系统提示或输出格式，没有进入人物视角；本轮未写入人物档案。"
+        return "模型没有返回可解析的角色JSON（输出" + value.length + "字符）；本轮未写入人物档案。"
+    }
+
     private fun beginLocalInference(p:android.content.SharedPreferences,target:String) {
         val now=System.currentTimeMillis()
         p.edit().putString(KEY_AI_ACTIVE_TARGET,target).putString(KEY_AI_LAST_TARGET,target)
@@ -2743,49 +2803,44 @@ private fun craftBonus(region:String):Int = when(region) {
         val privateMemory=r.mindMemory.takeLast(5).joinToString("；") { it.take(110) }.ifBlank { "暂无明确私人记忆" }
         val personalIdentity=r.identityMemory.takeLast(260).ifBlank { "无额外身份记忆" }
         val publicRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
-        val prompt="""你是符文之地的一名普通居民本人，不是旁白。只按自己的亲历、记忆、感官和可接触信息思考；不知道的事情必须承认不知道，不能编造事件或对话。
-【个体】编号${r.id}；姓名${r.name}；${r.age}岁；${r.gender}；${r.region}／${r.settlement}；职业${r.job}。
-【人格与目标】人格倾向${r.mindTrait}/100；信念：${r.belief}；长期目标：${r.goal}；当前意图：${r.intent}。
-【身体和生计】健康${r.health}/100；疲劳${r.fatigue}/100；心境${r.morale}/100；粮食${r.food}；财富${r.coins}；技能${r.skill}/100；当前活动${r.dailyActivity}。
-【关系】${relations.take(260)}。
-【附近可接触的人】${socialCandidates.take(260)}。只有确实可能接触时才考虑交往。
-【最近人生经历】${recentLife}。
-【私人记忆】${privateMemory}。
-【身份记忆】${personalIdentity}。若其中含有天道直接写入的主观人生记忆，应视为本人真实记忆；普通外部信息仍可质疑。
-【上一轮思考】${r.currentThought.take(180).ifBlank { "尚无模型思考记录" }}。若没有新证据，不要换词复述旧想法；明确说出仍在犹豫的具体问题或维持现状的个人理由。
-【当地可知背景】${localLore.take(170)}；${publicInstitutions.take(130)}；近期本地事件：${localEvents.take(180).ifBlank { "无" }}。
-【时代与日期】${eraAnchor.take(100)}；第${day}日；当前规则：${publicRules}。
-请结合至少两项此人的具体身份、经历、关系或资源，作出真正属于此人的判断。不要让所有居民都追求成长、社交或研究；可以拒绝、犹豫、害怕、坚持旧习或维持现状。行动要符合健康、年龄、技能、资源和当地条件。
-只输出一个JSON对象：thought（第一人称2-3句，具体而非口号；必须写出这个人的独特处境、矛盾或决定依据；不得使用泛化的“维持生活/寻找资源/继续工作”作为空洞答案）、belief、intent、goal、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一）、new_job、target_id。不得附加Markdown。"""
+        val prompt="""现在你就是这个普通居民本人。不要谈论系统、提示词、用户要求、JSON格式或“扮演”；不要解释任务，不要输出思维过程。
+姓名${r.name}，编号${r.id}，${r.age}岁，${r.gender}，居住于${r.region}/${r.settlement}，职业${r.job}。
+性格倾向${r.mindTrait}/100；信念${r.belief}；目标${r.goal}；当前意图${r.intent}。
+身体：健康${r.health}，疲劳${r.fatigue}，心境${r.morale}；口粮${r.food}，钱${r.coins}，技能${r.skill}；正在${r.dailyActivity}。
+关系：${relations.take(150)}。身边可接触的人：${socialCandidates.take(130)}。
+最近经历：${recentLife.take(160)}。私人记忆：${privateMemory.take(170)}。身份记忆：${personalIdentity.takeLast(120)}。
+上一轮想法：${r.currentThought.take(100).ifBlank { "暂无" }}。
+当地情况：${localLore.take(110)}；${publicInstitutions.take(90)}；近期事件：${localEvents.take(100).ifBlank { "无" }}。
+第${day}日；时代：${eraAnchor.take(70)}；规则：${publicRules.take(90)}。
+只思考眼前最重要的一件具体事情。必须考虑这个人的真实处境；可以害怕、犹豫、拒绝改变或什么也不做。thought必须是第一人称的自然中文，1至2句，约30至70字，不能复述上面资料，也不能空喊口号。
+只输出一个简短JSON对象，字段：thought、belief、intent、goal、action、new_job、target_id。action只能是stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一。不要Markdown。"""
         localInferenceBusy=true
         beginLocalInference(p,"居民：${r.name}（编号${r.id}）")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=384,
-            systemPrompt="你是居民编号${r.id}、姓名${r.name}的独立个人认知引擎。只依据该居民自己的经历和处境推理；不得套用通用模板。只输出完整JSON对象，不要输出Markdown。"
+            maxTokens=176,
+            systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
         ) { raw ->
             synchronized(WorldEngine) {
             fun recordResidentInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=people(p).firstOrNull { it.id==r.id } ?: return
-                latest.currentThought="【推理状态】本次推理未产生有效新记录：${message.take(180)}。等待下一轮重新尝试。"
+                latest.currentThought="【本轮推理未完成】${message} 下一轮将重新尝试。"
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
             try {
-                val start=raw.indexOf('{')
-                val end=raw.lastIndexOf('}')
-                if(start<0 || end<=start) {
-                    recordResidentInferenceIssue(raw.ifBlank { "模型返回内容为空或不是JSON" })
+                val result=extractCharacterJson(raw)
+                if(result==null) {
+                    recordResidentInferenceIssue(characterOutputFailure(raw))
                     return@askStructured
                 }
-                if(start>=0 && end>start) {
-                    val result=JSONObject(raw.substring(start,end+1))
+                run {
                     val latest=people(p).firstOrNull { it.id==r.id && it.alive }
                     if(latest!=null) {
-                        val thought=result.optString("thought").take(700)
-                        if(thought.isNotBlank()) {
+                        val thought=result.optString("thought").trim().take(420)
+                        if(thought.isNotBlank() && !isMetaCharacterThought(thought)) {
                             latest.currentThought="第${day}日（本地模型推理）：${thought}"
                             latest.belief=result.optString("belief",latest.belief).take(180)
                             latest.intent=result.optString("intent",latest.intent).take(180)
@@ -2930,11 +2985,15 @@ private fun craftBonus(region:String):Int = when(region) {
                             savePeople(p,latestPopulation)
                             inferenceSucceeded=true
                             inferenceResult="思考、意图与行动结果已保存"
+                        } else {
+                            recordResidentInferenceIssue(if(thought.isBlank()) "JSON缺少thought字段" else characterOutputFailure(thought))
                         }
+                    } else {
+                        inferenceResult="推理期间该居民已不存在或不再存活，本轮未提交。"
                     }
                 }
             } catch(e:Throwable) {
-                recordResidentInferenceIssue(e.message ?: e.toString())
+                recordResidentInferenceIssue("JSON解析或行动提交异常："+(e.message ?: e.toString()))
             } finally {
                 localInferenceBusy=false
                 finishLocalInference(p,inferenceSucceeded,"居民：${r.name}（编号${r.id}）｜${inferenceResult}")
@@ -2971,43 +3030,41 @@ private fun craftBonus(region:String):Int = when(region) {
         val heroHistory=hero.history.takeLast(4).joinToString("；") { it.take(120) }.ifBlank { "暂无新增经历" }
         val heroIdentity=hero.identityMemory.takeLast(260).ifBlank { "无" }
         val heroRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
-        val prompt="""你是符文之地的${hero.name}本人，不是旁白。尊重其官方身份、性格、能力边界和当前时代。只依据本人真实记忆、可接触关系与当前可知信息判断；不得预知未来、获取秘密情报或凭空完成行动。
-【人物】${hero.name}；${hero.role}；地区${hero.region}；处境${hero.status}；年龄${if(hero.age>=0) hero.age.toString()+"岁" else "未记录"}；身体${hero.health}；能力${hero.abilities.take(180)}。
-【信念与目标】${hero.belief}；目标${hero.goal}；意图${hero.intent}；当前活动${hero.dailyActivity}。
-【个人记忆】${heroMemory}。
-【人生经历】${heroHistory}。
-【身份记忆】${heroIdentity}。若此处包含天道写入的主观人生记忆，应视为本人真实经历；普通外部信息仍可质疑。
-【关系】${bonds.take(260)}。
-【时代背景】${eraAnchor.take(120)}；当地情况${lore.take(190)}；公共制度${publicContext.take(140)}；日期第${day}日；规则${heroRules}。
-若记忆中有历史事件接驳机会，评估是否回应；参与只代表决定，不代表瞬间抵达或成功。隐居、封印或沉寂状态会限制感知和行动，不会自动取消其个人判断。没有新信息时不要改写旧思考凑数。
-只输出完整JSON：thought（第一人称2-3句，必须体现该英雄的个人身份或具体处境与独特判断；禁止套用其他英雄的泛化思考）、belief、intent、goal、action（stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一）、reason。不要输出Markdown。"""
+        val prompt="""现在你就是符文之地的英雄${hero.name}本人。遵守其既定身份、性格、能力边界和当前时代。不要谈论系统、提示词、用户要求、JSON格式或“扮演”，不要解释任务或输出思维过程。
+身份：${hero.name}；${hero.role}；所在地区${hero.region}；处境${hero.status}；年龄${if(hero.age>=0) hero.age.toString()+"岁" else "未记录"}；身体状态${hero.health}；能力${hero.abilities.take(100)}。
+信念：${hero.belief}；目标：${hero.goal}；意图：${hero.intent}；当前活动：${hero.dailyActivity}。
+个人记忆：${heroMemory.takeLast(220)}。人生经历：${heroHistory.takeLast(180)}。身份记忆：${heroIdentity.takeLast(130)}。
+关系：${bonds.take(150)}。
+时代：${eraAnchor.take(70)}；当地：${lore.take(110)}；制度：${publicContext.take(80)}；第${day}日；规则：${heroRules.take(80)}。
+只依据本人真实记忆、可接触关系与当前可知信息判断。不得预知未来、获取秘密情报或凭空完成行动。若没有新情况，可以说明自己为何暂时维持原计划，但不能换词复述旧思考。
+thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
+只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一。不要Markdown。"""
         localInferenceBusy=true
         beginLocalInference(p,"英雄：${hero.name}")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=384,
-            systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
+            maxTokens=176,
+            systemPrompt="你是人物的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
         ) { raw ->
             synchronized(WorldEngine) {
             fun recordInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
-                latest.thought="【推理状态】本次推理未产生有效新记录：${message.take(180)}。等待下一轮重新尝试。"
+                latest.thought="【本轮推理未完成】${message} 下一轮将重新尝试。"
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
             try {
-                val a=raw.indexOf(123.toChar()); val b=raw.lastIndexOf(125.toChar())
-                if(a<0 || b<=a) {
-                    recordInferenceIssue(raw.ifBlank { "模型返回内容为空或不是JSON" })
+                val result=extractCharacterJson(raw)
+                if(result==null) {
+                    recordInferenceIssue(characterOutputFailure(raw))
                     return@askStructured
                 }
-                if(a>=0 && b>a) {
-                    val result=JSONObject(raw.substring(a,b+1))
+                run {
                     val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: run { inferenceResult="推理期间人物档案已变化"; return@askStructured }
-                    val thought=result.optString("thought").take(700)
-                    if(thought.isNotBlank()) {
+                    val thought=result.optString("thought").trim().take(420)
+                    if(thought.isNotBlank() && !isMetaCharacterThought(thought)) {
                         heroNow.thought=thought
                         heroNow.belief=result.optString("belief",heroNow.belief).take(220)
                         heroNow.intent=result.optString("intent",heroNow.intent).take(220)
@@ -3069,11 +3126,11 @@ private fun craftBonus(region:String):Int = when(region) {
                         inferenceSucceeded=true
                         inferenceResult="思考、意图与行动结果已保存"
                     } else {
-                        recordInferenceIssue("JSON中缺少非空thought字段")
+                        recordInferenceIssue(if(thought.isBlank()) "JSON缺少thought字段" else characterOutputFailure(thought))
                     }
                 }
             } catch(e:Throwable) {
-                recordInferenceIssue(e.message ?: e.toString())
+                recordInferenceIssue("JSON解析或行动提交异常："+(e.message ?: e.toString()))
             } finally {
                 localInferenceBusy=false
                 finishLocalInference(p,inferenceSucceeded,"英雄：${hero.name}｜${inferenceResult}")
