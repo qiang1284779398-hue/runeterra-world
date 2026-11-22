@@ -88,7 +88,10 @@ class AIInferenceService : Service() {
                             model?.let { Llama.releaseModel(it) }
                             model = null
                             val isSmall = small(p)
-                            val hash = sha256(File(p))
+                            val modelFile = File(p)
+                            val bytesBefore = modelFile.length()
+                            val modifiedBefore = modelFile.lastModified()
+                            val hash = sha256(modelFile)
                             val expectedQwen17b = "d2387ca2dbfee2ffabce7120d3770dadca0b293052bc2f0e138fdc940d9bc7b5"
                             val officialMatch = hash.equals(expectedQwen17b, ignoreCase = true)
                             Log.i("RuneterraAI", "模型SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch")
@@ -109,9 +112,14 @@ class AIInferenceService : Service() {
                                     topK = 30
                                 )
                             )
+                            val hashAfterLoad = sha256(modelFile)
+                            val bytesAfter = modelFile.length()
+                            val modifiedAfter = modelFile.lastModified()
                             model = loaded
                             modelPath = p
-                            reply(to, id, true, "SHA256=$hash；匹配ggml-org官方Qwen3-1.7B-Q4_K_M=$officialMatch", true)
+                            val stable = hash == hashAfterLoad && bytesBefore == bytesAfter && modifiedBefore == modifiedAfter
+                            Log.i("RuneterraAI", "模型加载后文件校验；stable=$stable；before=$hash；after=$hashAfterLoad；bytesBefore=$bytesBefore；bytesAfter=$bytesAfter")
+                            reply(to, id, true, "SHA256=$hash；加载后SHA256=$hashAfterLoad；加载期间文件稳定=$stable；匹配官方Qwen3-1.7B=$officialMatch", true)
                         } catch (e: Throwable) {
                             Log.e("RuneterraAI", "模型加载异常", e)
                             reply(to, id, false, e.message ?: e.toString(), true)
@@ -122,9 +130,16 @@ class AIInferenceService : Service() {
 
             2 -> scope.launch {
                 mutex.withLock {
-                    model?.let { Llama.releaseModel(it) }
-                    model = null
-                    modelPath = ""
+                    try {
+                        model?.let { Llama.releaseModel(it) }
+                        model = null
+                        modelPath = ""
+                        Log.i("RuneterraAI", "模型已卸载并释放；requestId=$id")
+                        reply(to, id, true, "模型已卸载")
+                    } catch (e: Throwable) {
+                        Log.e("RuneterraAI", "模型卸载异常", e)
+                        reply(to, id, false, "模型卸载异常：" + (e.message ?: e.toString()))
+                    }
                 }
             }
 
@@ -155,9 +170,11 @@ class AIInferenceService : Service() {
                             val maxTokens = if (isSmall) requestedMax.coerceIn(1, 64)
                                             else requestedMax.coerceIn(1, 160)
 
+                            val startedAt = android.os.SystemClock.elapsedRealtime()
+                            val hashBeforeInference = try { sha256(File(modelPath)) } catch (_: Throwable) { "读取失败" }
                             Log.i(
                                 "RuneterraAI",
-                                "开始原生推理 structured=$structured inputChars=${safePrompt.length}/$cap maxTokens=$maxTokens small=$isSmall"
+                                "推理开始 id=$id structured=$structured inputChars=${safePrompt.length}/$cap maxTokens=$maxTokens small=$isSmall modelSHA=$hashBeforeInference"
                             )
 
                             val result = Llama.complete(
@@ -168,8 +185,11 @@ class AIInferenceService : Service() {
                                 systemPrompt = system,
                                 maxTokens = maxTokens
                             )
-                            Log.i("RuneterraAI", "原生推理完成 chars=${result.text.length}")
-                            reply(to, id, true, result.text.trim())
+                            val elapsedMs = android.os.SystemClock.elapsedRealtime() - startedAt
+                            val hashAfterInference = try { sha256(File(modelPath)) } catch (_: Throwable) { "读取失败" }
+                            val output = result.text.trim()
+                            Log.i("RuneterraAI", "推理完成 id=$id elapsedMs=$elapsedMs outputChars=${output.length} modelSHA_before=$hashBeforeInference modelSHA_after=$hashAfterInference fileStable=${hashBeforeInference == hashAfterInference}")
+                            reply(to, id, true, output)
                         } catch (e: Throwable) {
                             Log.e("RuneterraAI", "推理异常", e)
                             reply(to, id, false, "推理异常：" + (e.message ?: e.toString()))
