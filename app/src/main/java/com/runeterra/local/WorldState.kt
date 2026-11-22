@@ -328,7 +328,7 @@ object WorldEngine {
 11 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
@@ -532,10 +532,10 @@ object WorldEngine {
                     if(op.optString("leader").isNotBlank()) { faction.leader=op.optString("leader"); changes.add("领袖") }
                     if(op.optString("government").isNotBlank()) { faction.government=op.optString("government"); changes.add("政体") }
                     if(op.optString("policy").isNotBlank()) { faction.policy=op.optString("policy"); changes.add("政策") }
-                    if(op.has("military") && op.optInt("military")>0) { faction.military=op.optInt("military").coerceIn(0,1000000); changes.add("军力") }
-                    if(op.has("stability") && op.optInt("stability")>0) { faction.stability=op.optInt("stability").coerceIn(0,100); changes.add("稳定度") }
-                    if(op.has("treasury") && op.optInt("treasury")>0) { faction.treasury=op.optInt("treasury").coerceIn(0,1000000000); changes.add("财政") }
-                    if(op.has("internal_tension") && op.optInt("internal_tension")>0) { faction.internalTension=op.optInt("internal_tension").coerceIn(0,100); changes.add("内部张力") }
+                    if(op.optInt("military",-1)>=0) { faction.military=op.optInt("military").coerceIn(0,1000000); changes.add("军力") }
+                    if(op.optInt("stability",-1)>=0) { faction.stability=op.optInt("stability").coerceIn(0,100); changes.add("稳定度") }
+                    if(op.optInt("treasury",-1)>=0) { faction.treasury=op.optInt("treasury").coerceIn(0,1000000000); changes.add("财政") }
+                    if(op.optInt("internal_tension",-1)>=0) { faction.internalTension=op.optInt("internal_tension").coerceIn(0,100); changes.add("内部张力") }
                     if(changes.isNotEmpty()) { changedFactions=true; outcomes.add("已改变${region}政体状态：${changes.joinToString("、")}。"); successful++ }
                     else outcomes.add("未执行：政体变更没有提供有效属性。")
                 }
