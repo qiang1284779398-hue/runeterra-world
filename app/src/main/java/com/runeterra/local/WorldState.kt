@@ -61,6 +61,32 @@ object WorldEngine {
         }
         p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).apply()
     }
+    private data class LoreChainStage(val day:Long,val id:String,val title:String,val region:String,val foodDelta:Int,val healthDelta:Int,val migrationChance:Int)
+    // Multi-stage event arcs; dates are simulation days, not canon chronology.
+    private val chainStages=listOf(
+        LoreChainStage(121L,"ionia_front","战线扩大：艾欧尼亚村落受到波及","艾欧尼亚",-45,-2,24),
+        LoreChainStage(180L,"ionia_resistance","抵抗网络形成：当地居民开始组织互助","艾欧尼亚",20,0,0),
+        LoreChainStage(300L,"ionia_recovery","战后重建或长期创伤：结果取决于人口与资源","艾欧尼亚",30,1,0),
+        LoreChainStage(541L,"ruination_spread","黑雾扩散：港口周边出现新的失踪与逃亡","比尔吉沃特",-60,-4,35),
+        LoreChainStage(600L,"ruination_survivors","幸存者组织临时避难与补给","比尔吉沃特",15,0,0),
+        LoreChainStage(660L,"ruination_aftermath","危机余波：商路恢复或继续衰退","比尔吉沃特",25,1,0),
+        LoreChainStage(721L,"zaun_incident","祖安工业事故：底层居民承受健康与经济损失","祖安",-20,-3,12),
+        LoreChainStage(780L,"zaun_response","社区互助与工坊自救","祖安",15,0,0),
+        LoreChainStage(840L,"zaun_reform","治理与技术路线变化，模拟社会恢复","祖安",20,1,0)
+    )
+    private fun applyLoreChainStage(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
+        val done=runCatching { JSONArray(p.getString("lore_chain_done","[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toMutableSet() } }.getOrDefault(mutableSetOf())
+        chainStages.filter { it.day==day && it.id !in done }.forEach { stage ->
+            markets[stage.region]?.let { it.food=(it.food+stage.foodDelta).coerceAtLeast(0) }
+            val residents=pop.filter { it.alive && it.region==stage.region }
+            residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100) }
+            val displaced=residents.filter { rng.nextInt(100)<stage.migrationChance }
+            displaced.forEach { r -> r.region=regions[(regions.indexOf(stage.region)+1)%regions.size] }
+            events.add("【历史事件链·模拟】第 ${day} 日 ${stage.title}；${stage.region}影响${residents.size}人，迁徙${displaced.size}人。")
+            done.add(stage.id)
+        }
+        p.edit().putString("lore_chain_done",JSONArray().apply { done.forEach { put(it) } }.toString()).apply()
+    }
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔")
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
@@ -108,6 +134,7 @@ object WorldEngine {
             day++
             val rng=Random(day*7919L+17L)
             applyLorePulse(day,p,pop,markets,events,rng)
+            applyLoreChainStage(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
