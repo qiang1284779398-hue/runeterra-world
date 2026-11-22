@@ -16,13 +16,14 @@ private data class Resident(
     var childIds: MutableList<Int> = mutableListOf(),
     var friendIds: MutableList<Int> = mutableListOf(),
     var mentorId: Int = -1,
-    var studentIds: MutableList<Int> = mutableListOf()
+    var studentIds: MutableList<Int> = mutableListOf(),
+    var settlement: String = ""
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds))
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -33,7 +34,8 @@ private data class Resident(
             (0 until (j.optJSONArray("childIds")?.length() ?: 0)).map { j.getJSONArray("childIds").getInt(it) }.toMutableList(),
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
-            (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList())
+            (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
+            j.optString("settlement",""))
     }
 }
 
@@ -469,6 +471,8 @@ object WorldEngine {
         p.edit().putString("lore_chain_done",JSONArray().apply { done.forEach { put(it) } }.toString()).apply()
     }
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔")
+    private val settlementSeeds=mapOf("德玛西亚" to listOf("雄都","边境要塞","白谷村"),"诺克萨斯" to listOf("不朽堡垒","军团驻地","外省聚落"),"艾欧尼亚" to listOf("普雷西典","纳沃利村落","寺院聚落"),"皮尔特沃夫" to listOf("皮尔特沃夫上城","港口工坊区","外环居住区"),"祖安" to listOf("静水区","裂沟工坊区","底层社区"),"弗雷尔卓德" to listOf("阿瓦罗萨营地","凛冬之爪营地","寒地狩猎聚落"),"恕瑞玛" to listOf("太阳圆盘城","绿洲城镇","沙漠商路驿站"),"巨神峰" to listOf("烈阳圣所","皎月隐居地","山麓朝圣聚落"),"比尔吉沃特" to listOf("屠夫之桥港区","船长码头","外海渔村"),"以绪塔尔" to listOf("以绪奥肯","元素学院聚落","边境隐居村"))
+    private fun defaultSettlement(region:String,id:Int):String { val options=settlementSeeds[region] ?: listOf(region+"聚落"); return options[Math.floorMod(id,options.size)] }
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
@@ -504,12 +508,18 @@ object WorldEngine {
     }
     private fun people(p: android.content.SharedPreferences): MutableList<Resident> {
         val raw=p.getString(KEY_PEOPLE,null)
-        if(raw!=null) return runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
+        if(raw!=null) {
+            val loaded=runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
+            var changed=false
+            loaded.forEach { if(it.settlement.isBlank()) { it.settlement=defaultSettlement(it.region,it.id); changed=true } }
+            if(changed) savePeople(p,loaded)
+            return loaded
+        }
         val rng=Random(24681357L)
         val list=(0 until 240).map { i ->
-            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),regions[i%regions.size],
-                16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)])
-            recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}，职业为${resident.job}。")
+            val region=regions[i%regions.size]
+            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i))
+            recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}的${resident.settlement}，职业为${resident.job}。")
             resident
         }.toMutableList()
         p.edit().putInt(KEY_NEXT_ID,240).apply()
@@ -586,7 +596,7 @@ object WorldEngine {
                     val mate=pop.firstOrNull { it.id==r.partnerId && it.alive }
                     if(mate!=null) mate.familyCount=r.familyCount
                     val id=nextId++
-                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习")
+                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement)
                     child.parentIds.add(r.id)
                     r.childIds.add(id)
                     recordLife(r,day,"家庭迎来孩子${child.name}（居民编号$id）。")
@@ -604,7 +614,8 @@ object WorldEngine {
                     val oldRegion=r.region
                     val next=regions[(regions.indexOf(oldRegion)+1)%regions.size]
                     r.region=next
-                    recordLife(r,day,"因生计压力从${oldRegion}迁往${next}。")
+                    r.settlement=defaultSettlement(next,r.id)
+                    recordLife(r,day,"因生计压力从${oldRegion}迁往${next}，定居于${r.settlement}。")
                     events.add("第 $day 日：${r.name}因生计压力从${oldRegion}迁往${next}。")
                 }
                 if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
@@ -667,7 +678,7 @@ object WorldEngine {
         val partner=all.firstOrNull{it.id==r.partnerId}
         return buildString {
             append("人物档案：${r.name}\n")
-            append("居民编号：${r.id}\n年龄：${r.age}岁\n地区：${r.region}\n职业：${r.job}\n")
+            append("居民编号：${r.id}\n年龄：${r.age}岁\n地区：${r.region}\n聚落：${r.settlement}\n职业：${r.job}\n")
             append("健康：${r.health}/100\n技能：${r.skill}\n财富：${r.coins}\n")
             append("人生状态：${if(r.alive)"在世" else "已故"}\n")
             append("伴侣：${partner?.name ?: if(r.partnerId>=0)"关系对象档案不可用" else "暂无记录"}\n")
