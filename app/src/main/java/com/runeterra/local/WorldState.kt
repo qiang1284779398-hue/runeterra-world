@@ -201,7 +201,15 @@ object WorldEngine {
         HeroAgent("沃利贝尔","弗雷尔卓德","半神与风暴之神","远古力量苏醒","维护原始荒野与古老信仰",82),
         HeroAgent("艾尼维亚","弗雷尔卓德","半神与冰霜之灵","守护冰原","在灾厄来临时守护弗雷尔卓德生命",82),
         HeroAgent("卑尔维斯","虚空","虚空女皇","异界扩张","在虚空深处扩张领域并威胁现实世界",90),
-        HeroAgent("莫德凯撒","诺克萨斯","亡灵征服者","不朽领域中的潜在威胁","积蓄力量并谋求重返生者世界",86)
+        HeroAgent("莫德凯撒","诺克萨斯","亡灵征服者","不朽领域中的潜在威胁","积蓄力量并谋求重返生者世界",86),
+        HeroAgent("提莫","班德尔城","约德尔斥候","跨界巡行","在符文之地执行斥候任务并维持约德尔社群联系",68),
+        HeroAgent("崔丝塔娜","班德尔城","约德尔炮手","守望边界","保护班德尔入口与约德尔同伴",68),
+        HeroAgent("璐璐","班德尔城","约德尔魔法师","游历物质领域","以奇异魔法探索世界并帮助或捉弄旅者",62),
+        HeroAgent("兰博","班德尔城","约德尔发明家","机械实验","以自制机甲证明自己的发明能力",58),
+        HeroAgent("库奇","班德尔城","约德尔飞行员","空中巡逻","驾驶飞行器执行巡逻与运输任务",58),
+        HeroAgent("维迦","班德尔城","约德尔法师","追求强大力量","在黑暗魔法与自我认知之间行动",66),
+        HeroAgent("黑默丁格","皮尔特沃夫","约德尔科学家","科学研究","以科学研究推动皮尔特沃夫发展并警惕技术风险",72),
+        HeroAgent("悠米","班德尔城","约德尔魔法伙伴","寻找主人","借助魔典寻找诺拉并穿梭于不同领域",62)
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
         val raw=p.getString(KEY_HEROES,null)
@@ -1527,6 +1535,25 @@ private fun craftBonus(region:String):Int = when(region) {
             val names=living.sortedBy { it.age }.joinToString("、") { it.name }.ifBlank { "无在世成员" }
             "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；个人食物耗尽时可消耗家庭储粮。共同资产仍未接入市场采购、住房和工资制度。"
         }.sortedBy { it.substringBefore("】") }
+    }
+    fun lineageDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val all=people(p)
+        val living=all.filter{it.alive}
+        val groups=listOf(
+            Triple("人类","符文之地广泛分布的凡人群体；各地区文化、制度、语言与生活方式不同。","普通居民按人类寿命参数运行。"),
+            Triple("瓦斯塔亚","与古老瓦斯塔亚希瑞（Vastayashai'rei）及精神领域力量相关的奇异族群；不同部族外形、习俗与能力差异很大。","官方设定提及其族群长期未有新生代；本模拟不按普通人类出生率繁衍。"),
+            Triple("冰裔血脉（人类）","弗雷尔卓德人类中的特殊血脉，与真冰及古老寒冰力量有联系；不是独立的非人种族。","寿命仍按人类模型；特殊血脉不自动意味着每个人都拥有相同能力。"),
+            Triple("混合血脉（非瓦斯塔亚）","与瓦斯塔亚存在血缘联系、但不被直接归类为瓦斯塔亚的模拟后裔。","此类个体是谨慎的模拟分类，不宣称为官方固定族群。")
+        )
+        val rows=groups.map{(name,description,rule)->
+            val count=living.count{it.lineage==name}
+            "【${name}】\\n当前模拟在世人口：${count}\\n世界设定：${description}\\n运行规则：${rule}\\n注意：人口数量和寿命参数均为模拟数据，不是官方人口统计。"
+        }.toMutableList()
+        val yordles=heroAgents(p).filter{it.region=="班德尔城" || it.name=="黑默丁格"}
+        rows.add("【约德尔人】\\n独立特殊社群：约德尔人不混入普通人类居民人口。当前已登记重要人物：${yordles.size}位（${yordles.joinToString("、"){it.name}}）。\\n世界设定：班德尔城位于精神领域，入口与符文之地相连；入口并非随时对所有人开放。约德尔人的时间体验与凡人不同，不能直接套用人类人口年龄模型。\\n运行规则：约德尔人物作为独立世界行动者记录，不计入普通居民出生、死亡与市场人口。")
+        rows.add("【其他特殊存在】\\n飞升者、暗裔、半神、星灵、亡灵与虚空生物按独立超自然实体处理，不归入普通居民族群；其存在与活动通过英雄行动、组织、地区魔法和世界危机影响凡人社会。")
+        return rows
     }
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
