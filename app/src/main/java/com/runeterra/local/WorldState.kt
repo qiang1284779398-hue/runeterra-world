@@ -1088,18 +1088,34 @@ object WorldEngine {
     }
     // Read-only observation API for the in-app live thought/action console.
     fun observationNames(context:Context,kind:String):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        if(kind=="世界事件" || kind=="人物互动") {
+            val archived=runCatching { val a=JSONArray(p.getString(KEY_EVENT_ARCHIVE,"[]") ?: "[]"); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
+            val current=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]"); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
+            val all=(archived+current).distinct().takeLast(500)
+            val selected=if(kind=="人物互动") all.filter { event ->
+                listOf("关系","分享","帮助","朋友","伴侣","家庭","结识","社交","相识","求助","婚姻","交谈","会面","互动").any { event.contains(it) }
+            } else all
+            return selected.asReversed()
+        }
         return if(kind=="英雄") {
-            heroAgents(context.getSharedPreferences(PREFS,Context.MODE_PRIVATE))
-                .sortedBy { it.region }.map { it.name }
+            heroAgents(p).sortedBy { it.region }.map { it.name }
         } else {
-            people(context.getSharedPreferences(PREFS,Context.MODE_PRIVATE))
-                .sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age})
+            people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age})
                 .map { it.id.toString()+"｜"+it.name }
         }
     }
     fun observationText(context:Context,kind:String,key:String):String {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val day=p.getLong(KEY_DAY,1L)
+        if(kind=="世界事件" || kind=="人物互动") {
+            return buildString {
+                append(if(kind=="人物互动") "符文之地 · 人物互动记录\n" else "符文之地 · 世界事件记录\n")
+                append(key).append("\n\n")
+                append("当前世界日期：第").append(day).append("日\n")
+                append("说明：这是世界引擎已保存的事件文本；没有记录的对白、动机和因果不会在观察台中补写。")
+            }
+        }
         if(kind=="英雄") {
             val h=heroAgents(p).firstOrNull { it.name==key } ?: return "未找到该英雄。"
             return buildString {
