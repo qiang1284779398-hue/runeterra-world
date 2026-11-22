@@ -279,7 +279,7 @@ object WorldEngine {
                 else -> 0
             }
             val drift=rng.nextInt(3)-1
-            if(hostilePair) bond.tension=(bond.tension+drift+warPressure+groupPressure+(if(localPressure>=70)1 else 0)).coerceIn(0,100)
+            if(hostilePair || warPressure>0) bond.tension=(bond.tension+drift+warPressure+groupPressure+(if(localPressure>=70)1 else 0)).coerceIn(0,100)
             else bond.trust=(bond.trust+drift+(if(localPressure<35)1 else 0)-(if(localPressure>=75)1 else 0)).coerceIn(0,100)
             if(bond.tension>=75) {
                 when(setOf(bond.a,bond.b)) {
