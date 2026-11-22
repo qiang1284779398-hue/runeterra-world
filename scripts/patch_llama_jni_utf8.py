@@ -55,8 +55,8 @@ old = 'return env->NewStringUTF(json.c_str());'
 if old in s:
     s = s.replace(old, 'return new_string_from_utf8(env, json);', 1)
 
-# A chat template already emits its own BOS marker (Qwen3 uses <|im_start|>).
-# Return whether a template was applied so the tokenizer does not prepend BOS again.
+# Qwen3's GGUF chat template emits the BOS token itself before the first message.
+# Track template use so llama_tokenize does not prepend a second BOS token.
 s=s.replace(
 '''std::string build_prompt(const llama_model *model, const std::string &system,
                          const std::string &user) {''',
@@ -106,13 +106,13 @@ s=s.replace(
 )
 s=s.replace(
 '''    std::vector<llama_token> tokens = tokenize(vocab, text, true);''',
-'''    // Qwen3 <|im_start|> is a message-boundary token, not BOS.
-    // Keep tokenizer BOS insertion enabled for both templated and fallback prompts.
-    std::vector<llama_token> tokens = tokenize(vocab, text, true);''',
+'''    // The Qwen3 chat template already includes BOS; plain fallback prompts do not.
+    // Add BOS only when no model chat template was applied.
+    std::vector<llama_token> tokens = tokenize(vocab, text, !formatted.second);''',
 1
 )
 
 assert "std::pair<std::string, bool> build_prompt" in s, "build_prompt patch failed"
-assert "tokenize(vocab, text, true)" in s, "BOS patch failed"
+assert "tokenize(vocab, text, !formatted.second)" in s, "BOS handling patch failed"
 assert "return new_string_from_utf8(env, json);" in s, "UTF-8 patch failed"
 p.write_text(s, encoding="utf-8")
