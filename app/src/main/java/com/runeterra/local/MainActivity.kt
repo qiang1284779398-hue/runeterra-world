@@ -289,12 +289,12 @@ class MainActivity : Activity() {
         }
         AlertDialog.Builder(this)
             .setTitle("天道 · 全权限直接指令")
-            .setMessage("用自然语言描述你要改变的世界。8B负责理解并生成操作，世界引擎负责验证和执行。没有对应实体模拟器的复杂现象会明确标注为事件/规则记录，不会假装已经完成全部物理后果。")
+            .setMessage("用自然语言描述你要改变的世界。本地模型负责理解并生成操作，世界引擎负责验证和执行。没有对应实体模拟器的复杂现象会明确标注为事件/规则记录，不会假装已经完成全部物理后果。")
             .setView(input)
             .setPositiveButton("解析并执行") { _, _ ->
                 val command=input.text.toString().trim()
                 if(command.isBlank()) return@setPositiveButton
-                Toast.makeText(this,"8B 正在解析天道指令，请稍候…",Toast.LENGTH_LONG).show()
+                Toast.makeText(this,"本地模型正在解析天道指令，请稍候…",Toast.LENGTH_LONG).show()
                 WorldEngine.interpretHeavenlyCommand(this,command) { result ->
                     runOnUiThread {
                         AlertDialog.Builder(this)
@@ -608,7 +608,7 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val s = WorldEngine.load(this)
-        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 1 个世界小时（重大事件期间自动减速）\n本地 AI：${if (ResidentAI.isLoaded()) "8B 模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
+        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 1 个世界小时（重大事件期间自动减速）\n本地 AI：${if (ResidentAI.isLoaded()) "本地模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
         log.text = "最近世界记录\n" + (s.events.takeLast(12).asReversed().joinToString("\n") { "• $it" }.ifBlank { "尚无事件。启动世界后将逐步产生记录。" })
     }
 
