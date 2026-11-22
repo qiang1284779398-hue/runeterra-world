@@ -72,7 +72,7 @@ class MainActivity : Activity() {
             }
         }
         val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
-        val aiDiagnostics = Button(this).apply { text = "查看 AI 推理诊断日志"; setOnClickListener { AlertDialog.Builder(this@MainActivity).setTitle("本地 AI 诊断").setMessage(ResidentAI.diagnosticReport(this@MainActivity)).setPositiveButton("关闭",null).show() } }
+        val aiDiagnostics = Button(this).apply { text = "查看 / 复制 AI 推理诊断日志"; setOnClickListener { showAiDiagnostics() } }
         val observation = Button(this).apply { text = "人物思考 / 行动实时观察窗口"; setOnClickListener { showObservationConsole() } }
         val biographies = Button(this).apply {
             text = "居民传记导出 / 查看居民人生（点击进入）"
@@ -187,6 +187,29 @@ class MainActivity : Activity() {
             (resources.displayMetrics.widthPixels*0.94f).toInt(),
             (resources.displayMetrics.heightPixels*0.82f).toInt()
         )
+    }
+
+    private fun showAiDiagnostics() {
+        val report = ResidentAI.diagnosticReport(this)
+        val content = TextView(this).apply {
+            text = report
+            textSize = 13f
+            setTextIsSelectable(true)
+            setPadding(24, 18, 24, 18)
+        }
+        val scroll = ScrollView(this).apply {
+            addView(content, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("本地 AI 诊断日志")
+            .setView(scroll)
+            .setNeutralButton("复制全部日志") { _, _ ->
+                val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(android.content.ClipData.newPlainText("AI诊断日志", report))
+                Toast.makeText(this, "完整诊断日志已复制，可以直接粘贴发送", Toast.LENGTH_LONG).show()
+            }
+            .setPositiveButton("关闭", null)
+            .show()
     }
 
     private fun pickLocalModel() {
