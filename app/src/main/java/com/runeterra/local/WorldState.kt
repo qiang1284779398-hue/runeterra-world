@@ -916,9 +916,27 @@ private fun craftBonus(region:String):Int = when(region) {
             regions.forEach { region ->
                 val market=markets[region] ?: return@forEach
                 market.food=market.food.coerceAtLeast(0)
-                if(day%30L==0L) regionalGoods(region).forEach { (good,amount) ->
-                    if(good=="粮食") market.food+=amount
-                    else market.stock[good]=(market.stock[good]?:0)+amount
+                if(day%30L==0L) {
+                    regionalGoods(region).forEach { (good,amount) ->
+                        if(good=="粮食") market.food+=amount
+                        else market.stock[good]=(market.stock[good]?:0)+amount
+                    }
+                    val local=pop.filter { it.alive && it.region==region }
+                    val artisans=local.count { it.job=="工匠" }
+                    val guards=local.count { it.job=="护卫" }
+                    val demand=mapOf(
+                        "木材" to (1+artisans/14),
+                        "矿石" to (1+artisans/18),
+                        "药材" to (1+local.size/35),
+                        "工具" to (1+artisans/10+guards/25),
+                        "魔法材料" to (1+local.count { it.job=="学徒" }/12),
+                        "海克斯器件" to (if(region=="皮尔特沃夫" || region=="祖安") 2+artisans/8 else 1)
+                    )
+                    demand.forEach { (good,amount) ->
+                        market.stock[good]=((market.stock[good]?:0)-amount).coerceAtLeast(0)
+                    }
+                    val shortages=goods.filter { it!="粮食" && (market.stock[it]?:0)<=5 }
+                    if(shortages.isNotEmpty()) events.add("第 $day 日市场：$region出现商品短缺——${shortages.joinToString("、")}；供需变化正在影响当地价格。")
                 }
             }
             if(day%30L==0L) {
