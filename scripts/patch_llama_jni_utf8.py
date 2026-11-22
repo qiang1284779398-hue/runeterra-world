@@ -3,7 +3,7 @@ from pathlib import Path
 p = Path("llama-android/library/src/main/jni/llama_jni.cpp")
 s = p.read_text(encoding="utf-8")
 if "#include <utility>" not in s:
-    s = s.replace("#include <vector>", "#include <vector>\\n#include <utility>", 1)
+    s = s.replace("#include <vector>", "#include <vector>" + chr(10) + "#include <utility>", 1)
 
 # Convert UTF-8 output into Java UTF-16; JNI NewStringUTF only accepts
 # Modified UTF-8 and is unsafe for arbitrary model output.
