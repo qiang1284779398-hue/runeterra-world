@@ -198,7 +198,7 @@ object WorldEngine {
         HeroAgent("奥恩","弗雷尔卓德","半神与锻造之神","隐居","远离凡人纷争，守护古老锻造力量",78),
         HeroAgent("沃利贝尔","弗雷尔卓德","半神与风暴之神","远古力量苏醒","维护原始荒野与古老信仰",82),
         HeroAgent("艾尼维亚","弗雷尔卓德","半神与冰霜之灵","守护冰原","在灾厄来临时守护弗雷尔卓德生命",82),
-        HeroAgent("贝蕾亚","虚空","虚空女皇","异界扩张","在虚空深处扩张领域并威胁现实世界",90),
+        HeroAgent("卑尔维斯","虚空","虚空女皇","异界扩张","在虚空深处扩张领域并威胁现实世界",90),
         HeroAgent("莫德凯撒","诺克萨斯","亡灵征服者","不朽领域中的潜在威胁","积蓄力量并谋求重返生者世界",86)
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
@@ -439,9 +439,9 @@ object WorldEngine {
                         factions["弗雷尔卓德"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
                     }
                     "艾尼维亚" -> h.status="以冰霜与重生传说守护弗雷尔卓德生命"
-                    "贝蕾亚" -> {
+                    "卑尔维斯" -> {
                         h.status="虚空深处的意识扩张，寻找侵入现实的机会"
-                        events.add("【虚空威胁·模拟】第 $day 日：虚空女皇贝蕾亚相关的异界活动增强；虚空不受符文之地常规国家边界约束。")
+                        events.add("【虚空威胁·模拟】第 $day 日：虚空女皇卑尔维斯相关的异界活动增强；虚空不受符文之地常规国家边界约束。")
                     }
                     "莫德凯撒" -> h.status="仍处于不朽领域，影响通过古老秘密与追随者传闻渗入诺克萨斯"
                     else -> h.status="在所属地区推进个人目标"
