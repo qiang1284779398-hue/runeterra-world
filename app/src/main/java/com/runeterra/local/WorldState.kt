@@ -50,22 +50,41 @@ private data class Resident(
 
 object WorldEngine {
     private const val PREFS="runeterra_world"
-    // Save a factual scene packet alongside the compact timeline entry for future novelization.
+    // Versioned factual life packets: snapshots, event classification and contemporaneous relationship state.
     private fun recordLife(r:Resident,day:Long,detail:String){
         r.history.add("第${day}日：${detail}")
-        val packet=JSONObject().put("day",day).put("age",r.age).put("region",r.region)
-            .put("settlement",r.settlement).put("job",r.job).put("health",r.health)
-            .put("skill",r.skill).put("coins",r.coins).put("food",r.food).put("alive",r.alive)
-            .put("detail",detail).put("travelOrigin",r.travelOrigin)
-            .put("travelDestination",r.travelDestination).put("travelPurpose",r.travelPurpose)
-            .put("partnerId",r.partnerId).put("householdId",r.householdId)
+        val type=when {
+            detail.contains("出生") || detail.contains("孩子") || detail.contains("家庭") || detail.contains("伴侣") || detail.contains("父母") || detail.contains("子女") -> "家庭与关系"
+            detail.contains("去世") || detail.contains("离世") -> "死亡与人生终点"
+            detail.contains("迁") || detail.contains("旅途") || detail.contains("转至") -> "迁徙与居住"
+            detail.contains("职业") || detail.contains("工匠") || detail.contains("学徒") || detail.contains("转行") || detail.contains("谋生") -> "职业与技能"
+            detail.contains("战争") || detail.contains("战线") || detail.contains("停战") || detail.contains("入侵") -> "战争与政治"
+            detail.contains("粮食") || detail.contains("口粮") || detail.contains("市场") || detail.contains("积蓄") || detail.contains("经济") -> "生计与经济"
+            detail.contains("魔法") || detail.contains("灵性") || detail.contains("黑雾") || detail.contains("星界") -> "魔法与超自然"
+            detail.contains("生态") || detail.contains("污染") || detail.contains("水源") || detail.contains("植被") -> "环境与生态"
+            else -> "个人经历与社会变化"
+        }
+        val stage=when { r.age<6 -> "幼年"; r.age<13 -> "童年"; r.age<18 -> "少年"; r.age<30 -> "青年"; r.age<50 -> "成年"; r.age<70 -> "中年"; else -> "晚年" }
+        val sequence=r.storyRecords.size+1
+        val relations=JSONObject().put("partnerId",r.partnerId).put("parentIds",JSONArray(r.parentIds))
+            .put("childIds",JSONArray(r.childIds)).put("friendIds",JSONArray(r.friendIds))
+            .put("mentorId",r.mentorId).put("studentIds",JSONArray(r.studentIds)).put("householdId",r.householdId)
+        val packet=JSONObject().put("schemaVersion",2).put("eventId","life-${r.id}-${day}-${sequence}")
+            .put("sequence",sequence).put("day",day).put("age",r.age).put("lifeStage",stage).put("eventType",type)
+            .put("region",r.region).put("settlement",r.settlement).put("job",r.job)
+            .put("health",r.health).put("skill",r.skill).put("coins",r.coins).put("food",r.food).put("alive",r.alive)
+            .put("detail",detail).put("travelOrigin",r.travelOrigin).put("travelDestination",r.travelDestination)
+            .put("travelDaysRemaining",r.travelDaysRemaining).put("travelPurpose",r.travelPurpose)
+            .put("relationships",relations)
+            .put("cause","由模拟状态变化或已记录的世界事件触发；具体因果未保存时不得自行补全")
+            .put("dialogueRecorded",false).put("psychologyRecorded",false)
         r.storyRecords.add(packet.toString())
         while(r.storyRecords.size>5000) r.storyRecords.removeAt(0)
     }
-    // Story entries are selective: record only residents whose region or role plausibly intersects a meaningful event.
+    // No random bystander sampling: every resident whose region and livelihood match a regional impact receives the record.
     private fun recordLocalStory(pop:List<Resident>,day:Long,region:String,detail:String,rng:Random,limit:Int=3,roles:Set<String> = emptySet()) {
-        val candidates=pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
-        candidates.shuffled(rng).take(limit.coerceAtLeast(1)).forEach { recordLife(it,day,detail) }
+        pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
+            .forEach { recordLife(it,day,detail) }
     }
     private const val KEY_DAY="day"
     private const val KEY_RNG_STATE="world_rng_state"
