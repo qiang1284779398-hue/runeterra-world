@@ -159,25 +159,67 @@ object WorldEngine {
     private fun tickHeroes(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
         if(day%30L!=0L)return
         val agents=heroAgents(p)
-        agents.forEach{h->
-            val regionResidents=pop.filter{it.alive&&it.region==h.region}
-            if(rng.nextInt(100)<18){
-                val target=regionResidents.randomOrNull()
-                if(target!=null){
-                    when(h.name){
-                        "盖伦"->{target.health=(target.health+3).coerceAtMost(100);h.status="巡逻";recordLife(target,day,"在${h.name}巡逻时获得保护。")}
-                        "拉克丝"->{target.health=(target.health+2).coerceAtMost(100);h.status="秘密援助";recordLife(target,day,"在${h.name}的秘密援助下得到帮助。")}
-                        "艾瑞莉娅"->{target.health=(target.health+2).coerceAtMost(100);h.status="抵抗行动";recordLife(target,day,"受到${h.name}领导的抵抗行动影响。")}
-                        "厄运小姐"->{target.coins+=2;h.status="港口行动";recordLife(target,day,"参与${h.name}主导的港口行动，获得报酬。")}
-                        "杰斯"->{markets[h.region]?.let{it.wealth+=5};h.status="技术研究"}
-                        "维克托"->{markets[h.region]?.let{it.wealth+=3};h.status="技术实验"}
-                        else->{h.status="行动中"}
+        val groups=organizations(p)
+        val factions=factionStates(p)
+        agents.forEach { h ->
+            if(rng.nextInt(100)<18) {
+                val group=when(h.name) {
+                    "盖伦" -> groups.firstOrNull { it.id=="demacia_vanguard" }
+                    "拉克丝" -> groups.firstOrNull { it.id=="demacia_mage_resistance" }
+                    "厄运小姐" -> groups.firstOrNull { it.id=="bilgewater_captains" }
+                    "瑟庄妮" -> groups.firstOrNull { it.id=="freljord_winter_claw" }
+                    else -> null
+                }
+                when(h.name) {
+                    "盖伦" -> {
+                        group?.let { it.resources=(it.resources+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        factions["德玛西亚"]?.let { it.stability=(it.stability+1).coerceAtMost(100) }
+                        h.status="边境巡防与军事部署"
                     }
-                    events.add("【英雄行动·模拟】第 $day 日：${h.name}在${h.region}执行「${h.goal}」，影响居民${target.name}。")
-                }else h.status="行动中"
+                    "拉克丝" -> {
+                        group?.let { it.resources=(it.resources+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+2).coerceAtMost(100) }
+                        h.status="秘密保护受压迫的法师"
+                    }
+                    "卡特琳娜" -> {
+                        factions["诺克萨斯"]?.let { it.internalTension=(it.internalTension+rng.nextInt(3)-1).coerceIn(0,100) }
+                        h.status="执行秘密任务；具体行动不为外界所知"
+                    }
+                    "艾瑞莉娅" -> {
+                        h.influence=(h.influence+1).coerceAtMost(100)
+                        h.status="协调艾欧尼亚地方抵抗力量"
+                    }
+                    "阿卡丽" -> {
+                        h.status="独立行动；不受均衡教派或影流直接指挥"
+                    }
+                    "厄运小姐" -> {
+                        group?.let { it.influence=(it.influence+1).coerceAtMost(100); it.publicSupport=(it.publicSupport+1).coerceAtMost(100) }
+                        h.status="争夺比尔吉沃特港口与航路影响力"
+                    }
+                    "瑟庄妮" -> {
+                        group?.let { it.resources=(it.resources+2).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
+                        h.status="带领凛冬之爪进行生存与征战行动"
+                    }
+                    "凯莎" -> {
+                        h.status="追踪并阻止虚空威胁"
+                        events.add("【虚空威胁·模拟】第 $day 日：凯莎在恕瑞玛相关区域追踪虚空活动；虚空仍是跨地区威胁，不构成普通领土势力。")
+                    }
+                    "杰斯" -> {
+                        markets["皮尔特沃夫"]?.let { it.wealth=(it.wealth+2).coerceAtMost(100000) }
+                        h.status="推进海克斯科技研究与城邦防务"
+                    }
+                    "维克托" -> {
+                        markets["祖安"]?.let { it.wealth=(it.wealth+1).coerceAtMost(100000) }
+                        h.status="推进机械进化研究，与祖安社会产生复杂影响"
+                    }
+                    else -> h.status="在所属地区推进个人目标"
+                }
+                h.influence=(h.influence+rng.nextInt(3)-1).coerceIn(0,100)
+                events.add("【重要人物行动·模拟】第 $day 日：${h.name}在${h.region}推进「${h.goal}」；当前状态：${h.status}。")
             }
         }
         saveHeroes(p,agents)
+        saveOrganizations(p,groups)
+        saveFactions(p,factions)
     }
     private const val KEY_FACTIONS="factions_state"
     private data class Faction(
