@@ -74,6 +74,22 @@ s=s.replace(
     return {std::string(buf.data(), n), true};'''
 )
 
+
+# The upstream source has two fallback branches. Patch both (not just the first)
+# and make the successful template return carry the "template applied" flag.
+import re
+s, fallback_count = re.subn(
+    r'if (n < 0) return system\\.empty\\(\\) \\? user : \\(system \\+ "\\\\n\\\\n" \\+ user\\);',
+    r'if (n < 0) return {system.empty() ? user : (system + "\\\\n\\\\n" + user), false};',
+    s
+)
+if fallback_count == 0 and 'if (n < 0) return {system.empty()' not in s:
+    raise RuntimeError("Could not patch chat-template fallback branch")
+s=s.replace(
+    '    return std::string(buf.data(), n);',
+    '    return {std::string(buf.data(), n), true};'
+)
+
 # Token pieces can exceed a fixed stack buffer. Retry with the exact required size.
 s=s.replace(
 '''    char buf[256];
