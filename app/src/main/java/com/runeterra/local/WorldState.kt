@@ -529,7 +529,25 @@ object WorldEngine {
     private val residentRegions=regions.filterNot { it=="班德尔城" || it=="暗影岛" }
     // Canon-named places are used only where Riot lore identifies them; generic settlements are explicitly simulation placeholders.
     private val settlementSeeds=mapOf("德玛西亚" to listOf("德玛西亚雄都","高银沼","未命名边境村镇（模拟）"),"诺克萨斯" to listOf("不朽堡垒","诺克萨斯军团驻地（模拟）","帝国行省聚落（模拟）"),"艾欧尼亚" to listOf("普雷西典","均衡教派寺院（泛称）","艾欧尼亚地方村落（模拟）"),"皮尔特沃夫" to listOf("皮尔特沃夫城","太阳之门","海港与工坊区（模拟）"),"祖安" to listOf("海滨长廊区（Promenade）","中层区（Entresol）","污水坑区（Sump）"),"弗雷尔卓德" to listOf("霜卫要塞","拉克尔斯泰克","阿瓦罗萨／凛冬之爪流动营地（模拟）"),"恕瑞玛" to listOf("太阳圆盘遗址","纳施拉美","绿洲与商路聚落（模拟）"),"巨神峰" to listOf("烈阳教派圣所（模拟）","皎月信徒隐居地（模拟）","山麓朝圣聚落（模拟）"),"比尔吉沃特" to listOf("屠夫之桥","屠宰码头","布胡鲁神庙"),"以绪塔尔" to listOf("以绪奥肯","奥姆卡（Ohmka）","索伦（Xolen）／帕雷萨（Paretha）"),"班德尔城" to listOf("班德尔城","符文之地班德尔入口（模拟）","班德尔居民聚落（模拟）"),"暗影岛" to listOf("福光岛遗迹（Blessed Isles）","赫利亚遗迹（Helia）","黑雾侵蚀区域（模拟）"))
-    private fun defaultSettlement(region:String,id:Int):String { val options=settlementSeeds[region] ?: listOf(region+"聚落"); return options[Math.floorMod(id,options.size)] }
+    private data class SettlementMeta(val type:String,val habitable:Boolean,val note:String)
+    private fun settlementMeta(region:String,name:String):SettlementMeta = when {
+        region=="暗影岛" && name.contains("福光岛") -> SettlementMeta("历史遗址",false,"福光岛是暗影岛灾变前的历史名称；不作为普通居民居住地")
+        region=="暗影岛" && name.contains("赫利亚") -> SettlementMeta("历史遗址",false,"赫利亚为灾变后的遗址，不作为普通居民聚落")
+        region=="暗影岛" -> SettlementMeta("诅咒危险区",false,"黑雾侵蚀区域；普通居民不会在此建立常规定居点")
+        region=="班德尔城" && name.contains("入口") -> SettlementMeta("跨界入口",false,"连接班德尔城与符文之地的特殊通道；入口位置和显现状态并非固定")
+        region=="班德尔城" -> SettlementMeta("约德尔人特殊领域",false,"班德尔城属于约德尔人的特殊家园，不纳入普通人类居民人口")
+        name=="太阳之门" -> SettlementMeta("地标／海上通道",false,"皮尔特沃夫的重要海上通道与基础设施，不是独立居民聚落")
+        name=="太阳圆盘遗址" -> SettlementMeta("历史遗址",false,"古代恕瑞玛文明遗址，不作为普通居民聚落")
+        name=="布胡鲁神庙" || name.contains("圣所") || name.contains("寺院") -> SettlementMeta("神庙／宗教据点",true,"以信仰活动为核心的据点；人口统计仅代表模拟常住者")
+        name=="拉克尔斯泰克" -> SettlementMeta("朝圣地／部族据点",true,"弗雷尔卓德重要部族与朝圣活动相关地点；常住规模属于模拟设定")
+        name.contains("营地") || name.contains("驻地") -> SettlementMeta("军事／流动营地",true,"人口随部族、军团或季节活动变化；仅作模拟人口统计")
+        name.contains("村镇") || name.contains("村落") || name.contains("聚落") || name.contains("绿洲") -> SettlementMeta("村庄／聚落",true,"模拟补充的普通居住点，并非官方地图对该名称的确认")
+        else -> SettlementMeta("城市／城区",true,"以官方已知地名为基础；人口与职业结构属于模拟数据")
+    }
+    private fun defaultSettlement(region:String,id:Int):String {
+        val options=(settlementSeeds[region] ?: listOf(region+"聚落")).filter { settlementMeta(region,it).habitable }
+        return options.getOrElse(Math.floorMod(id,options.size.coerceAtLeast(1))) { region+"聚落（模拟）" }
+    }
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
@@ -574,7 +592,14 @@ object WorldEngine {
         if(raw!=null) {
             val loaded=runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
             var changed=false
-            loaded.forEach { if(it.settlement.isBlank()) { it.settlement=defaultSettlement(it.region,it.id); changed=true } }
+            loaded.forEach {
+                if(it.settlement.isBlank() || !settlementMeta(it.region,it.settlement).habitable) {
+                    val previous=it.settlement
+                    it.settlement=defaultSettlement(it.region,it.id)
+                    if(previous.isNotBlank()) recordLife(it,p.getLong(KEY_DAY,1L),"因原居住地点「"+previous+"」被标记为遗址、特殊领域或非居住地，迁至"+it.settlement+"。")
+                    changed=true
+                }
+            }
             if(changed) savePeople(p,loaded)
             return loaded
         }
@@ -724,13 +749,14 @@ object WorldEngine {
     fun settlementDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=people(p)
-        return settlementSeeds.flatMap { (region,names) -> names.mapIndexed { index,name ->
+        return settlementSeeds.flatMap { (region,names) -> names.map { name ->
+            val meta=settlementMeta(region,name)
             val residents=all.filter { it.alive && it.region==region && it.settlement==name }
             val farmers=residents.count { it.job=="农夫" || it.job=="采集者" }
             val artisans=residents.count { it.job=="工匠" }
             val traders=residents.count { it.job=="商贩" }
             val guards=residents.count { it.job=="护卫" }
-            "【"+name+"】\n所属区域："+region+"\n聚落性质："+when(index){0->"核心城市或主要营地";1->"交通、军事或产业聚落";else->"乡村、边境或隐居聚落"}+"\n常住居民："+residents.size+"人\n生产与职业：农采"+farmers+"、工匠"+artisans+"、商贩"+traders+"、护卫"+guards+"\n（人口按居民个人居住地统计；聚落分类为当前模拟设定。）"
+            "【"+name+"】\\n所属区域："+region+"\\n实体类型："+meta.type+"\\n可居住性："+(if(meta.habitable)"可作为常规居住点" else "非普通居民居住地")+"\\n说明："+meta.note+"\\n常住居民："+(if(meta.habitable)residents.size.toString()+"人" else "不适用")+"\\n生产与职业：农采"+farmers+"、工匠"+artisans+"、商贩"+traders+"、护卫"+guards+"\\n（人口、职业与聚落活动属于模拟数据；官方地名不代表官方确认了此处的模拟人口。）"
         } }.sorted()
     }
     fun factionDirectory(context:Context):List<String> {
