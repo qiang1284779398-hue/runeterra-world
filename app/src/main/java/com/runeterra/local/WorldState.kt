@@ -2555,8 +2555,10 @@ private fun craftBonus(region:String):Int = when(region) {
         if(!ResidentAI.isLoaded() || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
-        val active=all.filter { h -> h.alive && h.region!="虚空" && h.status!="隐居" &&
-            !(h.name in setOf("阿兹尔","泽拉斯") && (h.status.startsWith("沉寂") || h.status.contains("尚未进入本模拟当代活动") || h.status.contains("尚未在当前世界公开活动"))) }
+        // Every living hero remains an individual agent, including recluses, sealed/dormant
+        // figures and characters not publicly active in this era. Their condition constrains
+        // what they can perceive or do; it must not silently remove their inner life.
+        val active=all.filter { it.alive }
         if(active.isEmpty()) return
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val hero=active[cursor]
