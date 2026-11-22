@@ -158,66 +158,58 @@ class ChatGPTWebActivity : Activity() {
     }
 
     private fun readLatest(force: Boolean) {
-        // Support both the older role-attribute DOM and newer conversation-turn DOM.
+        // Traverse document, open shadow roots and accessible iframes.
         val script = """
             (function() {
-              const visible = el => {
-                if (!el || !el.isConnected) return false;
-                const r = el.getBoundingClientRect();
-                return r.width > 0 && r.height > 0;
-              };
-              const readText = el => {
-                if (!el) return '';
-                const md = el.querySelector('.markdown, [class*="markdown"], [data-testid*="message-content"]');
-                return ((md && (md.innerText || md.textContent)) || el.innerText || el.textContent || '').trim();
-              };
-              const roleNodes = Array.from(document.querySelectorAll('[data-message-author-role]'));
-              const assistants = roleNodes.filter(n =>
-                (n.getAttribute('data-message-author-role') || '').toLowerCase() === 'assistant'
-              );
-              let node = assistants.length ? assistants[assistants.length - 1] : null;
-              let text = readText(node);
-              let method = node ? 'role-attribute' : 'none';
-
-              // Newer ChatGPT layouts may expose conversation turns without role attributes.
-              const turnNodes = Array.from(document.querySelectorAll('[data-testid^="conversation-turn-"]')).filter(visible);
-              const articles = Array.from(document.querySelectorAll('main article, article')).filter(visible);
-              const messageNodes = Array.from(document.querySelectorAll('[data-message-id], [data-testid*="assistant"], [class*="agent-turn"]')).filter(visible);
-              if (!text) {
-                const pools = [
-                  {name:'conversation-turn', nodes:turnNodes},
-                  {name:'article', nodes:articles},
-                  {name:'message-container', nodes:messageNodes}
-                ];
-                for (const pool of pools) {
-                  const usable = pool.nodes.map(el => ({el, text:readText(el)})).filter(x => x.text.length > 0);
-                  if (usable.length) {
-                    const candidate = usable[usable.length - 1];
-                    node = candidate.el;
-                    text = candidate.text;
-                    method = pool.name;
-                    break;
+              const roots = [], seen = new Set();
+              const addRoot = root => {
+                if (!root || seen.has(root)) return;
+                seen.add(root);
+                let els = [];
+                try { els = Array.from(root.querySelectorAll('*')); } catch (_) {}
+                for (const el of els) if (el.shadowRoot) addRoot(el.shadowRoot);
+                if (root === document) {
+                  for (const frame of Array.from(document.querySelectorAll('iframe'))) {
+                    try { if (frame.contentDocument) addRoot(frame.contentDocument); } catch (_) {}
                   }
                 }
+              };
+              addRoot(document);
+              const all = [];
+              for (const root of roots) { try { all.push(...Array.from(root.querySelectorAll('*'))); } catch (_) {} }
+              const visible = el => {
+                try { const r=el.getBoundingClientRect(), s=getComputedStyle(el); return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none'; }
+                catch (_) { return false; }
+              };
+              const textOf = el => ((el && (el.innerText || el.textContent)) || '').trim();
+              const candidates = [];
+              for (const root of roots) {
+                let nodes=[];
+                try { nodes=Array.from(root.querySelectorAll('[data-message-author-role], [data-testid^="conversation-turn-"], article, [data-message-id]')); } catch (_) {}
+                for (const el of nodes) {
+                  const role=(el.getAttribute('data-message-author-role')||'').toLowerCase(), txt=textOf(el);
+                  if (txt && visible(el)) candidates.push({el,txt,role,kind:el.tagName.toLowerCase()});
+                }
               }
-
-              // Remove common UI-only text if the selected container is broad.
-              const stop = document.querySelector(
-                '[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"], button[aria-label*="Stop generating"]'
-              );
-              const previews = turnNodes.slice(-3).map(el => readText(el).slice(0, 100));
+              let chosen=candidates.filter(x=>x.role==='assistant').slice(-1)[0], method=chosen?'deep-assistant-role':'none';
+              if (!chosen) {
+                const turns=candidates.filter(x=>x.el.getAttribute('data-testid') && x.el.getAttribute('data-testid').startsWith('conversation-turn-'));
+                if (turns.length) { chosen=turns[turns.length-1]; method='deep-conversation-turn'; }
+              }
+              const bodyText=textOf(document.body);
+              const shadowHosts=all.filter(e=>!!e.shadowRoot).length;
+              const iframeInfo=Array.from(document.querySelectorAll('iframe')).map(f=>({src:(f.getAttribute('src')||'').slice(0,120),accessible:(function(){try{return !!f.contentDocument}catch(_){return false}})()}));
+              const stop=roots.some(root=>{try{return !!root.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]')}catch(_){return false}});
               return JSON.stringify({
-                text:text,
-                streaming:!!stop,
-                assistantCount:assistants.length,
-                roleCount:roleNodes.length,
-                turnCount:turnNodes.length,
-                articleCount:articles.length,
-                messageContainerCount:messageNodes.length,
-                method:method,
-                previews:previews,
-                pageReady:document.readyState,
-                url:location.href
+                text:chosen?chosen.txt:'',
+                streaming:stop,
+                assistantCount:candidates.filter(x=>x.role==='assistant').length,
+                roleCount:candidates.filter(x=>!!x.role).length,
+                turnCount:candidates.filter(x=>x.el.getAttribute('data-testid')&&x.el.getAttribute('data-testid').startsWith('conversation-turn-')).length,
+                articleCount:candidates.filter(x=>x.kind==='article').length,
+                rootCount:roots.length, shadowHostCount:shadowHosts, iframeCount:iframeInfo.length, iframeInfo:iframeInfo,
+                elementCount:all.length, bodyLength:bodyText.length, bodyPreview:bodyText.slice(-900),
+                method:method, title:document.title, url:location.href, ready:document.readyState
               });
             })();
         """.trimIndent()
@@ -230,21 +222,27 @@ class ChatGPTWebActivity : Activity() {
             val roleCount = data.optInt("roleCount", 0)
             val turnCount = data.optInt("turnCount", 0)
             val articleCount = data.optInt("articleCount", 0)
+            val roots = data.optInt("rootCount", 0)
+            val shadowHosts = data.optInt("shadowHostCount", 0)
+            val frames = data.optInt("iframeCount", 0)
+            val elements = data.optInt("elementCount", 0)
+            val bodyLength = data.optInt("bodyLength", 0)
             val method = data.optString("method", "none")
             if (text.isNotBlank()) {
                 result.text = text
                 if (text == lastText) stableCount++ else stableCount = 0
                 lastText = text
-                if (force) status.text = "读取成功：0 字符；方式=$method；对话轮=$turnCount"
+                if (force) status.text = "读取成功：" + text.length + " 字符；方式=" + method + "；DOM根=" + roots
                 if (!force && text != baseline && !streaming && stableCount >= 2) {
-                    status.text = "回答读取完成：0 字符"
+                    status.text = "回答读取完成：" + text.length + " 字符"
                     polling = false
                     handler.removeCallbacks(pollTask)
                 } else if (!force && text != baseline) {
                     status.text = if (streaming) "正在读取生成中的回答……" else "回答内容已更新，等待内容稳定……"
                 }
             } else if (force) {
-                status.text = "暂未读到：角色节点=$roleCount，assistant=$count，对话轮=$turnCount，文章=$articleCount。请复制这行诊断发我。"
+                val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(140)
+                status.text = "未找到回答：元素=" + elements + "，DOM根=" + roots + "，Shadow=" + shadowHosts + "，iframe=" + frames + "，body字符=" + bodyLength + "；页面=" + data.optString("url") + "；预览=" + preview
             }
         }
     }
