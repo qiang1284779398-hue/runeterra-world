@@ -2765,7 +2765,7 @@ private fun craftBonus(region:String):Int = when(region) {
      * memories and context; the shared model is never duplicated per resident.
      */
     fun requestLocalResidentThinking(context:Context) {
-        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val population=people(p)
         val living=population.filter { it.alive }
