@@ -51,6 +51,56 @@ jstring new_string_from_utf8(JNIEnv *env, const std::string &input) {
 if "new_string_from_utf8" not in s:
     assert needle in s
     s = s.replace(needle, helper + needle, 1)
+
+# Decode the complete generated token sequence with llama.cpp's vocabulary-aware
+# detokenizer. Per-token pieces can expose byte-fallback fragments in isolation.
+decode_helper = r"""
+std::string detokenize(const llama_vocab *vocab, const std::vector<llama_token> &tokens) {
+    if (tokens.empty()) return {};
+    int32_t n = llama_detokenize(vocab, tokens.data(), static_cast<int32_t>(tokens.size()),
+                                 nullptr, 0, true, false);
+    if (n >= 0) return {};
+    std::vector<char> buffer(static_cast<size_t>(-n) + 1, 0);
+    n = llama_detokenize(vocab, tokens.data(), static_cast<int32_t>(tokens.size()),
+                         buffer.data(), static_cast<int32_t>(buffer.size()), true, false);
+    if (n < 0) return {};
+    return std::string(buffer.data(), static_cast<size_t>(n));
+}
+
+"""
+if "std::string detokenize(" not in s:
+    s = s.replace("std::string token_to_piece(", decode_helper + "std::string token_to_piece(", 1)
+
+# Accumulate generated token IDs and decode once, rather than concatenating
+# token pieces individually. This also removes special control tokens.
+s=s.replace(
+'''    std::string out;
+    int n_gen = 0;''',
+'''    std::vector<llama_token> generated_tokens;
+    generated_tokens.reserve(static_cast<size_t>(maxTokens));
+    int n_gen = 0;''',
+1
+)
+s=s.replace(
+'''        out += token_to_piece(vocab, id);
+        llama_batch nb = llama_batch_get_one(&id, 1);''',
+'''        generated_tokens.push_back(id);
+        llama_batch nb = llama_batch_get_one(&id, 1);''',
+1
+)
+s=s.replace(
+'''    llama_sampler_free(smpl);
+
+    const long prompt_ms''',
+'''    llama_sampler_free(smpl);
+    const std::string out = detokenize(vocab, generated_tokens);
+
+    const long prompt_ms''',
+1
+)
+assert "llama_detokenize(vocab, tokens.data()" in s
+assert "generated_tokens.push_back(id);" in s
+assert "const std::string out = detokenize(vocab, generated_tokens);" in s
 old = 'return env->NewStringUTF(json.c_str());'
 if old in s:
     s = s.replace(old, 'return new_string_from_utf8(env, json);', 1)
