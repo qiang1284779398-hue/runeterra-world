@@ -153,14 +153,16 @@ object WorldEngine {
             val a=JSONArray(raw);val map=mutableMapOf<String,Faction>()
             for(i in 0 until a.length()){val j=a.getJSONObject(i);val lands=j.optJSONArray("territory")?:JSONArray();val list=(0 until lands.length()).map{lands.getString(it)}.toMutableList();val name=j.optString("name");val lore=factionLore[name];map[name]=Faction(name,j.optString("leader",lore?.leader?:"地方统治者"),j.optInt("military",100),j.optInt("stability",60),j.optInt("treasury",500),list,j.optString("government",lore?.government?:"地方政体"),j.optString("rulingBloc",lore?.rulingBloc?:"地方统治集团"),j.optString("opposition",lore?.opposition?:"地方反对势力"),j.optString("policy",lore?.policy?:"维持地方秩序"),j.optInt("internalTension",20))}
             if(map.isNotEmpty()) {
-                regions.filter { it !in map }.forEach { r ->
+                map.remove("班德尔城")
+                map.remove("暗影岛")
+                polityRegions.filter { it !in map }.forEach { r ->
                     map[r]=Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30))
                 }
                 saveFactions(p,map)
                 return map
             }
         }
-        val initial=regions.associateWith { r -> Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30)) }.toMutableMap()
+        val initial=polityRegions.associateWith { r -> Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30)) }.toMutableMap()
         saveFactions(p,initial);return initial
     }
     private fun saveFactions(p:android.content.SharedPreferences,map:Map<String,Faction>){
@@ -313,12 +315,14 @@ object WorldEngine {
             if(group.influence>=70 && rng.nextInt(100)<8) events.add("【组织政治·模拟】第 "+day+" 日："+group.name+"影响力上升，开始更积极地推动「"+group.agenda+"」。")
         }
         groups.forEach { group ->
-            group.rivals.forEach { rivalId ->
+            group.rivals.filter { it>group.id }.forEach { rivalId ->
                 val rival=groups.firstOrNull { it.id==rivalId }
                 if(rival!=null && group.influence>=65 && rival.influence>=65 && rng.nextInt(100)<4){
                     events.add("【组织冲突·模拟】第 "+day+" 日："+group.name+"与"+rival.name+"围绕理念、地盘或资源发生冲突。")
                     group.resources=(group.resources-2).coerceAtLeast(0)
                     rival.resources=(rival.resources-2).coerceAtLeast(0)
+                    group.publicSupport=(group.publicSupport-1).coerceAtLeast(0)
+                    rival.publicSupport=(rival.publicSupport-1).coerceAtLeast(0)
                 }
             }
         }
@@ -508,6 +512,8 @@ object WorldEngine {
     }
     // The simulation includes the ten core political/cultural regions plus Bandle City and the Shadow Isles; the Void is a transregional threat, not a conventional state.
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔","班德尔城","暗影岛")
+    // Only these regions have conventional territorial political administrations in this simplified polity layer.
+    private val polityRegions=regions.filterNot { it=="班德尔城" || it=="暗影岛" }
     // Ordinary human resident generation and migration must not treat the spirit-realm Bandle City or cursed Shadow Isles as normal human provinces.
     private val residentRegions=regions.filterNot { it=="班德尔城" || it=="暗影岛" }
     // Canon-named places are used only where Riot lore identifies them; generic settlements are explicitly simulation placeholders.
