@@ -557,7 +557,7 @@ object WorldEngine {
         "皮尔特沃夫" to FactionLore("城邦议会与精英家族影响","议会、贸易家族与工坊巨头","底层工人、改革派与反垄断团体","推动海克斯科技、贸易和城市秩序，承受阶层压力","皮尔特沃夫议会"),
         "祖安" to FactionLore("地下城邦；工坊、帮派与企业势力并立","化学男爵及大型工坊势力","工人社区、独立发明家与反企业组织","争夺资源、空气与生存空间，科技繁荣伴随污染和剥削","化学男爵议会"),
         "弗雷尔卓德" to FactionLore("部族联盟与氏族政治","各部族首领及联盟","敌对部族、流亡者与争夺资源的氏族","在严酷环境中争夺生存资源、盟约与部族领导权","部族首领议会"),
-        "恕瑞玛" to FactionLore("帝国复兴与绿洲城邦并存","太阳圆盘信仰者、复兴势力与地方统治者","独立城邦、反帝国势力与掠夺集团","争夺古代遗产、水源、商路与帝国合法性","复兴势力代表"),
+        "恕瑞玛" to FactionLore("古帝国遗产下的绿洲城邦、部族与商路聚落并存；当前没有统一复兴帝国","各绿洲城邦统治者、部族首领、商路商人与遗迹守望者","彼此竞争的城邦、掠夺集团与对古帝国遗产持不同立场的群体","争夺水源、商路、安全与古代遗迹；帝国复兴仍只是部分群体的愿望","各地城邦与部族领袖（无统一君主）"),
         "巨神峰" to FactionLore("山地城邦、宗教组织与星灵影响","烈阳教派与地方守护者","皎月教派及不同信仰群体","信仰、登山朝圣与星灵力量影响地方秩序","烈阳教派长老"),
         "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","敌对海盗船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
         "以绪塔尔" to FactionLore("以绪奥肯为核心的隐秘元素魔法文明","云塔（Yun Tal）统治阶层与元素法师","边境村镇居民、异议者与外来势力","维护元素知识、城邦秩序与对外隔绝","云塔统治阶层"),
@@ -572,6 +572,12 @@ object WorldEngine {
             if(map.isNotEmpty()) {
                 map.remove("班德尔城")
                 map.remove("暗影岛")
+                val shurimaAwakened=runCatching { JSONArray(p.getString(KEY_LORE,"[]")).let { a -> (0 until a.length()).any { a.getString(it)=="shurima_rise" } } }.getOrDefault(false)
+                if(!shurimaAwakened && p.getString(KEY_ERA,ERA_PRE_IONIA)==ERA_PRE_IONIA) map["恕瑞玛"]?.let { shurima ->
+                    val lore=factionLore["恕瑞玛"]!!
+                    shurima.government=lore.government;shurima.rulingBloc=lore.rulingBloc
+                    shurima.opposition=lore.opposition;shurima.policy=lore.policy;shurima.leader=lore.leader
+                }
                 polityRegions.filter { it !in map }.forEach { r ->
                     map[r]=Faction(r,factionLore[r]?.leader?: "地方统治者",80+Random(r.hashCode().toLong()).nextInt(220),55+Random(r.hashCode().toLong()+1).nextInt(35),500,mutableListOf(r),factionLore[r]?.government?: "地方政体",factionLore[r]?.rulingBloc?: "地方统治集团",factionLore[r]?.opposition?: "地方反对势力",factionLore[r]?.policy?: "维持地方秩序",15+Random(r.hashCode().toLong()+2).nextInt(30))
                 }
@@ -992,7 +998,8 @@ object WorldEngine {
             "ixtal" -> day>=240L && (group("ixtal_council")?.influence?:0)>=82 && (group("ixtal_council")?.publicSupport?:0)<65
             else -> false
         }
-        lorePulses.filter { it.id !in triggered && ready(it.id) }.forEach { pulse ->
+        // Pulse day values are minimum simulation milestones, not official canon dates.
+        lorePulses.filter { it.id !in triggered && day>=it.day && ready(it.id) }.forEach { pulse ->
             val market=markets[pulse.region]
             if(market!=null) market.food=(market.food-pulse.foodLoss).coerceAtLeast(0)
             val affected=pop.filter { it.alive && it.region==pulse.region }
@@ -1001,19 +1008,32 @@ object WorldEngine {
                 recordLife(r,day,"经历模拟世界事件「${pulse.title}」的冲击，身处${pulse.region}。")
             }
             val moved=affected.filter { rng.nextInt(100)<18 }
+            val destinationScores=residentRegions.filter { it!=pulse.region && markets.containsKey(it) }.associateWith { region ->
+                val market=markets[region]!!
+                market.food*2+market.wealth/80+(market.stock["粮食"]?:0)/3-pop.count { it.alive&&it.region==region }*3
+            }
             moved.forEach { r ->
-                val destination=residentRegions[(residentRegions.indexOf(pulse.region).coerceAtLeast(0)+1)%residentRegions.size]
+                val destination=destinationScores.maxByOrNull { it.value+rng.nextInt(18) }?.key ?: return@forEach
+                val origin=r.region
                 r.region=destination
                 r.settlement=defaultSettlement(destination,r.id)
-                recordLife(r,day,"因「${pulse.title}」引发的动荡，从${pulse.region}迁往${destination}。")
+                recordLife(r,day,"因「${pulse.title}」引发的动荡，从${origin}迁往${destination}；目的地依据粮食供应、市场财富与人口压力选择。")
             }
-            events.add("【世界演化·模拟分支】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人迁离${pulse.region}。事件由当前势力与社会条件触发，不是预设的官方正史时间表。")
+            events.add("【世界演化·模拟分支】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人迁离${pulse.region}；目的地依据生计条件选择。事件不是预设的官方正史时间表。")
             triggered.add(pulse.id)
             triggerDays.put(pulse.id,day)
             if(pulse.id=="shurima_rise") {
                 heroes.firstOrNull { it.name=="阿兹尔" }?.let { it.role="复苏的飞升者皇帝"; it.status="太阳圆盘仪式后复苏，开始寻求重建恕瑞玛" }
                 heroes.firstOrNull { it.name=="泽拉斯" }?.let { it.role="苏醒的飞升者"; it.status="古代封印与帝国复兴引发其力量重新进入当代历史" }
-                saveHeroes(p,heroes)
+                factions["恕瑞玛"]?.let { shurima ->
+                    shurima.government="多个绿洲城邦与新兴帝国复兴势力并存；尚未形成对全境的统一统治"
+                    shurima.rulingBloc="阿兹尔的复兴核心、地方城邦统治者、部族与商路力量"
+                    shurima.opposition="拒绝帝国统合的城邦、地方首领、泽拉斯势力及其他竞争者"
+                    shurima.policy="围绕水源、遗迹、地方自治与帝国合法性展开政治竞争"
+                    shurima.leader="阿兹尔（复苏后提出帝国复兴主张；实际统治范围由模拟行动决定）"
+                    shurima.internalTension=(shurima.internalTension+8).coerceAtMost(100)
+                }
+                saveHeroes(p,heroes);saveFactions(p,factions)
                 events.add("【恕瑞玛历史转折·模拟分支】阿兹尔与泽拉斯重新进入当代事件链；复苏的具体过程和结果属于本世界模拟，不代表官方正史。")
             }
         }
