@@ -2269,7 +2269,7 @@ private fun craftBonus(region:String):Int = when(region) {
             append("【人物基础资料】\n生命类别：${r.lineage}\n年龄：${r.age}岁\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n")
             append("当前地区：${r.region}\n当前聚落：${r.settlement.ifBlank { "未记录" }}\n当前职业：${r.job}\n")
             append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
-            append("\\n【个人认知状态 · 模拟记录（当前尚非本地大模型推理）】\\n人格倾向值：${r.mindTrait}/100\\n当前信念：${r.belief}\\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\\n当前意图：${r.intent}\\n认知记忆：${r.mindMemory.size}条\\n")
+            append("\n【个人认知状态 · 模拟记录（当前尚非本地大模型推理）】\n人格倾向值：${r.mindTrait}/100\n当前信念：${r.belief}\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\n当前意图：${r.intent}\n认知记忆：${r.mindMemory.size}条\n")
             if(r.travelDaysRemaining>0) append("旅途：${r.travelOrigin}→${r.travelDestination}；剩余${r.travelDaysRemaining}日；目的：${r.travelPurpose}\n")
             append("\n【人物关系网络】\n伴侣：${partner?.name ?: if(r.partnerId>=0) "关系对象档案不可用" else "暂无记录"}\n")
             append("父母：${parents.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n子女：${children.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
