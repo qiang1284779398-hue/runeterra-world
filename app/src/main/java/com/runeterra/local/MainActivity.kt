@@ -73,6 +73,10 @@ class MainActivity : Activity() {
         }
         val testAI = Button(this).apply { text = "测试本地 AI 推理"; setOnClickListener { testLocalAI() } }
         val aiDiagnostics = Button(this).apply { text = "查看 / 复制 AI 推理诊断日志"; setOnClickListener { showAiDiagnostics() } }
+        val deepSeek = Button(this).apply {
+            text = "DeepSeek 云端 AI / API 设置与连接测试"
+            setOnClickListener { startActivity(Intent(this@MainActivity, DeepSeekActivity::class.java)) }
+        }
         val gptWebTest = Button(this).apply {
             text = "GPT 网页爬虫 / 自动收发测试"
             setOnClickListener {
@@ -101,7 +105,7 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, unloadAI, testAI, aiDiagnostics, gptWebTest, gptWebLog, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, unloadAI, testAI, aiDiagnostics, deepSeek, gptWebTest, gptWebLog, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
