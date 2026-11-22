@@ -357,6 +357,7 @@ object WorldEngine {
         val impactRegions=mutableSetOf<String>()
         val directlyChangedResidentIds=mutableSetOf<Int>()
         val directlyChangedHeroNames=mutableSetOf<String>()
+        val deathEvents=mutableListOf<Triple<String,Int,Boolean>>()
         var changedResidents=false
         var changedHeroes=false
         var changedFactions=false
@@ -434,8 +435,8 @@ object WorldEngine {
                     else { outcomes.add("已改变${target}：${changes.joinToString("，")}。"); successful++ }
                 }
                 "erase_person" -> {
-                    if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
-                    else if(resident!=null) { resident.alive=false; resident.health=0; appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
+                    if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; deathEvents.add(Triple(hero.name,-1,true)); appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
+                    else if(resident!=null) { resident.alive=false; resident.health=0; deathEvents.add(Triple(resident.name,resident.id,false)); appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "resurrect_person" -> {
@@ -564,6 +565,30 @@ object WorldEngine {
                     else { outcomes.add("已写入天道创造的世界事件：${description}。该事件已成为模拟分支历史记录；其复杂物理后果需由后续专用模拟器处理。"); successful++ }
                 }
                 else -> outcomes.add("未执行：不支持的操作类型「${type}」。")
+            }
+        }
+        // Close relatives and established hero bonds receive only a rumor/notification,
+        // not omniscient knowledge of the cause or circumstances.
+        deathEvents.forEach { (deadName,deadId,isHero) ->
+            if(!isHero) {
+                population.filter { it.alive && it.id!=deadId &&
+                    (it.partnerId==deadId || deadId in it.parentIds || deadId in it.childIds || deadId in it.friendIds)
+                }.forEach { relative ->
+                    relative.mindMemory.add("第${day}日：你与${deadName}有亲密关系；你听到其死亡或失踪的消息，但具体经过与原因尚未核实。")
+                    while(relative.mindMemory.size>120) relative.mindMemory.removeAt(0)
+                    recordLife(relative,day,"听到亲近之人${deadName}死亡或失踪的消息，具体经过尚未核实。","heavenly_indirect_impact")
+                    changedResidents=true
+                }
+            } else {
+                val bonds=heroBonds(p)
+                val relatedNames=bonds.filter { it.a==deadName || it.b==deadName }.map { if(it.a==deadName) it.b else it.a }.toSet()
+                heroes.filter { it.alive && it.name in relatedNames }.forEach { relative ->
+                    relative.memory.add("第${day}日：你听到与${deadName}有关的死亡或失踪消息；具体经过与原因尚未核实。")
+                    relative.history.add("第${day}日｜听到与${deadName}有关的死亡或失踪消息；具体经过尚未核实。")
+                    while(relative.memory.size>120) relative.memory.removeAt(0)
+                    while(relative.history.size>3000) relative.history.removeAt(0)
+                    changedHeroes=true
+                }
             }
         }
         if(impactRegions.isNotEmpty()) {
