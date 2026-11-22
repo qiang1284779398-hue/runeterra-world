@@ -323,7 +323,7 @@ object WorldEngine {
         val groups=organizations(p)
         return groups.sortedByDescending { it.influence }.map { o ->
             val memberNames=o.members.mapNotNull { id -> allPeople.firstOrNull { it.id==id && it.alive }?.name }
-            "【"+o.name+"】\n所属地区："+o.region+"\n组织性质："+o.kind+"\n核心目标："+o.agenda+"\n领袖/机构："+o.leader+"\n成员："+o.members.size+"人\n影响力："+o.influence+"｜资源："+o.resources+"｜公众支持："+o.publicSupport+"\n状态："+o.status+"\n盟友："+o.allies.joinToString("、").ifBlank { "暂无" }+"\n竞争/敌对组织："+o.rivals.joinToString("、").ifBlank { "暂无" }+"\n成员示例："+memberNames.take(8).joinToString("、").ifBlank { "尚无成员" }+"\n（组织的后续变化属于模拟历史分支。）"
+            "【"+o.name+"】\n所属地区："+o.region+"\n组织性质："+o.kind+"\n核心目标："+o.agenda+"\n领袖/机构："+o.leader+"\n成员："+if(o.kind=="非人种族社群"||o.kind=="超自然威胁网络")"不适用（非普通人类居民组织）" else o.members.size.toString()+"人"+"\n影响力："+o.influence+"｜资源："+o.resources+"｜公众支持："+o.publicSupport+"\n状态："+o.status+"\n盟友："+o.allies.joinToString("、").ifBlank { "暂无" }+"\n竞争/敌对组织："+o.rivals.joinToString("、").ifBlank { "暂无" }+"\n成员示例："+if(o.kind=="非人种族社群"||o.kind=="超自然威胁网络")"不适用" else memberNames.take(8).joinToString("、").ifBlank { "尚无成员" }+"\n（组织的后续变化属于模拟历史分支；超自然力量不按普通居民组织机制运行。）"
         }
     }
 
@@ -713,7 +713,7 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val states=factionStates(p)
         return states.values.sortedBy{it.name}.map { f ->
-            "【${f.name}】\n政体：${f.government}\n统治集团：${f.rulingBloc}\n内部反对力量：${f.opposition}\n当前政策：${f.policy}\n主要领袖/机构：${f.leader}\n军力：${f.military}｜财政：${f.treasury}｜稳定度：${f.stability}｜内部矛盾：${f.internalTension}\n控制地区：${f.territory.joinToString("、")}\n（势力政治变化属于模拟历史分支，不代表官方剧情。）"
+            "【${f.name}地区政治格局】\n政治形态：${f.government}\n主要权力结构：${f.rulingBloc}\n内部异议与竞争力量：${f.opposition}\n当前治理议题：${f.policy}\n主要领袖/机构：${f.leader}\n模拟治理指标：力量${f.military}｜资源${f.treasury}｜社会稳定${f.stability}｜内部张力${f.internalTension}\n涉及地区：${f.territory.joinToString("、")}\n说明：这里描述的是地区政治生态的抽象指标，不代表该地区必然是单一国家或统一政府。艾欧尼亚、弗雷尔卓德、巨神峰、比尔吉沃特、班德尔城与暗影岛尤其不能被视作普通中央集权国家。\n（所有数值变化属于模拟历史分支，不代表官方剧情。）"
         }
     }
     fun residentDirectory(context:Context):List<String> {
