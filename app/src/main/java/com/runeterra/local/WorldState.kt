@@ -53,6 +53,7 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_CARAVANS="caravans"
     private const val KEY_MAGIC="magic_regions"
     private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
         val raw=p.getString(KEY_MAGIC,null)
@@ -559,6 +560,17 @@ object WorldEngine {
     private data class Market(var food: Int, var wealth: Int) {
         fun json(region:String)=JSONObject().put("region",region).put("food",food).put("wealth",wealth)
     }
+    private data class Caravan(
+        val id:Int,var from:String,var to:String,var cargo:Int,var daysRemaining:Int,
+        var owner:String,var alive:Boolean=true
+    ) {
+        fun json()=JSONObject().put("id",id).put("from",from).put("to",to).put("cargo",cargo)
+            .put("daysRemaining",daysRemaining).put("owner",owner).put("alive",alive)
+        companion object {
+            fun from(j:JSONObject)=Caravan(j.optInt("id"),j.optString("from"),j.optString("to"),
+                j.optInt("cargo"),j.optInt("daysRemaining"),j.optString("owner","独立商队"),j.optBoolean("alive",true))
+        }
+    }
     // Regional specializations are simulation modifiers inspired by lore, not canonical game stats.
     private fun foodBonus(region:String):Int = when(region) {
         "德玛西亚" -> 1
@@ -643,6 +655,65 @@ private fun craftBonus(region:String):Int = when(region) {
         val fresh=regions.associateWith { Market(300+Random(it.hashCode().toLong()).nextInt(250),1000) }.toMutableMap()
         saveMarkets(p,fresh); return fresh
     }
+
+    private fun caravans(p:android.content.SharedPreferences):MutableList<Caravan> {
+        val raw=p.getString(KEY_CARAVANS,null) ?: return mutableListOf()
+        return runCatching {
+            val a=JSONArray(raw)
+            (0 until a.length()).map { Caravan.from(a.getJSONObject(it)) }.toMutableList()
+        }.getOrDefault(mutableListOf())
+    }
+    private fun saveCaravans(p:android.content.SharedPreferences,list:List<Caravan>) {
+        p.edit().putString(KEY_CARAVANS,JSONArray().apply { list.forEach { put(it.json()) } }.toString()).apply()
+    }
+    private fun tickCaravans(day:Long,p:android.content.SharedPreferences,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
+        val active=caravans(p)
+        active.filter { it.alive }.forEach { caravan ->
+            caravan.daysRemaining--
+            if(caravan.daysRemaining<=0) {
+                val destination=markets[caravan.to]
+                if(destination!=null) {
+                    destination.food+=caravan.cargo
+                    destination.wealth=(destination.wealth-caravan.cargo).coerceAtLeast(0)
+                    events.add("【商队抵达·模拟】第 $day 日：${caravan.owner}从${caravan.from}运抵${caravan.to}，交付${caravan.cargo}单位粮食。")
+                }
+                caravan.alive=false
+            } else if(rng.nextInt(100)<2) {
+                val lost=maxOf(1,caravan.cargo/3)
+                caravan.cargo=(caravan.cargo-lost).coerceAtLeast(0)
+                events.add("【商路损失·模拟】第 $day 日：${caravan.from}至${caravan.to}的${caravan.owner}遭遇劫掠或事故，损失${lost}单位货物。")
+                if(caravan.cargo==0) caravan.alive=false
+            }
+        }
+        active.removeAll { !it.alive }
+        if(day%30L==0L) {
+            val candidates=routeLinks.flatMap { (from,links) -> links.map { (to,days) -> Triple(from,to,days) } }
+                .distinctBy { minOf(it.first.hashCode(),it.second.hashCode()).toString()+":"+maxOf(it.first.hashCode(),it.second.hashCode()) }
+                .filter { (from,to,_) ->
+                    val a=markets[from];val b=markets[to]
+                    a!=null && b!=null && a.food>=90 && b.food<=180 && b.wealth>=20
+                }
+                .sortedByDescending { (from,to,_) -> (markets[from]?.food?:0)-(markets[to]?.food?:0) }
+            candidates.take((2-active.size).coerceAtLeast(0)).forEach { (from,to,days) ->
+                val source=markets[from] ?: return@forEach
+                val destination=markets[to] ?: return@forEach
+                val cargo=minOf(35,source.food-60,(destination.wealth/2).coerceAtLeast(1))
+                if(cargo<8)return@forEach
+                source.food-=cargo
+                source.wealth+=cargo
+                val id=(active.maxOfOrNull { it.id } ?: 0)+1
+                val owner=when(from) {
+                    "皮尔特沃夫","祖安" -> "双城商贸行"
+                    "比尔吉沃特" -> "海港自由商队"
+                    "恕瑞玛" -> "绿洲商路商队"
+                    else -> "独立粮食商队"
+                }
+                active.add(Caravan(id,from,to,cargo,days,owner))
+                events.add("【商队出发·模拟】第 $day 日：${owner}从${from}出发前往${to}，运送${cargo}单位粮食，预计${days}个模拟日。")
+            }
+        }
+        saveCaravans(p,active)
+    }
     private fun saveMarkets(p: android.content.SharedPreferences, map: Map<String,Market>) {
         val a=JSONArray(); map.forEach { (name,m)->a.put(m.json(name)) }; p.edit().putString(KEY_MARKETS,a.toString()).apply()
     }
@@ -690,6 +761,7 @@ private fun craftBonus(region:String):Int = when(region) {
         repeat(days.coerceAtLeast(1)) {
             day++
             val rng=Random(day*7919L+17L)
+            tickCaravans(day,p,markets,events,rng)
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
             tickDiplomacy(day,p,pop,markets,events,rng)
