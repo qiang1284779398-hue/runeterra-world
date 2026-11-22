@@ -849,8 +849,13 @@ private fun craftBonus(region:String):Int = when(region) {
                 if(r.food<=2) {
                     val market=markets[r.region]
                     if(market!=null && market.food>0 && r.coins>0) {
-                        val bought=minOf(3-r.food,market.food,r.coins)
-                        if(bought>0) { market.food-=bought; r.food+=bought; r.coins-=bought; market.wealth+=bought }
+                        val unitPrice=goodPrice(market,"粮食")
+                        val affordable=r.coins/unitPrice
+                        val bought=minOf(3-r.food,market.food,affordable)
+                        if(bought>0) {
+                            val cost=bought*unitPrice
+                            market.food-=bought;r.food+=bought;r.coins-=cost;market.wealth+=cost
+                        }
                     }
                 }
                 if(day%360L==0L) r.age++
@@ -925,13 +930,21 @@ private fun craftBonus(region:String):Int = when(region) {
                 val market=markets[region] ?: return@forEach
                 market.food=market.food.coerceAtLeast(0)
                 if(day%30L==0L) {
-                    regionalGoods(region).forEach { (good,amount) ->
+                    val local=pop.filter { it.alive && it.region==region }
+                    val artisans=local.count { it.job=="工匠" }
+                    val farmers=local.count { it.job=="农夫" || it.job=="采集者" }
+                    val guards=local.count { it.job=="护卫" }
+                    regionalGoods(region).forEach { (good,baseOutput) ->
+                        val workers=when(good) {
+                            "粮食" -> farmers
+                            "木材","矿石","药材" -> farmers/2+artisans/3
+                            "工具","海克斯器件","魔法材料" -> artisans
+                            else -> 0
+                        }
+                        val amount=(baseOutput+workers/12).coerceAtMost(baseOutput+8)
                         if(good=="粮食") market.food+=amount
                         else market.stock[good]=(market.stock[good]?:0)+amount
                     }
-                    val local=pop.filter { it.alive && it.region==region }
-                    val artisans=local.count { it.job=="工匠" }
-                    val guards=local.count { it.job=="护卫" }
                     val demand=mapOf(
                         "木材" to (1+artisans/14),
                         "矿石" to (1+artisans/18),
