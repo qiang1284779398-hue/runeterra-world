@@ -136,15 +136,15 @@ object WorldEngine {
         saveFactions(p,states)
     }
     private const val KEY_DIPLO="diplomacy"
-    private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false)
+    private data class PairTension(val a:String,val b:String,var tension:Int,var war:Boolean=false,var aWins:Int=0,var bWins:Int=0)
     private val factionRegions=mapOf("德玛西亚" to "德玛西亚","诺克萨斯" to "诺克萨斯","艾欧尼亚" to "艾欧尼亚","皮尔特沃夫" to "皮尔特沃夫","祖安" to "祖安","弗雷尔卓德" to "弗雷尔卓德","恕瑞玛" to "恕瑞玛","巨神峰" to "巨神峰","比尔吉沃特" to "比尔吉沃特","以绪塔尔" to "以绪塔尔")
     private fun diplomacy(p:android.content.SharedPreferences):MutableList<PairTension> {
         val raw=p.getString(KEY_DIPLO,null)
-        if(raw!=null) runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { PairTension(it.optString("a"),it.optString("b"),it.optInt("tension",10),it.optBoolean("war",false)) }.toMutableList() } }.getOrNull()?.let { if(it.isNotEmpty()) return it }
+        if(raw!=null) runCatching { JSONArray(raw).let { a -> (0 until a.length()).map { a.getJSONObject(it) }.map { PairTension(it.optString("a"),it.optString("b"),it.optInt("tension",10),it.optBoolean("war",false),it.optInt("aWins",0),it.optInt("bWins",0)) }.toMutableList() } }.getOrNull()?.let { if(it.isNotEmpty()) return it }
         return mutableListOf(PairTension("诺克萨斯","艾欧尼亚",72),PairTension("诺克萨斯","德玛西亚",58),PairTension("皮尔特沃夫","祖安",65),PairTension("弗雷尔卓德","诺克萨斯",32),PairTension("恕瑞玛","诺克萨斯",28),PairTension("比尔吉沃特","诺克萨斯",24)).also { saveDiplomacy(p,it) }
     }
     private fun saveDiplomacy(p:android.content.SharedPreferences,relations:List<PairTension>) {
-        p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war)) } }.toString()).apply()
+        p.edit().putString(KEY_DIPLO,JSONArray().apply { relations.forEach { put(JSONObject().put("a",it.a).put("b",it.b).put("tension",it.tension).put("war",it.war).put("aWins",it.aWins).put("bWins",it.bWins)) } }.toString()).apply()
     }
     private fun tickDiplomacy(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         if(day%30L!=0L)return
@@ -158,14 +158,54 @@ object WorldEngine {
                 rel.war=false; rel.tension=(rel.tension-35).coerceAtLeast(20)
                 events.add("【模拟外交】第 $day 日：${rel.a}与${rel.b}暂时停战，局势仍不稳定。")
             }
-            if(rel.war && rng.nextInt(100)<20) {
-                val regionA=factionRegions[rel.a] ?: rel.a; val regionB=factionRegions[rel.b] ?: rel.b
-                listOf(regionA,regionB).forEach { region ->
-                    val victims=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(4))
-                    victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0) }
-                    markets[region]?.let { it.food=(it.food-15-rng.nextInt(30)).coerceAtLeast(0) }
-                    if(victims.isNotEmpty()) events.add("【战争损害】第 $day 日：${region}遭冲突波及，${victims.size}名居民受伤，粮食储备下降。")
+            if(rel.war) {
+                val factions=factionStates(p)
+                val attacker=factions[rel.a]
+                val defender=factions[rel.b]
+                if(attacker!=null && defender!=null) {
+                    val powerA=attacker.military+rng.nextInt(100)
+                    val powerB=defender.military+rng.nextInt(100)
+                    attacker.military=(attacker.military-(2+rng.nextInt(8))).coerceAtLeast(0)
+                    defender.military=(defender.military-(2+rng.nextInt(8))).coerceAtLeast(0)
+                    attacker.treasury=(attacker.treasury-(8+rng.nextInt(18))).coerceAtLeast(0)
+                    defender.treasury=(defender.treasury-(8+rng.nextInt(18))).coerceAtLeast(0)
+                    if(powerA>=powerB) {
+                        rel.aWins++
+                        defender.stability=(defender.stability-2).coerceAtLeast(0)
+                        events.add("【战场结算·模拟】第 $day 日：${rel.a}在与${rel.b}的交战中取得局部胜利（${rel.aWins}比${rel.bWins}）。")
+                    } else {
+                        rel.bWins++
+                        attacker.stability=(attacker.stability-2).coerceAtLeast(0)
+                        events.add("【战场结算·模拟】第 $day 日：${rel.b}击退${rel.a}的进攻（${rel.aWins}比${rel.bWins}）。")
+                    }
+                    val winner=when { rel.aWins>=3 -> rel.a; rel.bWins>=3 -> rel.b; else -> null }
+                    if(winner!=null) {
+                        val loser=if(winner==rel.a) rel.b else rel.a
+                        val losingFaction=factions[loser]
+                        val winningFaction=factions[winner]
+                        val lostRegion=losingFaction?.territory?.firstOrNull()
+                        if(lostRegion!=null && winningFaction!=null && losingFaction!=null) {
+                            losingFaction.territory.remove(lostRegion)
+                            if(lostRegion !in winningFaction.territory) winningFaction.territory.add(lostRegion)
+                            events.add("【领土变化·模拟】第 $day 日：${winner}取得战局优势，${lostRegion}的控制权转移；这属于本模拟世界的历史分支。")
+                        }
+                        rel.war=false
+                        rel.tension=35
+                        rel.aWins=0
+                        rel.bWins=0
+                        events.add("【战争结束·模拟】第 $day 日：${winner}与${loser}结束本轮战争，双方开始承受战后重建压力。")
+                    }
                 }
+                if(rng.nextInt(100)<20) {
+                    val regionA=factionRegions[rel.a] ?: rel.a; val regionB=factionRegions[rel.b] ?: rel.b
+                    listOf(regionA,regionB).forEach { region ->
+                        val victims=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(4))
+                        victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0) }
+                        markets[region]?.let { it.food=(it.food-15-rng.nextInt(30)).coerceAtLeast(0) }
+                        if(victims.isNotEmpty()) events.add("【战争损害】第 $day 日：${region}遭冲突波及，${victims.size}名居民受伤，粮食储备下降。")
+                    }
+                }
+                saveFactions(p,factions)
             }
         }
         saveDiplomacy(p,relations)
