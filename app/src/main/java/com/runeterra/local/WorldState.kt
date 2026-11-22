@@ -89,6 +89,8 @@ object WorldEngine {
     private fun thinkIndividually(day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
         if(day%30L!=0L)return
         pop.filter{it.alive}.forEach { r ->
+            // Preserve the resident's latest private LLM cognition instead of replacing it with fallback heuristics.
+            if(r.currentThought.contains("本地模型推理")) return@forEach
             val market=markets[r.region]
             val foodPressure=r.food<=1 || (market!=null && market.food<pop.count{it.alive&&it.region==r.region}*2)
             val healthPressure=r.health<45
@@ -1864,7 +1866,7 @@ private fun craftBonus(region:String):Int = when(region) {
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
 请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
-只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job之一）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）。"""
+只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help之一；ask_help仅在确有可信亲友且自己急需食物时选择）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）。"""
         localInferenceBusy=true
         ResidentAI.ask(prompt) { raw ->
             try {
@@ -1884,6 +1886,23 @@ private fun craftBonus(region:String):Int = when(region) {
                             while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
                             val action=result.optString("action","stay")
                             when(action) {
+                                "ask_help" -> {
+                                    val trustedIds=(latest.parentIds+latest.childIds+latest.friendIds+listOf(latest.partnerId)).filter { it>=0 && it!=latest.id }.distinct()
+                                    val helper=people(p).firstOrNull { it.id in trustedIds && it.alive && it.region==latest.region && it.food>=3 }
+                                    if(latest.food<=1 && helper!=null) {
+                                        val shared=minOf(2,helper.food-1)
+                                        helper.food-=shared
+                                        latest.food+=shared
+                                        latest.mindMemory.add("行动结果：向${helper.name}求助，对方分享了${shared}单位食物；我记住了这份帮助。")
+                                        helper.mindMemory.add("行动结果：向${latest.name}分享了${shared}单位食物，承担了帮助的代价。")
+                                        recordLife(latest,day,"因口粮短缺向${helper.name}求助，对方分享${shared}单位食物，暂时缓解困境。","local_ai_decision_action")
+                                        recordLife(helper,day,"向${latest.name}分享${shared}单位食物，自己的储备因此减少。","relationship_mutual_aid")
+                                        val current=people(p).map { person -> when(person.id) { latest.id -> latest; helper.id -> helper; else -> person } }
+                                        savePeople(p,current)
+                                    } else {
+                                        latest.mindMemory.add("行动结果：尝试向可信关系求助，但目前没有同地且有余粮的亲友，未能获得援助。")
+                                    }
+                                }
                                 "seek_food" -> {
                                     latest.goal="寻找食物与可靠补给"
                                     val marketMap=markets(p)
