@@ -254,7 +254,18 @@ class MainActivity : Activity() {
                 if(question.isNotEmpty()) {
                     Toast.makeText(this,"正在本机生成回答…",Toast.LENGTH_SHORT).show()
                     ResidentAI.ask(question) { answer ->
-                        runOnUiThread { AlertDialog.Builder(this).setTitle("本地模型回答").setMessage(answer).setPositiveButton("关闭",null).show() }
+                        runOnUiThread {
+                            AlertDialog.Builder(this)
+                                .setTitle("本地模型回答")
+                                .setMessage(answer)
+                                .setNeutralButton("复制回答") { _, _ ->
+                                    val clipboard = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("本地模型回答", answer))
+                                    Toast.makeText(this, "回答已复制", Toast.LENGTH_SHORT).show()
+                                }
+                                .setPositiveButton("关闭", null)
+                                .show()
+                        }
                     }
                 }
             }.setNegativeButton("取消",null).show()
