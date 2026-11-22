@@ -2396,7 +2396,7 @@ private fun craftBonus(region:String):Int = when(region) {
             val members=all.filter { it.householdId==h.id }; val living=members.filter { it.alive }
             val location=living.groupBy { it.region+" · "+it.settlement }.maxByOrNull { it.value.size }?.key ?: "无在世成员"
             val names=living.sortedBy { it.age }.joinToString("、") { it.name }.ifBlank { "无在世成员" }
-            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；个人食物耗尽时可消耗家庭储粮。共同资产仍未接入市场采购、住房和工资制度。"
+            "【家庭 ${h.id}】\\n主要居住地：$location\\n成员：$names\\n成员总数：${members.size}（在世${living.size}）\\n共同储粮：${h.foodReserve}\\n共同资产：${h.sharedWealth}\\n建立记录：第${h.foundedDay}日\\n说明：家庭是独立社会实体。成员每月可从个人金币与食物中缴入共同储备；共同储粮会优先补给口粮不足的儿童、病弱成员及其他缺粮者。共同资产仍未接入市场采购、住房和工资制度。"
         }.sortedBy { it.substringBefore("】") }
     }
     fun lineageDirectory(context:Context):List<String>{
