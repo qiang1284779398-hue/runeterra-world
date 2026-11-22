@@ -80,11 +80,7 @@ class MainActivity : Activity() {
         startActivityForResult(intent, 8101)
     }
 
-    @Deprecated("Legacy activity result used for simple SAF picker")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if(requestCode!=8101 || resultCode!=RESULT_OK || data?.data==null) return
-        val uri=data.data!!
+    private fun importLocalModel(uri: Uri) {
         Toast.makeText(this,"正在复制模型到本地存储，请保持应用打开…",Toast.LENGTH_LONG).show()
         Thread {
             try {
@@ -93,13 +89,11 @@ class MainActivity : Activity() {
                 contentResolver.openInputStream(uri)?.use { input ->
                     FileOutputStream(modelFile).use { output -> input.copyTo(output, 1024*1024) }
                 } ?: throw IllegalStateException("无法读取所选文件")
-                runOnUiThread {
-                    Toast.makeText(this,"模型已复制，开始加载本地推理引擎…",Toast.LENGTH_LONG).show()
-                    ResidentAI.load(this,modelFile.absolutePath) { error ->
-                        runOnUiThread {
-                            Toast.makeText(this, if(error==null) "本地模型加载成功！居民AI引擎已就绪" else "模型加载失败：$error",Toast.LENGTH_LONG).show()
-                        }
+                ResidentAI.load(this,modelFile.absolutePath) { error ->
+                    runOnUiThread {
+                        Toast.makeText(this, if(error==null) "本地模型加载成功" else "模型加载失败：$error",Toast.LENGTH_LONG).show()
                     }
+                }
             } catch(e:Throwable) {
                 runOnUiThread { Toast.makeText(this,"模型导入失败：${e.message}",Toast.LENGTH_LONG).show() }
             }
@@ -355,6 +349,10 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Android API; retained for compatibility with the current Activity implementation")
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
         super.onActivityResult(requestCode,resultCode,data)
+        if(requestCode==8101) {
+            if(resultCode==RESULT_OK && data?.data!=null) importLocalModel(data.data!!)
+            return
+        }
         if(requestCode!=requestExportBiography) return
         val id=pendingBiographyExportId
         pendingBiographyExportId=-1
