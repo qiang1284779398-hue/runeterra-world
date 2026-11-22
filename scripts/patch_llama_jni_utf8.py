@@ -106,13 +106,13 @@ s=s.replace(
 )
 s=s.replace(
 '''    std::vector<llama_token> tokens = tokenize(vocab, text, true);''',
-'''    // Template-formatted prompts already contain their BOS token. Only add BOS
-    // for plain fallback prompts, otherwise Qwen3 receives a duplicated BOS.
-    std::vector<llama_token> tokens = tokenize(vocab, text, !formatted.second);''',
+'''    // Qwen3 <|im_start|> is a message-boundary token, not BOS.
+    // Keep tokenizer BOS insertion enabled for both templated and fallback prompts.
+    std::vector<llama_token> tokens = tokenize(vocab, text, true);''',
 1
 )
 
 assert "std::pair<std::string, bool> build_prompt" in s, "build_prompt patch failed"
-assert "tokenize(vocab, text, !formatted.second)" in s, "BOS patch failed"
+assert "tokenize(vocab, text, true)" in s, "BOS patch failed"
 assert "return new_string_from_utf8(env, json);" in s, "UTF-8 patch failed"
 p.write_text(s, encoding="utf-8")
