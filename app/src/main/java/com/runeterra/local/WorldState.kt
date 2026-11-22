@@ -352,7 +352,10 @@ object WorldEngine {
             if(h.name=="阿兹尔" || h.name=="泽拉斯") {
                 if(h.status.startsWith("沉寂") || h.status.startsWith("古代恕瑞玛") || h.status.startsWith("古代飞升者")) return@forEach
             }
-            if(rng.nextInt(100)<18) {
+            // Independent actors make decisions on individual cadences, rather than a player-triggered random event roll.
+            val identityHash=h.name.hashCode().toLong().let { if(it<0L) -it else it }
+            val actionCycle=when { h.influence>=80 -> 1L; h.influence>=55 -> 2L; else -> 3L }
+            if((day/30L+identityHash)%actionCycle==0L) {
                 val group=when(h.name) {
                     "盖伦" -> groups.firstOrNull { it.id=="demacia_vanguard" }
                     "拉克丝" -> groups.firstOrNull { it.id=="demacia_mage_resistance" }
@@ -527,7 +530,7 @@ object WorldEngine {
                     "悠米" -> h.status="借助魔典寻找诺拉，在不同地点与领域间穿行"
                     else -> h.status="在所属地区推进个人目标"
                 }
-                h.influence=(h.influence+rng.nextInt(3)-1).coerceIn(0,100)
+                // Influence changes only through concrete actions above, not monthly random jitter.
                 events.add("【重要人物行动·模拟】第 $day 日：${h.name}在${h.region}推进「${h.goal}」；当前状态：${h.status}。")
             }
         }
