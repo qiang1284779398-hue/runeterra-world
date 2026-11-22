@@ -575,21 +575,42 @@ object WorldEngine {
     )
     private fun applyLorePulse(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         val triggered=runCatching { JSONArray(p.getString(KEY_LORE,"[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toMutableSet() } }.getOrDefault(mutableSetOf())
-        lorePulses.filter { it.day==day && !triggered.contains(it.id) }.forEach { pulse ->
+        val groups=organizations(p)
+        val factions=factionStates(p)
+        val relations=diplomacy(p)
+        fun group(id:String)=groups.firstOrNull { it.id==id }
+        fun ready(id:String):Boolean=when(id) {
+            "ionia_war" -> relations.any { setOf(it.a,it.b)==setOf("诺克萨斯","艾欧尼亚") && (it.war || it.tension>=78) }
+            "demacia_mage" -> (group("demacia_mage_resistance")?.influence?:0)>=58 || (factions["德玛西亚"]?.internalTension?:0)>=58
+            "shurima_rise" -> (group("shurima_sun_disc")?.influence?:0)>=64 && (group("shurima_city_leagues")?.influence?:0)>=45
+            "ruination" -> day>=300L && (group("shadow_black_mist")?.influence?:0)>=78
+            "piltover_zaun" -> day>=180L && (group("zaun_chem_barons")?.influence?:0)>=78 && (group("zaun_firelights")?.publicSupport?:0)>=55
+            "freljord" -> (markets["弗雷尔卓德"]?.food?:1000)<90 && (group("freljord_winter_claw")?.influence?:0)>=60
+            "bilgewater" -> (group("bilgewater_captains")?.influence?:0)>=64 && (group("bilgewater_sailors")?.influence?:0)>=58
+            "ixtal" -> day>=240L && (group("ixtal_council")?.influence?:0)>=82 && (group("ixtal_council")?.publicSupport?:0)<65
+            else -> false
+        }
+        lorePulses.filter { it.id !in triggered && ready(it.id) }.forEach { pulse ->
             val market=markets[pulse.region]
             if(market!=null) market.food=(market.food-pulse.foodLoss).coerceAtLeast(0)
             val affected=pop.filter { it.alive && it.region==pulse.region }
-            affected.forEach { r -> r.health=(r.health-pulse.healthLoss).coerceAtLeast(0); recordLife(r,day,"经历历史事件「${pulse.title}」的冲击，身处${pulse.region}。") }
+            affected.forEach { r ->
+                r.health=(r.health-pulse.healthLoss).coerceAtLeast(0)
+                recordLife(r,day,"经历模拟世界事件「${pulse.title}」的冲击，身处${pulse.region}。")
+            }
             val moved=affected.filter { rng.nextInt(100)<18 }
             moved.forEach { r ->
-                val dest=residentRegions[(residentRegions.indexOf(pulse.region).coerceAtLeast(0)+1)%residentRegions.size]
-                r.region=dest
-                recordLife(r,day,"因「${pulse.title}」引发的动荡，从${pulse.region}迁往${dest}。")
+                val destination=residentRegions[(residentRegions.indexOf(pulse.region).coerceAtLeast(0)+1)%residentRegions.size]
+                r.region=destination
+                r.settlement=defaultSettlement(destination,r.id)
+                recordLife(r,day,"因「${pulse.title}」引发的动荡，从${pulse.region}迁往${destination}。")
             }
-            events.add("【官方背景事件·模拟演绎】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人逃离${pulse.region}。")
+            events.add("【世界演化·模拟分支】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人迁离${pulse.region}。事件由当前势力与社会条件触发，不是预设的官方正史时间表。")
             triggered.add(pulse.id)
         }
         p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).apply()
+        saveOrganizations(p,groups)
+        saveFactions(p,factions)
     }
     private data class LoreChainStage(val day:Long,val id:String,val title:String,val region:String,val foodDelta:Int,val healthDelta:Int,val migrationChance:Int)
     // Multi-stage event arcs; dates are simulation days, not canon chronology.
@@ -606,7 +627,16 @@ object WorldEngine {
     )
     private fun applyLoreChainStage(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
         val done=runCatching { JSONArray(p.getString("lore_chain_done","[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toMutableSet() } }.getOrDefault(mutableSetOf())
-        chainStages.filter { it.day==day && it.id !in done }.forEach { stage ->
+        val triggered=runCatching { JSONArray(p.getString(KEY_LORE,"[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toSet() } }.getOrDefault(emptySet())
+        chainStages.filter { stage ->
+            val root=when {
+                stage.id.startsWith("ionia_") -> "ionia_war"
+                stage.id.startsWith("ruination_") -> "ruination"
+                stage.id.startsWith("zaun_") -> "piltover_zaun"
+                else -> ""
+            }
+            stage.day==day && stage.id !in done && root in triggered
+        }.forEach { stage ->
             markets[stage.region]?.let { it.food=(it.food+stage.foodDelta).coerceAtLeast(0) }
             val residents=pop.filter { it.alive && it.region==stage.region }
             residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100); recordLife(r,day,"受到历史事件「${stage.title}」影响，身处${stage.region}。") }
