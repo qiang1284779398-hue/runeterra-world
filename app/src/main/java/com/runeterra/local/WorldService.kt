@@ -43,15 +43,9 @@ class WorldService : Service() {
             }
             clockPrefs.edit().putInt(KEY_ACCUMULATED_MINUTES, accumulatedMinutes).apply()
 
-            // One shared local model: alternate hero and resident turns. Calls made
-            // while inference is busy are safely skipped by WorldEngine.
-            if (ticks % AI_ATTEMPT_INTERVAL_TICKS == 0L) {
-                if (ticks / AI_ATTEMPT_INTERVAL_TICKS % 2L == 0L) {
-                    WorldEngine.requestLocalHeroThinking(this@WorldService)
-                } else {
-                    WorldEngine.requestLocalResidentThinking(this@WorldService)
-                }
-            }
+            // One shared local model: dispatch exactly one queued cognition turn whenever
+            // the previous inference has completed. Busy turns do not consume the next slot.
+            WorldEngine.requestNextLocalThinking(this@WorldService)
             ticks++
 
             if (ticks % NOTIFICATION_INTERVAL_TICKS == 0L) {
@@ -126,7 +120,6 @@ class WorldService : Service() {
         private const val NOTIFICATION_ID = 701
         private const val TICK_INTERVAL_MS = 1_000L
         private const val NOTIFICATION_INTERVAL_TICKS = 5L
-        private const val AI_ATTEMPT_INTERVAL_TICKS = 1L
         private const val MINUTES_PER_TICK = 60
         private const val SLOW_MINUTES_PER_TICK = 12
         private const val MINUTES_PER_DAY = 24 * 60
