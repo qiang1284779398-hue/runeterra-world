@@ -158,34 +158,52 @@ class ChatGPTWebActivity : Activity() {
     }
 
     private fun readLatest(force: Boolean) {
+        // ChatGPT 页面结构会变化：优先读取 assistant 消息节点，再尝试其内部 Markdown。
         val script = """
             (function() {
-              const nodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
-              const node = nodes.length ? nodes[nodes.length - 1] : null;
-              const text = node ? (node.innerText || node.textContent || '').trim() : '';
-              const streaming = !!document.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]');
-              return JSON.stringify({text:text, streaming:streaming});
+              const roleNodes = Array.from(document.querySelectorAll('[data-message-author-role]'));
+              const assistants = roleNodes.filter(n =>
+                (n.getAttribute('data-message-author-role') || '').toLowerCase() === 'assistant'
+              );
+              const node = assistants.length ? assistants[assistants.length - 1] : null;
+              const markdown = node ? node.querySelector('.markdown, [class*="markdown"]') : null;
+              const text = node
+                ? ((markdown && (markdown.innerText || markdown.textContent)) || node.innerText || node.textContent || '').trim()
+                : '';
+              const stop = document.querySelector(
+                '[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"], button[aria-label*="Stop generating"]'
+              );
+              return JSON.stringify({
+                text: text,
+                streaming: !!stop,
+                assistantCount: assistants.length,
+                roleCount: roleNodes.length,
+                pageReady: document.readyState,
+                url: location.href
+              });
             })();
         """.trimIndent()
         web.evaluateJavascript(script) { raw ->
             val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-            val text = data.optString("text")
+            val text = data.optString("text").trim()
             val streaming = data.optBoolean("streaming")
+            val count = data.optInt("assistantCount", 0)
+            val roleCount = data.optInt("roleCount", 0)
             if (text.isNotBlank()) {
                 result.text = text
                 if (text == lastText) stableCount++ else stableCount = 0
                 lastText = text
-                if (force) status.text = "已从网页 DOM 读取最新回答（0 字符）"
+                if (force) status.text = "读取成功：0 字符（assistant 节点 $count 个）"
                 if (!force && text != baseline && !streaming && stableCount >= 2) {
-                    status.text = "回答读取完成（0 字符）"
+                    status.text = "回答读取完成：0 字符"
                     polling = false
                     handler.removeCallbacks(pollTask)
                 } else if (!force && text != baseline) {
-                    status.text = if (streaming) "正在读取生成中的回答……" else "回答内容已更新，确认是否生成完成……"
+                    status.text = if (streaming) "正在读取生成中的回答……" else "回答内容已更新，等待内容稳定……"
                 }
             } else if (force) {
-                status.text = "当前页面还没有找到 assistant 回答节点。"
+                status.text = "暂未读到回答：assistant 节点 $count 个，消息角色节点 $roleCount 个。请等回答完整显示后再点读取；可把这行诊断文字发给我。"
             }
         }
     }
