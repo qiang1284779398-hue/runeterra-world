@@ -216,7 +216,7 @@ object WorldEngine {
                     val regionA=factionRegions[rel.a] ?: rel.a; val regionB=factionRegions[rel.b] ?: rel.b
                     listOf(regionA,regionB).forEach { region ->
                         val victims=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(4))
-                        victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0) }
+                        victims.forEach { r -> r.health=(r.health-5-rng.nextInt(12)).coerceAtLeast(0); recordLife(r,day,"战争波及${region}，在冲突中受伤。") }
                         markets[region]?.let { it.food=(it.food-15-rng.nextInt(30)).coerceAtLeast(0) }
                         if(victims.isNotEmpty()) events.add("【战争损害】第 $day 日：${region}遭冲突波及，${victims.size}名居民受伤，粮食储备下降。")
                     }
@@ -277,11 +277,12 @@ object WorldEngine {
             val market=markets[pulse.region]
             if(market!=null) market.food=(market.food-pulse.foodLoss).coerceAtLeast(0)
             val affected=pop.filter { it.alive && it.region==pulse.region }
-            affected.forEach { r -> r.health=(r.health-pulse.healthLoss).coerceAtLeast(0) }
+            affected.forEach { r -> r.health=(r.health-pulse.healthLoss).coerceAtLeast(0); recordLife(r,day,"经历历史事件「${pulse.title}」的冲击，身处${pulse.region}。") }
             val moved=affected.filter { rng.nextInt(100)<18 }
             moved.forEach { r ->
                 val dest=regions[(regions.indexOf(pulse.region)+1)%regions.size]
                 r.region=dest
+                recordLife(r,day,"因「${pulse.title}」引发的动荡，从${pulse.region}迁往${dest}。")
             }
             events.add("【官方背景事件·模拟演绎】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人逃离${pulse.region}。")
             triggered.add(pulse.id)
@@ -306,9 +307,13 @@ object WorldEngine {
         chainStages.filter { it.day==day && it.id !in done }.forEach { stage ->
             markets[stage.region]?.let { it.food=(it.food+stage.foodDelta).coerceAtLeast(0) }
             val residents=pop.filter { it.alive && it.region==stage.region }
-            residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100) }
+            residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100); recordLife(r,day,"受到历史事件「${stage.title}」影响，身处${stage.region}。") }
             val displaced=residents.filter { rng.nextInt(100)<stage.migrationChance }
-            displaced.forEach { r -> r.region=regions[(regions.indexOf(stage.region)+1)%regions.size] }
+            displaced.forEach { r ->
+                val destination=regions[(regions.indexOf(stage.region)+1)%regions.size]
+                r.region=destination
+                recordLife(r,day,"因「${stage.title}」从${stage.region}迁往${destination}。")
+            }
             events.add("【历史事件链·模拟】第 ${day} 日 ${stage.title}；${stage.region}影响${residents.size}人，迁徙${displaced.size}人。")
             done.add(stage.id)
         }
