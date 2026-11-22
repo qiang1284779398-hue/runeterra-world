@@ -2,6 +2,7 @@ package com.runeterra.local
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -36,12 +37,36 @@ class MainActivity : Activity() {
             text = "重置世界"
             setOnClickListener { WorldEngine.reset(this@MainActivity); refresh() }
         }
+        val biographies = Button(this).apply {
+            text = "居民档案 / 人生传记"
+            setOnClickListener { showResidentDirectory() }
+        }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, reset, log).forEach {
+        listOf(title, status, start, pause, step, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showResidentDirectory() {
+        val entries=WorldEngine.residentDirectory(this)
+        if(entries.isEmpty()) {
+            AlertDialog.Builder(this).setMessage("当前没有居民档案。").setPositiveButton("确定",null).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("居民档案（点击查看人生）")
+            .setItems(entries.toTypedArray()) { _, which ->
+                val id=entries[which].substringBefore("｜").toIntOrNull() ?: return@setItems
+                AlertDialog.Builder(this)
+                    .setTitle("人生传记档案")
+                    .setMessage(WorldEngine.residentHistory(this,id))
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
     }
 
     private fun startWorld() {
