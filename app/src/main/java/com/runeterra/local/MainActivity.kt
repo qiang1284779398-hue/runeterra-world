@@ -40,6 +40,7 @@ class MainActivity : Activity() {
         val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
         val lore = Button(this).apply { text = "符文之地 / 官方世界观设定"; setOnClickListener { showRegionalLoreDirectory() } }
         val heroes = Button(this).apply { text = "英雄 / 半神 / 超自然存在档案"; setOnClickListener { showHeroDirectory() } }
+        val lineages = Button(this).apply { text = "生命体系 / 种族与族群档案"; setOnClickListener { showLineageDirectory() } }
         val heroRelations = Button(this).apply { text = "英雄人物 / 关系网络档案"; setOnClickListener { showHeroRelationshipDirectory() } }
         val settlements = Button(this).apply { text = "城市 / 村庄 / 聚落档案"; setOnClickListener { showSettlementDirectory() } }
         val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
@@ -50,7 +51,7 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, lore, heroes, heroRelations, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, lore, heroes, lineages, heroRelations, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
@@ -64,6 +65,21 @@ class MainActivity : Activity() {
             .setItems(entries.toTypedArray()) { _, which ->
                 AlertDialog.Builder(this)
                     .setTitle("人物与特殊存在档案")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
+    }
+
+    private fun showLineageDirectory() {
+        val entries=WorldEngine.lineageDirectory(this)
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 生命与族群体系")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("生命与族群档案")
                     .setMessage(entries[which])
                     .setPositiveButton("返回",null)
                     .show()
