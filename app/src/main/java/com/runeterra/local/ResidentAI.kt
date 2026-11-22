@@ -93,5 +93,28 @@ object ResidentAI {
         }
     }
 
+    fun askStructured(prompt:String,maxTokens:Int=768,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit) {
+        scope.launch {
+            inferenceMutex.withLock {
+                val active=model
+                if(active==null || !active.isLoaded) {
+                    callback("请先加载本地 GGUF 模型。")
+                    return@withLock
+                }
+                try {
+                    val result=Llama.complete(
+                        model=active,
+                        prompt=prompt,
+                        systemPrompt=systemPrompt,
+                        maxTokens=maxTokens
+                    )
+                    callback(result.text.trim())
+                } catch(e:Throwable) {
+                    callback("本地推理错误：\${e.message ?: e.toString()}")
+                }
+            }
+        }
+    }
+
     fun systemInfo(): String = try { Llama.getSystemInfo() } catch (e: Throwable) { e.message ?: "不可用" }
 }
