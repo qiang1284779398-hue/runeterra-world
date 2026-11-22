@@ -66,8 +66,8 @@ s=s.replace(
 '''        return {system.empty() ? user : (system + "\\n\\n" + user), false};'''
 )
 s=s.replace(
-'''    if (n < 0) return system.empty() ? user : (system + "\\n\\n" + user);
-    return std::string(buf.data(), n);''',
+'''    if (n < 0) return {system.empty() ? user : (system + "\\n\\n" + user), false};
+    return {std::string(buf.data(), n), true};''',
 '''    if (n < 0) return {system.empty() ? user : (system + "\\n\\n" + user), false};
     return {std::string(buf.data(), n), true};'''
 )
