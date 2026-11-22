@@ -14,7 +14,7 @@ import java.util.concurrent.atomic.AtomicLong
 object ResidentAI {
  private const val LOAD=1; private const val UNLOAD=2; private const val ASK=3; private const val STRUCT=4; private const val RESULT=100
  private val main=Handler(Looper.getMainLooper()); private val ids=AtomicLong(1)
- private val pending=ConcurrentHashMap<Long,(String?)->Unit>()
+ private val pending=ConcurrentHashMap<Long,(Boolean,String)->Unit>()
  @Volatile private var app:Context?=null
  @Volatile private var remote:Messenger?=null
  @Volatile private var bound=false
@@ -23,10 +23,10 @@ object ResidentAI {
  @Volatile private var loaded=false
  @Volatile private var path:String?=null
  private val incoming=Messenger(Handler(Looper.getMainLooper()){msg->
-  if(msg.what==RESULT){val b=msg.data;val id=b.getLong("id");val cb=pending.remove(id);if(b.getBoolean("loadFinished")){loading=false;loaded=b.getBoolean("ok")};if(b.getBoolean("unloaded"))loaded=false;cb?.invoke(if(b.getBoolean("ok"))null else b.getString("result")?:"AI进程错误")}
+  if(msg.what==RESULT){val b=msg.data;val id=b.getLong("id");val cb=pending.remove(id);if(b.getBoolean("loadFinished")){loading=false;loaded=b.getBoolean("ok")};if(b.getBoolean("unloaded"))loaded=false;cb?.invoke(b.getBoolean("ok"),b.getString("result")?:"")}
   true
  })
- private fun failPending(reason:String){val callbacks=pending.values.toList();pending.clear();callbacks.forEach{try{it(reason)}catch(_:Throwable){}}}
+ private fun failPending(reason:String){val callbacks=pending.values.toList();pending.clear();callbacks.forEach{try{it(false,reason)}catch(_:Throwable){}}}
  private val connection=object:ServiceConnection{
   override fun onServiceConnected(n:ComponentName?,b:IBinder?){remote=if(b!=null)Messenger(b) else null;binding=false;bound=true;record(if(remote!=null)"AI独立进程已连接" else "AI服务返回空Binder")}
   override fun onServiceDisconnected(n:ComponentName?){remote=null;loaded=false;loading=false;record("AI独立进程意外退出；Android正在尝试重连");failPending("AI进程意外退出；请重新加载模型")}
@@ -35,14 +35,14 @@ object ResidentAI {
  }
  private fun record(s:String){val c=app?:return;val line=SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS",Locale.US).format(Date())+" | "+s;Log.i("RuneterraAI",line);try{File(c.filesDir,"ai_diagnostics.log").appendText(line+"\n")}catch(_:Throwable){};c.getSharedPreferences("runeterra_ai_diagnostics",Context.MODE_PRIVATE).edit().putString("last_stage",line).putString("last_model",path?:"").commit()}
  @Synchronized private fun connect(c:Context){app=c.applicationContext;if(remote!=null||binding||bound)return;try{binding=true;val ok=app!!.bindService(Intent(app,AIInferenceService::class.java),connection,Context.BIND_AUTO_CREATE);bound=ok;if(!ok){binding=false;record("bindService返回false")}}catch(e:Throwable){binding=false;record("绑定AI进程失败："+e.message)}}
- private fun send(what:Int,b:Bundle,cb:(String?)->Unit){val id=ids.getAndIncrement();b.putLong("id",id);pending[id]=cb;val r=remote;if(r==null){pending.remove(id);cb("AI独立进程未连接，请重新连接后重试");return};try{val m=Message.obtain(null,what);m.data=b;m.replyTo=incoming;r.send(m);main.postDelayed({pending.remove(id)?.invoke("AI请求超时或AI进程崩溃；主模拟器进程仍然存活")},300000)}catch(e:Throwable){pending.remove(id);cb("IPC发送失败："+e.message)}}
- fun load(context:Context,p:String,callback:(String?)->Unit){path=p;connect(context);if(loading){callback("模型正在加载");return};loading=true;loaded=false;record("请求AI独立进程加载模型；存在="+File(p).exists()+"；大小="+File(p).length());main.postDelayed({if(remote==null){loading=false;callback("AI进程尚未连接；请稍后再次点击加载") }else send(LOAD,Bundle().apply{putString("path",p)}){e->loading=false;loaded=e==null;callback(e)}},900)}
+ private fun send(what:Int,b:Bundle,cb:(Boolean,String)->Unit){val id=ids.getAndIncrement();b.putLong("id",id);pending[id]=cb;val r=remote;if(r==null){pending.remove(id);cb(false,"AI独立进程未连接，请重新连接后重试");return};try{val m=Message.obtain(null,what);m.data=b;m.replyTo=incoming;r.send(m);main.postDelayed({pending.remove(id)?.invoke(false,"AI请求超时或AI进程崩溃；主模拟器进程仍然存活")},300000)}catch(e:Throwable){pending.remove(id);cb(false,"IPC发送失败："+e.message)}}
+ fun load(context:Context,p:String,callback:(String?)->Unit){path=p;connect(context);if(loading){callback("模型正在加载");return};loading=true;loaded=false;record("请求AI独立进程加载模型；存在="+File(p).exists()+"；大小="+File(p).length());main.postDelayed({if(remote==null){loading=false;callback("AI进程尚未连接；请稍后再次点击加载") }else send(LOAD,Bundle().apply{putString("path",p)}){ok,result->loading=false;loaded=ok;callback(if(ok)null else result.ifBlank{"模型加载失败"})}},900)}
  fun unload(){loaded=false;try{remote?.send(Message.obtain(null,UNLOAD))}catch(_:Throwable){};record("请求卸载AI模型")}
  fun isLoaded()=loaded
  fun isLoading()=loading
  fun modelPath()=path
- fun ask(prompt:String,callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送普通推理；promptChars="+prompt.length);send(ASK,Bundle().apply{putString("prompt",prompt)}){e->callback(e?:"AI未返回结果")}}
- fun askStructured(prompt:String,maxTokens:Int=192,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送结构化推理；promptChars="+prompt.length);send(STRUCT,Bundle().apply{putString("prompt",prompt);putString("system",systemPrompt);putInt("maxTokens",maxTokens)}){e->callback(e?:"AI未返回结果")}}
+ fun ask(prompt:String,callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送普通推理；promptChars="+prompt.length);send(ASK,Bundle().apply{putString("prompt",prompt)}){ok,result->callback(if(ok) result.ifBlank{"模型返回空内容（推理已完成）"} else result.ifBlank{"AI推理失败"})}}
+ fun askStructured(prompt:String,maxTokens:Int=192,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送结构化推理；promptChars="+prompt.length);send(STRUCT,Bundle().apply{putString("prompt",prompt);putString("system",systemPrompt);putInt("maxTokens",maxTokens)}){ok,result->callback(if(ok) result.ifBlank{"模型返回空内容（推理已完成）"} else result.ifBlank{"AI推理失败"})}}
  fun diagnosticReport(context:Context):String{
   val c=context.applicationContext
   val p=c.getSharedPreferences("runeterra_ai_diagnostics",Context.MODE_PRIVATE)
