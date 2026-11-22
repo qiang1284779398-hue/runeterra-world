@@ -1994,7 +1994,8 @@ private fun craftBonus(region:String):Int = when(region) {
 当前世界日期：第${day}日。
 请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
 行动选择应体现这个人自己的长期兴趣和处境，而不只是生存：可以维持现状、寻找食物、求职或转行、向可信亲友求助、练习现有职业技能，或主动结识同一聚落中真实存在的人。不要为了制造剧情而强行选择社交或成长。
-只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize之一；ask_help仅在确有可信亲友且自己急需食物时选择）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
+如果个人记忆中有天道干预、异常信息或关于世界本质的疑问，可以自主选择investigate_world来整理假说、观察现象并寻找证据，或选择discuss_world与真实可接触的亲友交流；没有研究条件时也可以暂缓。
+只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一；investigate_world用于独立研究世界规律或核验天道信息，discuss_world仅在有可接触的可信关系时交流；不得自动得出超出证据的结论）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
         localInferenceBusy=true
         ResidentAI.ask(prompt) { raw ->
             try {
@@ -2099,6 +2100,29 @@ private fun craftBonus(region:String):Int = when(region) {
                                             savePeople(p,people(p).map { if(it.id==mentor.id) mentor else it })
                                         }
                                     } else latest.mindMemory.add("行动结果：当前年龄、健康、旅途或技能状态不适合继续练习。")
+                                }
+                                "investigate_world" -> {
+                                    val received=latest.mindMemory.any { it.contains("天道干预") || it.contains("外部信息") }
+                                    latest.goal=if(received) "核验收到的外部信息，并研究世界规律" else "观察身边现象，寻找可验证的世界规律"
+                                    val note=if(received) "开始独立整理天道信息与亲历证据，区分观察、传闻、推测和未知；目前没有足够证据证明信息内容。" else "开始留意身边自然、魔法与社会现象，尝试提出可验证的问题；尚未获得确定结论。"
+                                    latest.mindMemory.add("研究行动：\${note}")
+                                    recordLife(latest,day,note,"resident_independent_inquiry")
+                                }
+                                "discuss_world" -> {
+                                    val confidant=people(p).firstOrNull { other ->
+                                        other.alive && other.id!=latest.id && other.region==latest.region &&
+                                            other.settlement==latest.settlement &&
+                                            (other.id in latest.friendIds || other.id==latest.partnerId)
+                                    }
+                                    if(confidant!=null) {
+                                        val topic=latest.mindMemory.lastOrNull { it.contains("天道干预") || it.contains("世界规律") } ?: "关于世界与自身处境的疑问"
+                                        latest.mindMemory.add("交流行动：我与\${confidant.name}讨论了\${topic}。对方的真实看法尚未记录，不能推定其赞同。")
+                                        confidant.mindMemory.add("交流经历：\${latest.name}与我谈到\${topic}；我是否认同仍由自己的判断决定。")
+                                        recordLife(latest,day,"与可信关系\${confidant.name}交流关于世界本质或异常信息的疑问；没有预设对方立场。","resident_belief_discussion")
+                                        recordLife(confidant,day,"与\${latest.name}交流关于世界本质或异常信息的疑问；交流内容不代表双方达成共识。","resident_belief_discussion")
+                                        while(confidant.mindMemory.size>120) confidant.mindMemory.removeAt(0)
+                                        savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; confidant.id -> confidant; else -> person } })
+                                    } else latest.mindMemory.add("交流行动：目前没有同地且可信的关系对象，暂未进行讨论。")
                                 }
                                 "socialize" -> {
                                     val targetId=result.optInt("target_id",-1)
