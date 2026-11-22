@@ -321,13 +321,14 @@ object WorldEngine {
 4 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
 5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。
 6 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
-7 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
-8 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
-9 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
-10 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+7 create_character：name、region、role必填；可选status、goal、gender、appearance、abilities、lineage、age、health、skill。创建可独立思考的英雄或特殊人物。
+8 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
+9 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
+10 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
+11 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","lineage":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
