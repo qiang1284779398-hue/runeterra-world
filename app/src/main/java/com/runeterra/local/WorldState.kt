@@ -57,6 +57,8 @@ object WorldEngine {
     private const val KEY_IONIA_WAR_ENDED="ionia_war_ended"
     private const val KEY_IONIA_PLACIDIUM="ionia_placidium_front"
     private const val KEY_SWAIN_COUP="noxus_swain_coup"
+    private const val KEY_SWAIN_DISGRACED="noxus_swain_disgraced"
+    private const val KEY_SWAIN_DISGRACED_DAY="noxus_swain_disgraced_day"
     private const val KEY_LORE_TRIGGER_DAYS="lore_trigger_days"
     private const val ERA_PRE_IONIA="pre_ionia_invasion"
     private const val KEY_EVENTS="events"
@@ -416,6 +418,9 @@ object WorldEngine {
                             h.role="崔法利议会统治者"
                             h.status="以远见与谋略维持崔法利议会秩序，同时防范黑色玫瑰与帝国内部权力角力"
                             factions["诺克萨斯"]?.let { it.stability=(it.stability+1).coerceAtMost(100) }
+                        } else if(p.getBoolean(KEY_SWAIN_DISGRACED,false)) {
+                            h.role="失势的诺克萨斯将领"
+                            h.status="在艾欧尼亚战场遭到贬黜，公开声望受损；暗中寻找重返权力中心的机会"
                         } else h.status="作为诺克萨斯将领观察帝国军政局势；尚未建立崔法利议会或成为最高统治者"
                     }
                     "德莱厄斯" -> {
@@ -866,6 +871,13 @@ object WorldEngine {
                     rel.war=false
                     if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚") && p.getBoolean(KEY_IONIA_INVASION_STARTED,false)) {
                         p.edit().putBoolean(KEY_IONIA_WAR_ENDED,true).apply()
+                        if(p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
+                            val heroes=heroAgents(p)
+                            heroes.firstOrNull { it.name=="斯维因" }?.let { it.role="失势的诺克萨斯将领"; it.status="在艾欧尼亚战场遭到贬黜，公开声望受损；尚未发动夺权" }
+                            saveHeroes(p,heroes)
+                            p.edit().putBoolean(KEY_SWAIN_DISGRACED,true).putLong(KEY_SWAIN_DISGRACED_DAY,day).apply()
+                            events.add("【诺克萨斯军政危机·模拟分支】第 $day 日：艾欧尼亚战场的失败使斯维因遭到达克威尔贬黜，帝国内部开始重新评估最高统治者的战争决策。")
+                        }
                         events.add("【历史阶段变化·模拟分支】第 $day 日：诺克萨斯—艾欧尼亚战事进入停战阶段；战后影响将在后续依据居民、地方组织与资源状况展开。")
                     }
                     rel.tension=(rel.tension-18).coerceAtLeast(45)
@@ -880,7 +892,7 @@ object WorldEngine {
         saveDiplomacy(p,relations)
     }
     private fun tickNoxusSuccession(day:Long,p:android.content.SharedPreferences,events:MutableList<String>,rng:Random) {
-        if(day%30L!=0L || !p.getBoolean(KEY_IONIA_WAR_ENDED,false) || p.getBoolean(KEY_SWAIN_COUP,false)) return
+        if(day%30L!=0L || !p.getBoolean(KEY_IONIA_WAR_ENDED,false) || !p.getBoolean(KEY_SWAIN_DISGRACED,false) || day-p.getLong(KEY_SWAIN_DISGRACED_DAY,day)<90L || p.getBoolean(KEY_SWAIN_COUP,false)) return
         val factions=factionStates(p)
         val noxus=factions["诺克萨斯"] ?: return
         val groups=organizations(p)
