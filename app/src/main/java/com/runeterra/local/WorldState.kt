@@ -2893,9 +2893,22 @@ private fun craftBonus(region:String):Int = when(region) {
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "若过去思考或经历中出现【历史事件接驳机会】，请把它视为通过具体渠道获得的有限信息；独立评估自己是否参与。可选action：stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event。join_event仅表示决定投入与自身身份相符的行动，不代表瞬间抵达战场或自动成功；decline_event表示明确拒绝；investigate_event表示尝试核实局势。没有相关机会时仍使用原有行动。只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action、reason。"
         localInferenceBusy=true
-        ResidentAI.ask(prompt) { raw ->
+        ResidentAI.askStructured(
+            prompt,
+            maxTokens=512,
+            systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
+        ) { raw ->
+            fun recordInferenceIssue(message:String) {
+                val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
+                latest.thought="【推理状态】本次没有生成可保存的思考记录：${message.take(180)}。请确认本地模型已加载，并保持世界运行后重试。"
+                saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
+            }
             try {
                 val a=raw.indexOf(123.toChar()); val b=raw.lastIndexOf(125.toChar())
+                if(a<0 || b<=a) {
+                    recordInferenceIssue(raw.ifBlank { "模型返回内容为空或不是JSON" })
+                    return@askStructured
+                }
                 if(a>=0 && b>a) {
                     val result=JSONObject(raw.substring(a,b+1))
                     val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@ask
@@ -2959,10 +2972,12 @@ private fun craftBonus(region:String):Int = when(region) {
                         events.put("【英雄自主思考·本地AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
                         while(events.length()>300) events.remove(0)
                         p.edit().putString(KEY_EVENTS,events.toString()).apply()
+                    } else {
+                        recordInferenceIssue("JSON中缺少非空thought字段")
                     }
                 }
-            } catch(_:Throwable) {
-                // Invalid model output must not create fictional biography events.
+            } catch(e:Throwable) {
+                recordInferenceIssue(e.message ?: e.toString())
             } finally { localInferenceBusy=false }
         }
     }
