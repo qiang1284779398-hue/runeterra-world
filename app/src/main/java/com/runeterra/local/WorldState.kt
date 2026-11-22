@@ -1619,7 +1619,7 @@ private fun craftBonus(region:String):Int = when(region) {
             if(changed) savePeople(p,loaded)
             return loaded
         }
-        val rng=Random(24681357L)
+        val rng=Random(System.nanoTime() xor System.currentTimeMillis())
         val list=(0 until 240).map { i ->
             val region=residentRegions[i%residentRegions.size]
             val lineage=when {
@@ -1722,7 +1722,19 @@ private fun craftBonus(region:String):Int = when(region) {
             // Continuous food production follows local growers, skill and ecological conditions.
             residentRegions.forEach { region ->
                 val market=markets[region] ?: return@forEach
-                val growers=pop.filter { it.alive && it.region==region && it.travelDaysRemaining<=0 && (it.job=="农夫" || it.job=="采集者") }
+                val local=pop.filter { it.alive && it.region==region }
+                var growers=local.filter { it.travelDaysRemaining<=0 && (it.job=="农夫" || it.job=="采集者") }
+                val targetGrowers=(local.size/8).coerceAtLeast(if(local.isEmpty()) 0 else 1)
+                if(local.isNotEmpty() && market.food < local.size*3 && growers.size < targetGrowers) {
+                    val recruit=local.filter { it.travelDaysRemaining<=0 && it.job in setOf("旅人","学徒","伐木工","矿工","商贩") }.minByOrNull { it.skill }
+                    if(recruit!=null) {
+                        val oldJob=recruit.job
+                        recruit.job=if(foodBonus(region,ecology)>=0) "农夫" else "采集者"
+                        recordLife(recruit,day,"因社区粮食储备告急，从${oldJob}转向${recruit.job}，参与恢复本地食物生产。")
+                        events.add("【紧急生计调整·模拟】第 $day 日：${region}粮食储备告急，${recruit.name}转向${recruit.job}。")
+                        growers=local.filter { it.travelDaysRemaining<=0 && (it.job=="农夫" || it.job=="采集者") }
+                    }
+                }
                 val ecologicalYield=foodBonus(region,ecology)
                 val dailyHarvest=growers.sumOf { (6 + it.skill/25 + ecologicalYield).coerceIn(3,11) }
                 market.food=(market.food+dailyHarvest).coerceAtMost(5000)
@@ -1759,10 +1771,15 @@ private fun craftBonus(region:String):Int = when(region) {
                     if(market!=null && market.food>0 && r.coins>0) {
                         val unitPrice=goodPrice(market,"粮食")
                         val affordable=r.coins/unitPrice
-                        val bought=minOf(3-r.food,market.food,affordable)
+                        var bought=minOf(3-r.food,market.food,affordable)
+                        val publicRelief=bought==0 && r.coins<unitPrice && r.food<=1 && market.food>0 && market.wealth>=unitPrice
+                        if(publicRelief) bought=1
                         if(bought>0) {
                             val cost=bought*unitPrice
-                            market.food-=bought;r.food+=bought;r.coins-=cost;market.wealth+=cost
+                            market.food-=bought;r.food+=bought
+                            if(publicRelief) market.wealth=(market.wealth-cost).coerceAtLeast(0)
+                            else { r.coins-=cost;market.wealth+=cost }
+                            if(publicRelief && biographyBeforeFood>1) recordLife(r,day,"因个人收入不足获得当地市场公共储备的口粮援助，暂时避免断粮。")
                         }
                     }
                 }
