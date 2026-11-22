@@ -505,8 +505,14 @@ object WorldEngine {
             append("伴侣：${partner?.name ?: if(r.partnerId>=0)"关系对象档案不可用" else "暂无记录"}\n")
             val parents=all.filter { it.id in r.parentIds }
             val children=all.filter { it.id in r.childIds }
+            val friends=all.filter { it.id in r.friendIds }
+            val mentor=all.firstOrNull{it.id==r.mentorId}
+            val students=all.filter{it.id in r.studentIds}
             append("父母：${parents.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
             append("子女：${children.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
+            append("朋友：${friends.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
+            append("师长：${mentor?.name ?: "暂无记录"}\n")
+            append("学生：${students.joinToString("、") { it.name }.ifBlank { "暂无记录" }}\n")
             append("家庭子女计数：${r.familyCount}\n\n人生时间线\n")
             if(r.history.isEmpty()) append("暂时没有人生事件记录。")
             else r.history.forEach { append("• ").append(it).append("\n") }
