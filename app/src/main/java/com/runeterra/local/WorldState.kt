@@ -105,10 +105,36 @@ object WorldEngine {
                 r.fatigue>=85 -> "休息与恢复体力"
                 r.job in workingJobs -> when(r.job) {
                     "农夫" -> if(r.region=="恕瑞玛") "灌溉、耕作与维护水渠" else "耕作、播种与收获"
-                    "采集者" -> "采集当地食物与生活材料"
-                    "商贩" -> "采购、议价与经营交易"
-                    "工匠" -> if(r.region=="皮尔特沃夫" || r.region=="祖安") "工坊制造与器件维修" else "制作工具与日用器物"
-                    "护卫" -> "巡逻、护送与维持治安"
+                    "采集者" -> when(r.region) {
+                        "弗雷尔卓德" -> "追踪猎物、采集耐寒食材并辨认风雪路线"
+                        "恕瑞玛" -> "寻找绿洲水源、可食植物与商路补给"
+                        "比尔吉沃特" -> "近海采集、处理渔获并辨认潮汐"
+                        "艾欧尼亚" -> "在林地与溪谷采集食材、药草和生活材料"
+                        else -> "采集当地食物与生活材料"
+                    }
+                    "商贩" -> when(r.region) {
+                        "恕瑞玛" -> "经营绿洲补给与沙漠商路交易"
+                        "比尔吉沃特" -> "经营港口货物、船员补给与悬赏消息"
+                        "皮尔特沃夫" -> "经营工坊制品、进口货物与城市市场交易"
+                        "祖安" -> "在地下市场经营零件、药剂与生活物资"
+                        else -> "采购、议价与经营交易"
+                    }
+                    "工匠" -> when(r.region) {
+                        "皮尔特沃夫" -> "在工坊制造精密器件并维护城市设施"
+                        "祖安" -> "在地下工坊修理机械、处理化学材料"
+                        "弗雷尔卓德" -> "修补猎具、皮革、御寒装备与营地器物"
+                        "比尔吉沃特" -> "修船、修理索具与制作航海器具"
+                        "艾欧尼亚" -> "制作农具、器物并维护地方建筑"
+                        else -> "制作工具与日用器物"
+                    }
+                    "护卫" -> when(r.region) {
+                        "诺克萨斯" -> "执行军团巡逻、驻防或道路护送"
+                        "德玛西亚" -> "执行城镇守卫、边境巡逻与道路护送"
+                        "弗雷尔卓德" -> "守望营地、护送部族成员并警戒野兽"
+                        "比尔吉沃特" -> "看守码头、护送货物并防范海盗袭击"
+                        "艾欧尼亚" -> "守护村社、寺院道路与地方安全"
+                        else -> "巡逻、护送与维持治安"
+                    }
                     "伐木工" -> "采伐木材与林地维护"
                     "矿工" -> "采矿与矿料分拣"
                     "药师" -> "采药、配制与照料病患"
@@ -1966,6 +1992,20 @@ object WorldEngine {
         return options.getOrElse(Math.floorMod(id,options.size.coerceAtLeast(1))) { region+"聚落（模拟）" }
     }
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人","伐木工","矿工","药师","魔法材料采集者","海克斯技师")
+    // Regional job weights reflect material conditions and institutions, not fixed stereotypes.
+    private fun regionalJobs(region:String):List<String> = when(region) {
+        "德玛西亚" -> listOf("农夫","农夫","工匠","工匠","护卫","学徒","商贩","采集者","药师","旅人")
+        "诺克萨斯" -> listOf("农夫","工匠","商贩","护卫","护卫","护卫","学徒","矿工","旅人","药师")
+        "艾欧尼亚" -> listOf("农夫","工匠","学徒","学徒","采集者","药师","药师","护卫","旅人","魔法材料采集者")
+        "皮尔特沃夫" -> listOf("工匠","工匠","海克斯技师","海克斯技师","商贩","商贩","学徒","护卫","矿工","旅人")
+        "祖安" -> listOf("工匠","工匠","海克斯技师","矿工","矿工","商贩","药师","学徒","护卫","采集者")
+        "弗雷尔卓德" -> listOf("采集者","采集者","护卫","护卫","工匠","药师","旅人","矿工","学徒","农夫")
+        "恕瑞玛" -> listOf("商贩","商贩","采集者","农夫","农夫","护卫","旅人","矿工","药师","魔法材料采集者")
+        "巨神峰" -> listOf("采集者","采集者","药师","护卫","学徒","旅人","工匠","商贩","魔法材料采集者")
+        "比尔吉沃特" -> listOf("商贩","商贩","护卫","护卫","采集者","工匠","旅人","药师","学徒")
+        "以绪塔尔" -> listOf("农夫","采集者","药师","学徒","学徒","工匠","护卫","旅人","魔法材料采集者")
+        else -> jobs
+    }
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
     private val goods=listOf("粮食","木材","矿石","药材","工具","魔法材料","海克斯器件")
@@ -2443,7 +2483,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 else -> "人类"
             }
             val lifespan=if(lineage=="瓦斯塔亚") 500+rng.nextInt(701) else 95+rng.nextInt(11)
-            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,if(lineage=="瓦斯塔亚")80+rng.nextInt(180) else 16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i),lineage=lineage,lifespanYears=lifespan,mindTrait=rng.nextInt(101),belief=beliefs[rng.nextInt(beliefs.size)])
+            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,if(lineage=="瓦斯塔亚")80+rng.nextInt(180) else 16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),regionalJobs(region).let { it[rng.nextInt(it.size)] },goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i),lineage=lineage,lifespanYears=lifespan,mindTrait=rng.nextInt(101),belief=beliefs[rng.nextInt(beliefs.size)])
             recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}的${resident.settlement}，职业为${resident.job}。")
             resident
         }.toMutableList()
