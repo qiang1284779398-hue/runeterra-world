@@ -454,6 +454,14 @@ object WorldEngine {
                         events.add("【虚空威胁·模拟】第 $day 日：虚空女皇卑尔维斯相关的异界活动增强；虚空不受符文之地常规国家边界约束。")
                     }
                     "莫德凯撒" -> h.status="仍处于不朽领域，影响通过古老秘密与追随者传闻渗入诺克萨斯"
+                    "提莫" -> h.status="以斥候身份穿梭符文之地，维持与班德尔城的联系"
+                    "崔丝塔娜" -> h.status="巡查约德尔社群与跨界通道，守护同伴"
+                    "璐璐" -> h.status="在物质领域与精神领域边缘游历，施展不可预测的约德尔魔法"
+                    "兰博" -> h.status="改良自制机甲，寻找能证明其发明价值的机会"
+                    "库奇" -> h.status="驾驶飞行器执行巡逻与运输，不参与普通国家军队编制"
+                    "维迦" -> h.status="钻研黑暗魔法并追求强大力量，其自我认知与外界评价并不一致"
+                    "黑默丁格" -> h.status="在皮尔特沃夫推进科学研究，同时警惕技术失控风险"
+                    "悠米" -> h.status="借助魔典寻找诺拉，在不同地点与领域间穿行"
                     else -> h.status="在所属地区推进个人目标"
                 }
                 h.influence=(h.influence+rng.nextInt(3)-1).coerceIn(0,100)
@@ -1182,10 +1190,10 @@ private fun craftBonus(region:String):Int = when(region) {
         val list=(0 until 240).map { i ->
             val region=residentRegions[i%residentRegions.size]
             val lineage=when {
-                region=="弗雷尔卓德" && i%10==0 -> "冰裔血脉（人类）"
-                region=="艾欧尼亚" && i%10==1 -> "瓦斯塔亚"
-                region=="恕瑞玛" && i%10==2 -> "瓦斯塔亚"
-                region=="比尔吉沃特" && i%10==3 -> "瓦斯塔亚"
+                region=="弗雷尔卓德" && i%50==5 -> "冰裔血脉（人类）"
+                region=="艾欧尼亚" && i%80==2 -> "瓦斯塔亚"
+                region=="恕瑞玛" && i%100==6 -> "瓦斯塔亚"
+                region=="比尔吉沃特" && i%100==8 -> "瓦斯塔亚"
                 else -> "人类"
             }
             val lifespan=if(lineage=="瓦斯塔亚") 500+rng.nextInt(701) else 95+rng.nextInt(11)
