@@ -56,6 +56,26 @@ object WorldEngine {
     private const val KEY_MARKETS="markets"
     private const val KEY_CARAVANS="caravans"
     private const val KEY_MAGIC="magic_regions"
+    private data class RegionalLore(val name:String,val political:String,val magic:String,val forces:String,val boundary:String)
+    // Official setting anchors; future simulation is a branch history, not a rewrite of canon.
+    private val regionalLore=listOf(
+        RegionalLore("德玛西亚","王室君主制与贵族家族、边境领主并存","禁魔制度与禁魔石影响魔法的公开使用，不代表当地没有魔法","王室、冕卫、搜魔人、法师社群；嘉文三世死后的继承危机","禁魔石抑制魔法，不是消灭世界中的魔法"),
+        RegionalLore("诺克萨斯","跨地域扩张帝国，由崔法利议会统治","帝国倾向于利用魔法作为力量，具体政策服务于军政目标","崔法利议会、军团、地方总督、黑色玫瑰与被征服地区","诺克萨斯不是单一民族国家，征服与吸纳并存"),
+        RegionalLore("艾欧尼亚","众多省地、社群与传统构成的群岛，没有统一中央政权","物质领域与精神领域边界较薄，灵性、自然与魔法交织","地方自治、均衡教派、影流、抵抗者与战争创伤","不能写成高度集权的单一国家"),
+        RegionalLore("皮尔特沃夫","议会、贸易家族与精英阶层主导的城邦","海克斯科技将魔法水晶与技术结合，不等同普通法术","议会、贸易家族、发明家、工坊与上层城市秩序","与祖安是相连的双城社会，不是互不相关的国家"),
+        RegionalLore("祖安","位于皮尔特沃夫下方的地下城邦，企业、帮派与社区并立","炼金与化学科技塑造城市生活，污染和资源不平等长期存在","化学男爵、萤火、独立发明家、工人社区与底层居民","不能简化成只有反派帮派的城市"),
+        RegionalLore("弗雷尔卓德","严酷冰原上的部族世界，联盟与战母权威不断变化","古老冰霜力量、冰裔、真冰与远古存在交织","阿瓦罗萨、凛冬之爪、霜卫、三姐妹传说与旧神信仰","不是统一王国；真冰稀有，部族会迁徙"),
+        RegionalLore("恕瑞玛","古代帝国遗产、复兴力量与独立绿洲城邦并存","飞升者、太阳圆盘、古代遗迹与虚空历史影响魔法格局","阿兹尔复兴势力、泽拉斯势力、城邦、商路与水源争夺","不能把整个沙漠视为阿兹尔直接统治的领土"),
+        RegionalLore("巨神峰","山地部族、朝圣者与宗教传统构成的区域","星界力量、星灵化身与登峰试炼影响少数人的命运","烈阳、皎月、拉阔尔人与登峰者","星灵不是普通地方官僚，登峰不是日常活动"),
+        RegionalLore("比尔吉沃特","蓝焰群岛的港口城市，没有稳定中央政府","海怪、古老海洋信仰与布胡鲁传统影响沿海生活","船长、海盗、悬赏猎人、港口帮派与厄运小姐的权力格局","权力随船长和帮派斗争变化，不是常规王国"),
+        RegionalLore("以绪塔尔","以绪奥肯为核心、长期对外隐匿的文明","元素魔法是知识、教育和社会秩序的核心","云塔（Yun Tal）、元素法师、边境居民与隐秘政策","不能写成普通魔法学院或公开贸易国家"),
+        RegionalLore("班德尔城","精神领域中的约德尔人家园，通过入口与符文之地相连","精神领域环境使空间和时间体验异于常态","约德尔社群、班德尔入口与跨界旅者","不作为普通人类国家，不生成常规人类人口"),
+        RegionalLore("暗影岛","福光岛灾变后被破败诅咒与黑雾侵蚀的区域","黑雾、亡灵与灵魂束缚是核心威胁，不是普通魔法天气","黑雾、亡灵、破败诅咒与抵抗侵蚀的力量","福光岛与赫利亚是历史遗址，不生成普通人类常住人口"),
+        RegionalLore("虚空","跨越地区边界的异界威胁，不是符文之地上的普通国家","虚空侵蚀现实、吞噬生命并扭曲生态","虚空生物、监视者、虚空先知及抵御虚空的守护者","不得当作第十三个普通地区或常规外交国家")
+    )
+    fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
+        "【${lore.name}】\\n政治与社会：${lore.political}\\n魔法与超自然：${lore.magic}\\n核心力量：${lore.forces}\\n模拟边界：${lore.boundary}\\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
+    }
     private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
         val raw=p.getString(KEY_MAGIC,null)
         if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.isNotEmpty()){regions.filter{region->region !in it}.forEach{region->it[region]=when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;"班德尔城"->90;"暗影岛"->100;else->20}};saveMagic(p,it);return it}}
@@ -69,15 +89,46 @@ object WorldEngine {
         val levels=magicState(p)
         regions.forEach{region->
             val level=levels[region]?:20
-            val change=rng.nextInt(11)-5
-            val newLevel=(level+change).coerceIn(0,100)
+            val change=when(region) {
+                "德玛西亚","以绪塔尔" -> rng.nextInt(5)-2
+                "艾欧尼亚" -> rng.nextInt(13)-4
+                "弗雷尔卓德" -> rng.nextInt(7)-3
+                "恕瑞玛","巨神峰" -> rng.nextInt(9)-4
+                "班德尔城","暗影岛" -> 0
+                else -> rng.nextInt(11)-5
+            }
+            val newLevel=when(region) {
+                "班德尔城" -> 90
+                "暗影岛" -> 100
+                else -> (level+change).coerceIn(0,100)
+            }
             levels[region]=newLevel
-            if(newLevel>=80 && rng.nextInt(100)<12){
+            val surgeChance=when(region) {
+                "艾欧尼亚" -> 18
+                "巨神峰" -> 14
+                "以绪塔尔" -> 10
+                "恕瑞玛" -> 8
+                "弗雷尔卓德" -> 6
+                "暗影岛" -> 25
+                "班德尔城" -> 0
+                else -> 5
+            }
+            if(newLevel>=65 && rng.nextInt(100)<surgeChance) {
                 val residents=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(1+rng.nextInt(3))
-                residents.forEach{it.health=(it.health+rng.nextInt(8)-3).coerceIn(0,100)}
-                markets[region]?.let{it.food=(it.food-rng.nextInt(20)).coerceAtLeast(0)}
-                events.add("【魔法与符文·模拟】第 $day 日：${region}出现强烈魔法波动，影响${residents.size}名居民，区域魔法强度${levels[region]}。")
-            }else if(newLevel<=15 && rng.nextInt(100)<10){
+                when(region) {
+                    "艾欧尼亚" -> events.add("【精神领域异动·模拟】第 $day 日：艾欧尼亚物质与精神领域边界出现局部波动，地方灵性传统对此作出不同解释。")
+                    "巨神峰" -> events.add("【星界征兆·模拟】第 $day 日：巨神峰周边出现异常天象或星界征兆，朝圣者与宗教团体开始关注。")
+                    "以绪塔尔" -> events.add("【元素魔法·模拟】第 $day 日：以绪塔尔部分元素环境出现波动，元素法师与云塔相关机构加强观察。")
+                    "恕瑞玛" -> events.add("【古代遗迹·模拟】第 $day 日：恕瑞玛某处古代遗迹或飞升者相关力量出现异动，商路与探索活动受到影响。")
+                    "弗雷尔卓德" -> events.add("【远古冰霜·模拟】第 $day 日：弗雷尔卓德出现异常冰霜征兆，部族萨满将其与古老力量联系起来。")
+                    "暗影岛" -> events.add("【黑雾侵袭·模拟】第 $day 日：暗影岛黑雾活跃程度上升，侵蚀范围扩大；这不是普通魔法天气。")
+                    "班德尔城" -> events.add("【班德尔入口·模拟】第 $day 日：班德尔城与符文之地之间的入口发生短暂异动。")
+                    else -> events.add("【魔法与符文·模拟】第 $day 日：${region}出现局部魔法异常，区域魔法活动强度${newLevel}。")
+                }
+                if(region!="暗影岛" && region!="班德尔城" && residents.isNotEmpty() && rng.nextInt(100)<20) {
+                    residents.forEach { it.health=(it.health+rng.nextInt(5)-2).coerceIn(0,100) }
+                }
+            } else if(newLevel<=15 && rng.nextInt(100)<10) {
                 events.add("【魔法与符文·模拟】第 $day 日：${region}魔法活动趋于沉寂，相关研究与仪式难以开展。")
             }
         }
