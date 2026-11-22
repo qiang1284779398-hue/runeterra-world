@@ -56,6 +56,7 @@ object WorldEngine {
         candidates.shuffled(rng).take(limit.coerceAtLeast(1)).forEach { recordLife(it,day,detail) }
     }
     private const val KEY_DAY="day"
+    private const val KEY_RNG_STATE="world_rng_state"
     private const val KEY_ERA="world_era"
     private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
     private const val KEY_IONIA_INVASION_DAY="ionia_invasion_day"
@@ -1701,9 +1702,10 @@ private fun craftBonus(region:String):Int = when(region) {
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
         var nextHouseholdId=(households.maxOfOrNull { it.id } ?: -1)+1
+        var rngState=p.getLong(KEY_RNG_STATE,0x4D595DF4D0F33173L xor (day*7919L+17L))
         repeat(days.coerceAtLeast(1)) {
             day++
-            val rng=Random(day*7919L+17L)
+            val rng=Random(rngState)
             tickCaravans(day,p,markets,events,rng)
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
@@ -1717,6 +1719,14 @@ private fun craftBonus(region:String):Int = when(region) {
             tickMagic(day,p,pop,markets,events,rng)
             tickEcology(day,p,pop,events,rng,ecology)
             tickFauna(day,p,ecology,pop,events,rng,fauna)
+            // Continuous food production follows local growers, skill and ecological conditions.
+            residentRegions.forEach { region ->
+                val market=markets[region] ?: return@forEach
+                val growers=pop.filter { it.alive && it.region==region && it.travelDaysRemaining<=0 && (it.job=="农夫" || it.job=="采集者") }
+                val ecologicalYield=foodBonus(region,ecology)
+                val dailyHarvest=growers.sumOf { (6 + it.skill/25 + ecologicalYield).coerceIn(3,11) }
+                market.food=(market.food+dailyHarvest).coerceAtMost(5000)
+            }
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
                 // Capture the real before-state so biographies can record meaningful transitions,
@@ -1904,6 +1914,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     val artisans=local.count { it.job=="工匠" }
                     val guards=local.count { it.job=="护卫" }
                     regionalGoods(region).forEach { (good,capacity) ->
+                        if(good=="粮食") return@forEach
                         val specialists=when(good) {
                             "粮食" -> local.filter { it.job=="农夫" || it.job=="采集者" }
                             "木材" -> local.filter { it.job=="伐木工" }
@@ -1919,6 +1930,17 @@ private fun craftBonus(region:String):Int = when(region) {
                         val amount=if(specialists.isEmpty()) 0 else (labor*capacity/2).coerceAtMost(capacity+12)
                         if(good=="粮食") market.food+=amount
                         else market.stock[good]=(market.stock[good]?:0)+amount
+                    }
+                    // Food scarcity can trigger a real livelihood change instead of passive famine.
+                    if(local.isNotEmpty() && market.food < local.size*5) {
+                        val recruit=local.filter { it.travelDaysRemaining<=0 && it.job in setOf("旅人","学徒","伐木工","矿工","商贩") }
+                            .minByOrNull { it.skill }
+                        if(recruit!=null) {
+                            val oldJob=recruit.job
+                            recruit.job=if(foodBonus(region,ecology)>=0) "农夫" else "采集者"
+                            recordLife(recruit,day,"因当地粮食储备持续不足，从${oldJob}转向${recruit.job}，参与维持社区口粮。")
+                            events.add("【生计调整·模拟】第 $day 日：${region}粮食储备偏低，${recruit.name}由${oldJob}转为${recruit.job}，增加本地食物生产。")
+                        }
                     }
                     val populationDemand=(local.size/45).coerceAtLeast(0)
                     val demand=mapOf(
@@ -1946,6 +1968,7 @@ private fun craftBonus(region:String):Int = when(region) {
             }
             if(day%90L==0L) events.add("第 $day 日：季节转变，地区居民面对环境压力。")
             if(day%360L==0L) events.add("第 $day 日：新年，居民年龄与人生阶段变化。")
+            rngState=rng.nextLong()
         }
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
@@ -1953,7 +1976,7 @@ private fun craftBonus(region:String):Int = when(region) {
         saveMarkets(p,markets)
         val arr=JSONArray();events.forEach{arr.put(it)}
         p.edit().putInt(KEY_NEXT_ID,nextId)
-            .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
+            .putLong(KEY_DAY,day).putLong(KEY_RNG_STATE,rngState).putString(KEY_EVENTS,arr.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
     }
     fun settlementDirectory(context:Context):List<String> {
