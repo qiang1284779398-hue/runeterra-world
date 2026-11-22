@@ -2755,20 +2755,20 @@ private fun craftBonus(region:String):Int = when(region) {
 【当地可知背景】${localLore.take(170)}；${publicInstitutions.take(130)}；近期本地事件：${localEvents.take(180).ifBlank { "无" }}。
 【时代与日期】${eraAnchor.take(100)}；第${day}日；当前规则：${publicRules}。
 请结合至少两项此人的具体身份、经历、关系或资源，作出真正属于此人的判断。不要让所有居民都追求成长、社交或研究；可以拒绝、犹豫、害怕、坚持旧习或维持现状。行动要符合健康、年龄、技能、资源和当地条件。
-只输出一个JSON对象：thought（第一人称1-2句，具体而非口号）、belief、intent、goal、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一）、new_job、target_id。不得附加Markdown。"""
+只输出一个JSON对象：thought（第一人称2-3句，具体而非口号；必须写出这个人的独特处境、矛盾或决定依据；不得使用泛化的“维持生活/寻找资源/继续工作”作为空洞答案）、belief、intent、goal、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一）、new_job、target_id。不得附加Markdown。"""
         localInferenceBusy=true
         beginLocalInference(p,"居民：${r.name}（编号${r.id}）")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=256,
+            maxTokens=384,
             systemPrompt="你是居民编号${r.id}、姓名${r.name}的独立个人认知引擎。只依据该居民自己的经历和处境推理；不得套用通用模板。只输出完整JSON对象，不要输出Markdown。"
         ) { raw ->
             fun recordResidentInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=people(p).firstOrNull { it.id==r.id } ?: return
-                if(latest.currentThought.isBlank()) latest.currentThought="【推理状态】本次没有生成有效思考记录：${message.take(180)}。请检查模型是否正常加载，并保持世界运行后重试。"
+                latest.currentThought="【推理状态】本次推理未产生有效新记录：${message.take(180)}。等待下一轮重新尝试。"
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
             try {
@@ -2977,20 +2977,20 @@ private fun craftBonus(region:String):Int = when(region) {
 【关系】${bonds.take(260)}。
 【时代背景】${eraAnchor.take(120)}；当地情况${lore.take(190)}；公共制度${publicContext.take(140)}；日期第${day}日；规则${heroRules}。
 若记忆中有历史事件接驳机会，评估是否回应；参与只代表决定，不代表瞬间抵达或成功。隐居、封印或沉寂状态会限制感知和行动，不会自动取消其个人判断。没有新信息时不要改写旧思考凑数。
-只输出完整JSON：thought（第一人称2-3句，必须体现该英雄的个人身份或具体处境）、belief、intent、goal、action（stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一）、reason。不要输出Markdown。"""
+只输出完整JSON：thought（第一人称2-3句，必须体现该英雄的个人身份或具体处境与独特判断；禁止套用其他英雄的泛化思考）、belief、intent、goal、action（stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一）、reason。不要输出Markdown。"""
         localInferenceBusy=true
         beginLocalInference(p,"英雄：${hero.name}")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
         ResidentAI.askStructured(
             prompt,
-            maxTokens=256,
+            maxTokens=384,
             systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
         ) { raw ->
             fun recordInferenceIssue(message:String) {
                 inferenceResult=message.take(180)
                 val latest=heroAgents(p).firstOrNull { it.name==hero.name } ?: return
-                if(latest.thought.isBlank()) latest.thought="【推理状态】本次没有生成可保存的思考记录：${message.take(180)}。请确认本地模型已加载，并保持世界运行后重试。"
+                latest.thought="【推理状态】本次推理未产生有效新记录：${message.take(180)}。等待下一轮重新尝试。"
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
             try {
