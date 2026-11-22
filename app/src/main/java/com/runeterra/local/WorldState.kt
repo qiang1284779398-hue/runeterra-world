@@ -406,7 +406,7 @@ object WorldEngine {
                     val goal=op.optString("goal")
                     val belief=op.optString("belief")
                     if(hero!=null) {
-                        if(gender.isNotBlank()) { hero.gender=gender; changes.add("性别变为${gender}") }
+                        if(gender.isNotBlank()) { hero.gender=gender; if(appearance.isBlank()) hero.appearance=(hero.appearance+"；身体性别已转变为${gender}，其余外貌特征保持不变").trim('；'); changes.add("身体性别变为${gender}") }
                         if(appearance.isNotBlank()) { hero.appearance=appearance; changes.add("外貌改变为${appearance}") }
                         if(abilities.isNotBlank()) { hero.abilities=abilities; changes.add("能力改变为${abilities}") }
                         if(lineage.isNotBlank()) { hero.lineage=lineage; changes.add("本质变为${lineage}") }
@@ -418,7 +418,7 @@ object WorldEngine {
                         if(belief.isNotBlank()) { hero.belief=belief; changes.add("信念改变") }
                         if(changes.isNotEmpty()) appendHeroEvent(hero,"${changes.joinToString("，")}。用户原始指令：${command}")
                     } else if(resident!=null) {
-                        if(gender.isNotBlank()) { resident.gender=gender; changes.add("性别变为${gender}") }
+                        if(gender.isNotBlank()) { resident.gender=gender; if(appearance.isBlank()) resident.appearance=(resident.appearance+"；身体性别已转变为${gender}，其余外貌特征保持不变").trim('；'); changes.add("身体性别变为${gender}") }
                         if(appearance.isNotBlank()) { resident.appearance=appearance; changes.add("外貌改变为${appearance}") }
                         if(abilities.isNotBlank()) { resident.abilities=abilities; changes.add("能力改变为${abilities}") }
                         if(lineage.isNotBlank()) { resident.lineage=lineage; changes.add("族类变为${lineage}") }
@@ -434,12 +434,12 @@ object WorldEngine {
                     else { outcomes.add("已改变${target}：${changes.joinToString("，")}。"); successful++ }
                 }
                 "erase_person" -> {
-                    if(hero!=null) { hero.alive=false; hero.status="已被天道抹杀"; appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
+                    if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
                     else if(resident!=null) { resident.alive=false; resident.health=0; appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "resurrect_person" -> {
-                    if(hero!=null) { hero.alive=true; hero.status="已被天道复活；原有经历保留"; appendHeroEvent(hero,"被天道复活，原有经历与记忆保留。"); outcomes.add("已复活英雄：${hero.name}。"); successful++ }
+                    if(hero!=null) { hero.alive=true; hero.health=100; hero.status="已被天道复活；原有经历保留"; appendHeroEvent(hero,"被天道复活，原有经历与记忆保留。"); outcomes.add("已复活英雄：${hero.name}。"); successful++ }
                     else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
