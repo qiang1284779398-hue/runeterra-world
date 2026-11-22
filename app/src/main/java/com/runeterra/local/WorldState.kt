@@ -53,6 +53,7 @@ object WorldEngine {
     private const val KEY_DAY="day"
     private const val KEY_ERA="world_era"
     private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
+    private const val KEY_IONIA_INVASION_DAY="ionia_invasion_day"
     private const val KEY_IONIA_WAR_ENDED="ionia_war_ended"
     private const val KEY_IONIA_PLACIDIUM="ionia_placidium_front"
     private const val KEY_SWAIN_COUP="noxus_swain_coup"
@@ -797,7 +798,7 @@ object WorldEngine {
                 if(rel.tension>=85 && invasionReady && rng.nextInt(100)<18) {
                     rel.war=true
                     if(setOf(rel.a,rel.b)==setOf("诺克萨斯","艾欧尼亚")) {
-                        p.edit().putBoolean(KEY_IONIA_INVASION_STARTED,true).apply()
+                        p.edit().putBoolean(KEY_IONIA_INVASION_STARTED,true).putLong(KEY_IONIA_INVASION_DAY,day).apply()
                         events.add("【历史转折·模拟分支】第 $day 日：诺克萨斯与艾欧尼亚之间的结构性冲突升级为军事入侵。此时点由本世界的外交、军政与组织条件促成，不代表官方正史日期。")
                     }
                     rel.warMonths=0
@@ -1011,7 +1012,7 @@ object WorldEngine {
     private val chainStages=listOf(
         LoreChainStage(30L,"ionia_front","战线扩大：艾欧尼亚村落受到波及","艾欧尼亚",-45,-2,24),
         LoreChainStage(90L,"ionia_resistance","抵抗网络形成：当地居民开始组织互助","艾欧尼亚",20,0,0),
-        LoreChainStage(180L,"ionia_recovery","战后重建或长期创伤：结果取决于人口与资源","艾欧尼亚",30,1,0),
+        LoreChainStage(30L,"ionia_recovery","战后重建或长期创伤：结果取决于人口与资源","艾欧尼亚",30,1,0),
         LoreChainStage(30L,"ruination_spread","黑雾扩散：港口周边出现新的失踪与逃亡","比尔吉沃特",-60,-4,35),
         LoreChainStage(90L,"ruination_survivors","幸存者组织临时避难与补给","比尔吉沃特",15,0,0),
         LoreChainStage(150L,"ruination_aftermath","危机余波：商路恢复或继续衰退","比尔吉沃特",25,1,0),
@@ -1025,13 +1026,15 @@ object WorldEngine {
         val triggerDays=runCatching { JSONObject(p.getString(KEY_LORE_TRIGGER_DAYS,"{}")) }.getOrDefault(JSONObject())
         chainStages.filter { stage ->
             val root=when {
-                stage.id.startsWith("ionia_") -> "ionia_war"
+                stage.id=="ionia_recovery" -> "ionia_war"
+                stage.id.startsWith("ionia_") -> "ionia_invasion"
                 stage.id.startsWith("ruination_") -> "ruination"
                 stage.id.startsWith("zaun_") -> "piltover_zaun"
                 else -> ""
             }
-            val rootDay=triggerDays.optLong(root,-1L)
-            rootDay>=0L && day==rootDay+stage.day && stage.id !in done && root in triggered
+            val rootDay=if(root=="ionia_invasion") p.getLong(KEY_IONIA_INVASION_DAY,-1L) else triggerDays.optLong(root,-1L)
+            val rootReady=if(root=="ionia_invasion") p.getBoolean(KEY_IONIA_INVASION_STARTED,false) else root in triggered
+            rootDay>=0L && day==rootDay+stage.day && stage.id !in done && rootReady
         }.forEach { stage ->
             markets[stage.region]?.let { it.food=(it.food+stage.foodDelta).coerceAtLeast(0) }
             val residents=pop.filter { it.alive && it.region==stage.region }
