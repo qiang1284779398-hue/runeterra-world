@@ -29,13 +29,13 @@ private data class Resident(
      var storyRecords: MutableList<String> = mutableListOf(),
     var mindTrait: Int = 50, var belief: String = "重视生存与身边的人", var currentThought: String = "",
     var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf(),
-    var gender:String="未记录", var appearance:String="", var abilities:String=""
+    var gender:String="未记录", var appearance:String="", var abilities:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -47,7 +47,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false))
     }
 }
 
@@ -325,10 +325,10 @@ object WorldEngine {
 8 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
 9 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
 10 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
-11 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。\n12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1,"head_severed":false,"survive":false}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
@@ -444,7 +444,7 @@ object WorldEngine {
                     else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
-                "teleport_person" -> {
+                "set_anatomy_survival" -> {\n                    if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }\n                    val hasHeadFlag=op.has("head_severed")\n                    val hasSurvivalFlag=op.has("survive")\n                    val headSevered=op.optBoolean("head_severed",hero?.headSevered ?: resident?.headSevered ?: false)\n                    val survive=op.optBoolean("survive",hero?.survivalOverride ?: resident?.survivalOverride ?: false)\n                    if(!hasHeadFlag && !hasSurvivalFlag) { outcomes.add("未执行：没有提供头部状态或生存规则。"); continue }\n                    val detail=buildString { if(hasHeadFlag) append(if(headSevered) "头部已被斩断" else "头部状态恢复完整"); if(hasSurvivalFlag) { if(isNotEmpty()) append("；"); append(if(survive) "天道授予持续生存豁免" else "撤销持续生存豁免") } }\n                    if(hero!=null) { hero.headSevered=headSevered; hero.survivalOverride=survive; if(survive) { hero.alive=true; hero.health=hero.health.coerceAtLeast(1); hero.status="头部状态：${if(headSevered) "已斩断" else "完整"}；天道生存豁免生效" }; appendHeroEvent(hero,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${hero.name}的身体与生存状态：${detail}。"); successful++ }\n                    else if(resident!=null) { resident.headSevered=headSevered; resident.survivalOverride=survive; if(survive) { resident.alive=true; resident.health=resident.health.coerceAtLeast(1) }; appendResidentEvent(resident,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${resident.name}的身体与生存状态：${detail}。"); successful++ }\n                }\n                "teleport_person" -> {
                     val destination=op.optString("destination").ifBlank { op.optString("region") }
                     if(destination.isBlank()) { outcomes.add("未执行：传送目的地为空。"); continue }
                     val region=op.optString("region").ifBlank { destination }
@@ -718,7 +718,7 @@ object WorldEngine {
         var belief:String="尚未记录稳定的个人信念", var thought:String="", var intent:String="",
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
         var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true,
-        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String=""
+        var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false
     )
     private fun canonicalGender(name:String):String = when(name) {
         "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
@@ -785,7 +785,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -794,7 +794,7 @@ object WorldEngine {
         return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
@@ -2778,7 +2778,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     } ?: oldRegion
                     if(next!=oldRegion) beginHouseholdTravel(r,next,day,events,"粮食短缺与生计压力",pop)
                 }
-                if(r.health<=0 || (r.age>=r.lifespanYears-15 && rng.nextInt(100)<1) || (r.age>=r.lifespanYears && rng.nextInt(100)<12)) {
+                if(!r.survivalOverride && (r.health<=0 || (r.age>=r.lifespanYears-15 && rng.nextInt(100)<1) || (r.age>=r.lifespanYears && rng.nextInt(100)<12))) {
                     r.alive=false
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
