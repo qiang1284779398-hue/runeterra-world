@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -17,7 +18,7 @@ import kotlinx.coroutines.sync.withLock
  * to reduce peak memory on 12GB Android phones.
  */
 object ResidentAI {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val inferenceMutex = Mutex()
     @Volatile private var model: LlamaModel? = null
     @Volatile private var loadedPath: String? = null
@@ -50,9 +51,9 @@ object ResidentAI {
                 )
                 model = loaded
                 loadedPath = path
-                callback(null)
+                withContext(Dispatchers.Main.immediate) { callback(null) }
               } catch (e: Throwable) {
-                callback(e.message ?: e.toString())
+                withContext(Dispatchers.Main.immediate) { callback(e.message ?: e.toString()) }
               } finally {
                 loading = false
               }
@@ -75,7 +76,7 @@ object ResidentAI {
             inferenceMutex.withLock {
                 val active = model
                 if (active == null || !active.isLoaded) {
-                    callback("请先加载本地 GGUF 模型。")
+                    withContext(Dispatchers.Main.immediate) { callback("请先加载本地 GGUF 模型。") }
                     return@withLock
                 }
                 try {
@@ -85,9 +86,9 @@ object ResidentAI {
                         systemPrompt = "你是符文之地居民的个人认知引擎。严格依据提供的个人经历、知识和所处环境思考，不得假装知道未经历的事情。输出简洁、可执行的结果。",
                         maxTokens = 256
                     )
-                    callback(result.text.trim())
+                    withContext(Dispatchers.Main.immediate) { callback(result.text.trim()) }
                 } catch (e: Throwable) {
-                    callback("本地推理错误：${e.message ?: e.toString()}")
+                    withContext(Dispatchers.Main.immediate) { callback("本地推理错误：${e.message ?: e.toString()}") }
                 }
             }
         }
