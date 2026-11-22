@@ -2855,7 +2855,7 @@ private fun craftBonus(region:String):Int = when(region) {
             try {
                 val residentRecord=people(p).firstOrNull { it.id==r.id }
                 if(residentRecord!=null) {
-                    residentRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\\n"+raw)
+                    residentRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\n"+raw)
                     savePeople(p,people(p).map { if(it.id==residentRecord.id) residentRecord else it })
                 }
                 val result=extractCharacterJson(raw)
@@ -3087,7 +3087,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             try {
                 val heroRecord=heroAgents(p).firstOrNull { it.name==hero.name }
                 if(heroRecord!=null) {
-                    heroRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\\n"+raw)
+                    heroRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\n"+raw)
                     saveHeroes(p,heroAgents(p).map { if(it.name==heroRecord.name) heroRecord else it })
                 }
                 val result=extractCharacterJson(raw)
