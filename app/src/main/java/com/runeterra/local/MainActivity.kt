@@ -254,11 +254,21 @@ class MainActivity : Activity() {
             .setTitle("居民档案（点击查看人生）")
             .setItems(entries.toTypedArray()) { _, which ->
                 val id=entries[which].substringBefore("｜").toIntOrNull() ?: return@setItems
+                val residentName=entries[which].substringAfter("｜").substringBefore("｜")
                 AlertDialog.Builder(this)
-                    .setTitle("人生传记档案")
-                    .setMessage(WorldEngine.residentHistory(this,id))
-                    .setPositiveButton("返回",null)
-                    .setNeutralButton("导出传记") { _, _ -> beginBiographyExport(id) }
+                    .setTitle("居民 ${id} 号 · ${residentName}")
+                    .setItems(arrayOf("查看人生传记", "导出传记 TXT")) { _, action ->
+                        if(action==0) {
+                            AlertDialog.Builder(this)
+                                .setTitle("人生传记档案")
+                                .setMessage(WorldEngine.residentHistory(this,id))
+                                .setPositiveButton("返回",null)
+                                .show()
+                        } else {
+                            beginBiographyExport(id)
+                        }
+                    }
+                    .setNegativeButton("取消",null)
                     .show()
             }
             .setNegativeButton("关闭",null)
