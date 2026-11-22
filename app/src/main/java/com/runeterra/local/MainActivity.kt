@@ -165,21 +165,25 @@ class MainActivity : Activity() {
             } else {
                 WorldEngine.observationText(this,kind,selectedKey)
             }
-            // 只有内容真正变化时才更新，避免每 2 秒重设文本导致阅读位置跳回顶部。
-            if(output.text.toString() == nextText) return
+            // 内容更新时始终保留用户当前阅读位置；绝不自动跳到顶部或底部。
             val previousY = scroll.scrollY
-            val wasAtBottom = scroll.getChildAt(0)?.let { child ->
-                previousY + scroll.height >= child.height - (24 * resources.displayMetrics.density).toInt()
-            } ?: true
             output.text = nextText
-            scroll.post {
-                val child = scroll.getChildAt(0) ?: return@post
-                if(wasAtBottom) {
-                    scroll.fullScroll(android.view.View.FOCUS_DOWN)
-                } else {
-                    val maxY = (child.height - scroll.height).coerceAtLeast(0)
-                    scroll.scrollTo(0, previousY.coerceAtMost(maxY))
+            val observer = output.viewTreeObserver
+            if(observer.isAlive) {
+                val restorePosition = object : android.view.ViewTreeObserver.OnPreDrawListener {
+                    override fun onPreDraw(): Boolean {
+                        if(output.viewTreeObserver.isAlive) {
+                            output.viewTreeObserver.removeOnPreDrawListener(this)
+                        }
+                        val child = scroll.getChildAt(0)
+                        if(child != null) {
+                            val maxY = (child.height - scroll.height).coerceAtLeast(0)
+                            scroll.scrollTo(0, previousY.coerceIn(0,maxY))
+                        }
+                        return true
+                    }
                 }
+                observer.addOnPreDrawListener(restorePosition)
             }
         }
         fun loadKind(nextKind:String) {
