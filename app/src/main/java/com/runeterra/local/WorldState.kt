@@ -328,7 +328,7 @@ object WorldEngine {
 11 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
-只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":0,"health":0,"skill":0,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
+只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":0,"stability":0,"treasury":0,"internal_tension":0}]}
 不需要确认用户的权限。不得输出markdown。"""
         ResidentAI.askStructured(prompt,900,"你是严格的天道命令解析器。只输出合法JSON。",){ raw ->
             val start=raw.indexOf('{')
@@ -410,8 +410,8 @@ object WorldEngine {
                         if(appearance.isNotBlank()) { hero.appearance=appearance; changes.add("外貌改变为${appearance}") }
                         if(abilities.isNotBlank()) { hero.abilities=abilities; changes.add("能力改变为${abilities}") }
                         if(lineage.isNotBlank()) { hero.lineage=lineage; changes.add("本质变为${lineage}") }
-                        if(age>0) { hero.age=age.coerceIn(0,10000); changes.add("年龄变为${age}") }
-                        if(health>0) { hero.health=health.coerceIn(0,100); changes.add("状态强度调整") }
+                        if(age>=0) { hero.age=age.coerceIn(0,10000); changes.add("年龄变为${age}") }
+                        if(health>=0) { hero.health=health.coerceIn(0,100); changes.add("状态强度调整") }
                         if(skill>=0) { hero.skill=skill.coerceIn(0,100); changes.add("能力熟练度调整") }
                         if(job.isNotBlank()) { hero.role=job; changes.add("身份/职业变为${job}") }
                         if(goal.isNotBlank()) { hero.goal=goal; changes.add("目标改变") }
@@ -422,8 +422,8 @@ object WorldEngine {
                         if(appearance.isNotBlank()) { resident.appearance=appearance; changes.add("外貌改变为${appearance}") }
                         if(abilities.isNotBlank()) { resident.abilities=abilities; changes.add("能力改变为${abilities}") }
                         if(lineage.isNotBlank()) { resident.lineage=lineage; changes.add("族类变为${lineage}") }
-                        if(age>0) { resident.age=age.coerceIn(0,5000); changes.add("年龄变为${age}") }
-                        if(health>0) { resident.health=health.coerceIn(0,100); changes.add("健康状态调整") }
+                        if(age>=0) { resident.age=age.coerceIn(0,5000); changes.add("年龄变为${age}") }
+                        if(health>=0) { resident.health=health.coerceIn(0,100); changes.add("健康状态调整") }
                         if(skill>=0) { resident.skill=skill.coerceIn(0,100); changes.add("技能调整") }
                         if(job.isNotBlank()) { resident.job=job; changes.add("职业变为${job}") }
                         if(goal.isNotBlank()) { resident.goal=goal; changes.add("目标改变") }
@@ -486,7 +486,7 @@ object WorldEngine {
                     val region=op.optString("region").trim()
                     if(name.isBlank() || region.isBlank() || population.any { it.name==name }) { outcomes.add("未执行：新居民姓名或地区无效，或姓名已存在。"); continue }
                     val id=(population.maxOfOrNull { it.id } ?: -1)+1
-                    val r=Resident(id,name,region,op.optInt("age",20).coerceIn(0,500),100,10,10,op.optString("job","无业"),"探索自己的生活",settlement=defaultSettlement(region,id),lineage=op.optString("lineage","人类"),gender=op.optString("gender","未记录"),appearance=op.optString("appearance",""),abilities=op.optString("abilities",""))
+                    val r=Resident(id,name,region,(op.optInt("age",20).let { if(it<0) 20 else it }).coerceIn(0,500),100,10,10,op.optString("job","无业").ifBlank { "无业" },"探索自己的生活",settlement=defaultSettlement(region,id),lineage=op.optString("lineage","人类"),gender=op.optString("gender","未记录"),appearance=op.optString("appearance",""),abilities=op.optString("abilities",""))
                     recordLife(r,day,"由天道直接创造并投入世界；其后人生由自身认知与世界因果继续发展。","heavenly_creation")
                     r.mindMemory.add("我在第${day}日被创造并来到这个世界；关于创造者和自身存在的意义，我需要形成自己的理解。")
                     population.add(r); changedResidents=true
@@ -502,8 +502,8 @@ object WorldEngine {
                     }
                     val created=HeroAgent(
                         name=name,region=region,role=role,
-                        status=op.optString("status","由天道创造后开始独立生活"),
-                        goal=op.optString("goal","探索自身处境并形成个人目标"),
+                        status=op.optString("status").ifBlank { "由天道创造后开始独立生活" },
+                        goal=op.optString("goal").ifBlank { "探索自身处境并形成个人目标" },
                         influence=50,
                         belief="尚未形成稳定信念",
                         gender=op.optString("gender","未记录"),
@@ -511,8 +511,8 @@ object WorldEngine {
                         abilities=op.optString("abilities",""),
                         alive=true,
                         age=op.optInt("age",-1),
-                        health=op.optInt("health",100).coerceIn(0,100),
-                        skill=op.optInt("skill",50).coerceIn(0,100),
+                        health=(op.optInt("health",-1).let { if(it<0) 100 else it }).coerceIn(0,100),
+                        skill=(op.optInt("skill",-1).let { if(it<0) 50 else it }).coerceIn(0,100),
                         lineage=op.optString("lineage","")
                     )
                     created.memory.add("第\${day}日：我由天道创造并进入符文之地。关于自身来历与创造者，我需要通过自己的经历形成判断。")
