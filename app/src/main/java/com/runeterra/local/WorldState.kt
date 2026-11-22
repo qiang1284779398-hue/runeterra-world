@@ -31,6 +31,36 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_LORE="lore_triggers"
+    private data class LorePulse(val id:String,val day:Long,val title:String,val description:String,val region:String,val foodLoss:Int,val healthLoss:Int)
+    // Official lore inspirations; dates are simulation milestones, not canon chronology.
+    private val lorePulses=listOf(
+        LorePulse("ionia_war",120L,"艾欧尼亚战争的余波","诺克萨斯入侵的模拟历史冲击：抵抗、伤亡与流离失所开始影响当地居民。","艾欧尼亚",70,3),
+        LorePulse("demacia_mage",240L,"德玛西亚魔法禁令加剧","模拟禁魔政治压力：法师家庭隐匿身份、离开城镇，社会信任出现裂痕。","德玛西亚",25,1),
+        LorePulse("shurima_rise",360L,"恕瑞玛复兴浪潮","模拟古帝国复兴带来的遗迹探索、商路复苏与权力争夺。","恕瑞玛",10,0),
+        LorePulse("ruination",540L,"黑雾侵袭的传闻","模拟破败之王相关黑雾危机：比尔吉沃特周边出现恐慌、失踪与逃难。","比尔吉沃特",90,8),
+        LorePulse("piltover_zaun",720L,"双城科技与阶层冲突","皮尔特沃夫与祖安的模拟工业发展加速，财富增长伴随事故与贫富矛盾。","祖安",35,2),
+        LorePulse("freljord",900L,"弗雷尔卓德寒潮与部族冲突","模拟严冬压迫资源，部族之间争夺生存物资，旅人风险上升。","弗雷尔卓德",110,5),
+        LorePulse("bilgewater",1080L,"比尔吉沃特海上争端","模拟港口贸易、海盗势力与悬赏活动造成的治安波动。","比尔吉沃特",30,2),
+        LorePulse("ixtal",1260L,"以绪塔尔边境与元素异动","模拟隐秘文明受到外界探索影响，元素环境与边境冲突出现变化。","以绪塔尔",20,1)
+    )
+    private fun applyLorePulse(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random) {
+        val triggered=runCatching { JSONArray(p.getString(KEY_LORE,"[]")).let { a -> (0 until a.length()).map { a.getString(it) }.toMutableSet() } }.getOrDefault(mutableSetOf())
+        lorePulses.filter { it.day==day && !triggered.contains(it.id) }.forEach { pulse ->
+            val market=markets[pulse.region]
+            if(market!=null) market.food=(market.food-pulse.foodLoss).coerceAtLeast(0)
+            val affected=pop.filter { it.alive && it.region==pulse.region }
+            affected.forEach { r -> r.health=(r.health-pulse.healthLoss).coerceAtLeast(0) }
+            val moved=affected.filter { rng.nextInt(100)<18 }
+            moved.forEach { r ->
+                val dest=regions[(regions.indexOf(pulse.region)+1)%regions.size]
+                r.region=dest
+            }
+            events.add("【官方背景事件·模拟演绎】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人逃离${pulse.region}。")
+            triggered.add(pulse.id)
+        }
+        p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).apply()
+    }
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔")
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
@@ -77,6 +107,7 @@ object WorldEngine {
         repeat(days.coerceAtLeast(1)) {
             day++
             val rng=Random(day*7919L+17L)
+            applyLorePulse(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
