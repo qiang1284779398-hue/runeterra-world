@@ -143,7 +143,9 @@ object WorldEngine {
         "恕瑞玛" to FactionLore("帝国复兴与绿洲城邦并存","太阳圆盘信仰者、复兴势力与地方统治者","独立城邦、反帝国势力与掠夺集团","争夺古代遗产、水源、商路与帝国合法性","复兴势力代表"),
         "巨神峰" to FactionLore("山地城邦、宗教组织与星灵影响","烈阳教派与地方守护者","皎月教派及不同信仰群体","信仰、登山朝圣与星灵力量影响地方秩序","烈阳教派长老"),
         "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","敌对海盗船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
-        "以绪塔尔" to FactionLore("隐秘城邦与元素魔法贵族治理","以绪奥肯统治阶层与元素法师","边境探索者、异议者与外来势力","维持隔绝与元素秩序，防止外界发现其文明","以绪奥肯统治者")
+        "以绪塔尔" to FactionLore("隐秘城邦与元素魔法贵族治理","以绪奥肯统治阶层与元素法师","边境探索者、异议者与外来势力","维持隔绝与元素秩序，防止外界发现其文明","以绪奥肯统治者"),
+        "班德尔城" to FactionLore("班德尔城及其通往符文之地各处的班德尔入口；约德尔人社会","约德尔社群与各地入口守护者","外界威胁、入口失序与误入者带来的风险","维护班德尔城与各入口的联系及约德尔社群生活","约德尔社群代表（模拟）"),
+        "暗影岛" to FactionLore("受黑雾与破败诅咒影响的岛屿；并非普通主权国家","亡灵势力与黑雾影响（非统一政府）","生者、幸存者与抵抗黑雾的力量","黑雾侵蚀、灵魂束缚与生者避险","无统一统治者")
     )
     private fun factionStates(p:android.content.SharedPreferences):MutableMap<String,Faction> {
         val raw=p.getString(KEY_FACTIONS,null)
@@ -470,8 +472,10 @@ object WorldEngine {
         }
         p.edit().putString("lore_chain_done",JSONArray().apply { done.forEach { put(it) } }.toString()).apply()
     }
-    private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔")
-    private val settlementSeeds=mapOf("德玛西亚" to listOf("雄都","边境要塞","白谷村"),"诺克萨斯" to listOf("不朽堡垒","军团驻地","外省聚落"),"艾欧尼亚" to listOf("普雷西典","纳沃利村落","寺院聚落"),"皮尔特沃夫" to listOf("皮尔特沃夫上城","港口工坊区","外环居住区"),"祖安" to listOf("静水区","裂沟工坊区","底层社区"),"弗雷尔卓德" to listOf("阿瓦罗萨营地","凛冬之爪营地","寒地狩猎聚落"),"恕瑞玛" to listOf("太阳圆盘城","绿洲城镇","沙漠商路驿站"),"巨神峰" to listOf("烈阳圣所","皎月隐居地","山麓朝圣聚落"),"比尔吉沃特" to listOf("屠夫之桥港区","船长码头","外海渔村"),"以绪塔尔" to listOf("以绪奥肯","元素学院聚落","边境隐居村"))
+    // The simulation includes the ten core political/cultural regions plus Bandle City and the Shadow Isles; the Void is a transregional threat, not a conventional state.
+    private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔","班德尔城","暗影岛")
+    // Canon-named places are used only where Riot lore identifies them; generic settlements are explicitly simulation placeholders.
+    private val settlementSeeds=mapOf("德玛西亚" to listOf("德玛西亚雄都","高银沼","未命名边境村镇"),"诺克萨斯" to listOf("不朽堡垒","诺克萨斯军团驻地（模拟）","帝国行省聚落（模拟）"),"艾欧尼亚" to listOf("纳沃利圣所","普雷西典","艾欧尼亚地方村落（模拟）"),"皮尔特沃夫" to listOf("皮尔特沃夫城","太阳之门","海港与工坊区（模拟）"),"祖安" to listOf("祖安上层城区","裂沟与底层城区（模拟）","炼金工坊聚落（模拟）"),"弗雷尔卓德" to listOf("霜卫要塞","拉克尔斯泰克","流动部族营地（模拟）"),"恕瑞玛" to listOf("太阳圆盘遗址","纳施拉美","绿洲与商路聚落（模拟）"),"巨神峰" to listOf("烈阳教派圣所（模拟）","皎月信徒隐居地（模拟）","山麓朝圣聚落（模拟）"),"比尔吉沃特" to listOf("屠夫之桥","屠宰码头","布胡鲁神庙"),"以绪塔尔" to listOf("以绪奥肯","元素法师聚落（模拟）","边境隐居村（模拟）"),"班德尔城" to listOf("班德尔城","符文之地班德尔入口（模拟）","班德尔居民聚落（模拟）"),"暗影岛" to listOf("破败王城遗迹（模拟）","幽魂侵蚀地带（模拟）","暗影海岸（模拟）"))
     private fun defaultSettlement(region:String,id:Int):String { val options=settlementSeeds[region] ?: listOf(region+"聚落"); return options[Math.floorMod(id,options.size)] }
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
@@ -486,6 +490,8 @@ object WorldEngine {
         "恕瑞玛" -> -1
         "比尔吉沃特" -> -1
         "以绪塔尔" -> 1
+        "暗影岛" -> -2
+        "班德尔城" -> 0
         else -> 0
     }
     private fun craftBonus(region:String):Int = when(region) {
