@@ -325,7 +325,8 @@ object WorldEngine {
 8 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
 9 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
 10 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
-11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。\n12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。
+12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
 只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1,"head_severed":false,"survive":false}]}
@@ -444,7 +445,18 @@ object WorldEngine {
                     else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
-                "set_anatomy_survival" -> {\n                    if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }\n                    val hasHeadFlag=op.has("head_severed")\n                    val hasSurvivalFlag=op.has("survive")\n                    val headSevered=op.optBoolean("head_severed",hero?.headSevered ?: resident?.headSevered ?: false)\n                    val survive=op.optBoolean("survive",hero?.survivalOverride ?: resident?.survivalOverride ?: false)\n                    if(!hasHeadFlag && !hasSurvivalFlag) { outcomes.add("未执行：没有提供头部状态或生存规则。"); continue }\n                    val detail=buildString { if(hasHeadFlag) append(if(headSevered) "头部已被斩断" else "头部状态恢复完整"); if(hasSurvivalFlag) { if(isNotEmpty()) append("；"); append(if(survive) "天道授予持续生存豁免" else "撤销持续生存豁免") } }\n                    if(hero!=null) { hero.headSevered=headSevered; hero.survivalOverride=survive; if(survive) { hero.alive=true; hero.health=hero.health.coerceAtLeast(1); hero.status="头部状态：${if(headSevered) "已斩断" else "完整"}；天道生存豁免生效" }; appendHeroEvent(hero,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${hero.name}的身体与生存状态：${detail}。"); successful++ }\n                    else if(resident!=null) { resident.headSevered=headSevered; resident.survivalOverride=survive; if(survive) { resident.alive=true; resident.health=resident.health.coerceAtLeast(1) }; appendResidentEvent(resident,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${resident.name}的身体与生存状态：${detail}。"); successful++ }\n                }\n                "teleport_person" -> {
+                "set_anatomy_survival" -> {
+                    if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
+                    val hasHeadFlag=op.has("head_severed")
+                    val hasSurvivalFlag=op.has("survive")
+                    val headSevered=op.optBoolean("head_severed",hero?.headSevered ?: resident?.headSevered ?: false)
+                    val survive=op.optBoolean("survive",hero?.survivalOverride ?: resident?.survivalOverride ?: false)
+                    if(!hasHeadFlag && !hasSurvivalFlag) { outcomes.add("未执行：没有提供头部状态或生存规则。"); continue }
+                    val detail=buildString { if(hasHeadFlag) append(if(headSevered) "头部已被斩断" else "头部状态恢复完整"); if(hasSurvivalFlag) { if(isNotEmpty()) append("；"); append(if(survive) "天道授予持续生存豁免" else "撤销持续生存豁免") } }
+                    if(hero!=null) { hero.headSevered=headSevered; hero.survivalOverride=survive; if(survive) { hero.alive=true; hero.health=hero.health.coerceAtLeast(1); hero.status="头部状态：${if(headSevered) "已斩断" else "完整"}；天道生存豁免生效" }; appendHeroEvent(hero,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${hero.name}的身体与生存状态：${detail}。"); successful++ }
+                    else if(resident!=null) { resident.headSevered=headSevered; resident.survivalOverride=survive; if(survive) { resident.alive=true; resident.health=resident.health.coerceAtLeast(1) }; appendResidentEvent(resident,"${detail}。即使头部被斩断，天道生存豁免仍使其保持存活；该规则持续生效，直至天道撤销。"); outcomes.add("已调整${resident.name}的身体与生存状态：${detail}。"); successful++ }
+                }
+                "teleport_person" -> {
                     val destination=op.optString("destination").ifBlank { op.optString("region") }
                     if(destination.isBlank()) { outcomes.add("未执行：传送目的地为空。"); continue }
                     val region=op.optString("region").ifBlank { destination }
