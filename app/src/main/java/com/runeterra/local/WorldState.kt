@@ -3008,7 +3008,7 @@ private fun craftBonus(region:String):Int = when(region) {
 
     /** One canon character receives a private reasoning turn using the shared local model. */
     fun requestLocalHeroThinking(context:Context) {
-        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
         // Every living hero remains an individual agent, including recluses, sealed/dormant
