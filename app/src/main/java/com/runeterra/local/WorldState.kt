@@ -194,7 +194,7 @@ object WorldEngine {
             if(options.isEmpty()){observations.add("当前生活暂时稳定");options.add("继续当前职业，积累经验与资源")}
             val selected=if(r.mindTrait>=70) options.firstOrNull{it.contains("风险")||it.contains("稳定")||it.contains("优先")} ?: options.first()
                 else if(r.mindTrait<=30) options.last() else options[rng.nextInt(options.size)]
-            val thought="第${day}日：我观察到${observations.joinToString("；")}。我倾向于${selected}。"
+            val thought="第${day}日（世界规则推演，非本地模型）：我观察到${observations.joinToString("；")}。我倾向于${selected}。"
             r.currentThought=thought
             r.intent=selected
             // Residents can turn their private intention into a concrete livelihood decision.
@@ -2634,6 +2634,20 @@ private fun craftBonus(region:String):Int = when(region) {
     }
     @Volatile private var localInferenceBusy=false
     private const val KEY_AI_CURSOR="resident_ai_cursor"
+    private const val KEY_AI_NEXT_SIDE="world_ai_next_side"
+
+    /** Fairly alternates heroes and residents. A busy model does not consume or skip a turn. */
+    fun requestNextLocalThinking(context:Context) {
+        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val hasResidents=people(p).any { it.alive }
+        val hasHeroes=heroAgents(p).any { it.alive }
+        if(!hasResidents && !hasHeroes) return
+        val nextSide=p.getInt(KEY_AI_NEXT_SIDE,0)
+        val heroTurn=when { hasHeroes && hasResidents -> nextSide==0; hasHeroes -> true; else -> false }
+        if(hasHeroes && hasResidents) p.edit().putInt(KEY_AI_NEXT_SIDE,if(heroTurn) 1 else 0).apply()
+        if(heroTurn) requestLocalHeroThinking(context) else requestLocalResidentThinking(context)
+    }
 
     /**
      * Runs one real local-model decision at a time. Every resident keeps separate
@@ -2674,29 +2688,29 @@ private fun craftBonus(region:String):Int = when(region) {
                 .takeLast(5).joinToString("；")
         }.getOrDefault("")
         val publicInstitutions=localFaction?.let { "当地公开政治结构：${it.government}；当前公共议题：${it.policy}；公开领袖或机构：${it.leader}" } ?: "当地没有可用的公开政体细节"
-        val prompt="""你是符文之地中一名有自身经历、局限知识、关系和利益的居民的个人认知引擎。你不是旁白，不是游戏角色，不知道全世界发生的事。只能依据此人的亲历、可信记忆和当前可观察信息判断；不得替别人决定，也不得捏造对话、事件或知识。
-人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；性别：${r.gender}；外貌：${r.appearance.ifBlank { "未特别记录" }}；能力：${r.abilities.ifBlank { "依职业与既有设定" }}；职业：${r.job}；当前活动：${r.dailyActivity}；疲劳：${r.fatigue}/100；生活状态：${r.morale}/100；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
-人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
-已知关系：${relations}。
-同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
-近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
-个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。\n天道直接改写并长期保存的完整主观人生记忆（若非空，优先纳入自我身份与决策）：${r.identityMemory.ifBlank { "无" }}。
-若个人记忆中出现“【天道改写的主观人生记忆／身份认知】”，它是天道直接写入的主观人生记忆，必须作为此人真实的第一人称过去、身份认知与经验参与推理，不得把它降格为传闻或普通外部信息；但人物当前身体、所在地、眼前环境和符文之地客观事实仍以当前身体状态与世界资料为准。若只有普通“天道干预”记录，则它仍只是一段收到的信息，可以质疑或研究。
-当前历史锚点：${eraAnchor}；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。当地社会背景：${localLore}。
-当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
-最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
-当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
-当前世界日期：第${day}日。
-当前生效的天道规则：${activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }}。
-请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、疲劳、技能、资源、职业和所处地区；疲劳过高或正在休养时，不应安排高强度劳动、远行或战斗。行动还必须符合当地真实社会条件：德玛西亚需考虑王室秩序、贵族与禁魔制度；诺克萨斯需考虑帝国军政、军团与地方权力；艾欧尼亚需考虑地方社群自治、寺院传统和精神领域影响；皮尔特沃夫需考虑议会、贸易家族与工坊；祖安需考虑地下城环境、化学工业、污染和阶层差异；弗雷尔卓德需考虑严寒、部族与迁徙；恕瑞玛需考虑水源、绿洲与商路；比尔吉沃特需考虑港口、船长与海上风险。不要把地区背景误当成个人已知的秘密，也不要把所有居民写成同一种文化。不合理时选择stay。不要为了制造剧情而行动。
-行动选择应体现这个人自己的长期兴趣和处境，而不只是生存：可以维持现状、寻找食物、求职或转行、向可信亲友求助、练习现有职业技能，或主动结识同一聚落中真实存在的人。不要为了制造剧情而强行选择社交或成长。
-如果个人记忆中有天道干预、异常信息或关于世界本质的疑问，可以自主选择investigate_world来整理假说、观察现象并寻找证据，或选择discuss_world与真实可接触的亲友交流；没有研究条件时也可以暂缓。
-只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一；investigate_world用于独立研究世界规律或核验天道信息，discuss_world仅在有可接触的可信关系时交流；不得自动得出超出证据的结论）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
+        val recentLife=r.history.takeLast(3).joinToString("；") { it.take(110) }.ifBlank { "暂无重要人生记录" }
+        val privateMemory=r.mindMemory.takeLast(5).joinToString("；") { it.take(110) }.ifBlank { "暂无明确私人记忆" }
+        val personalIdentity=r.identityMemory.takeLast(260).ifBlank { "无额外身份记忆" }
+        val publicRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
+        val prompt="""你是符文之地的一名普通居民本人，不是旁白。只按自己的亲历、记忆、感官和可接触信息思考；不知道的事情必须承认不知道，不能编造事件或对话。
+【个体】编号${r.id}；姓名${r.name}；${r.age}岁；${r.gender}；${r.region}／${r.settlement}；职业${r.job}。
+【人格与目标】人格倾向${r.mindTrait}/100；信念：${r.belief}；长期目标：${r.goal}；当前意图：${r.intent}。
+【身体和生计】健康${r.health}/100；疲劳${r.fatigue}/100；心境${r.morale}/100；粮食${r.food}；财富${r.coins}；技能${r.skill}/100；当前活动${r.dailyActivity}。
+【关系】${relations.take(260)}。
+【附近可接触的人】${socialCandidates.take(260)}。只有确实可能接触时才考虑交往。
+【最近人生经历】${recentLife}。
+【私人记忆】${privateMemory}。
+【身份记忆】${personalIdentity}。若其中含有天道直接写入的主观人生记忆，应视为本人真实记忆；普通外部信息仍可质疑。
+【上一轮思考】${r.currentThought.take(180).ifBlank { "尚无模型思考记录" }}。若没有新证据，不要换词复述旧想法；明确说出仍在犹豫的具体问题或维持现状的个人理由。
+【当地可知背景】${localLore.take(170)}；${publicInstitutions.take(130)}；近期本地事件：${localEvents.take(180).ifBlank { "无" }}。
+【时代与日期】${eraAnchor.take(100)}；第${day}日；当前规则：${publicRules}。
+请结合至少两项此人的具体身份、经历、关系或资源，作出真正属于此人的判断。不要让所有居民都追求成长、社交或研究；可以拒绝、犹豫、害怕、坚持旧习或维持现状。行动要符合健康、年龄、技能、资源和当地条件。
+只输出一个JSON对象：thought（第一人称1-2句，具体而非口号）、belief、intent、goal、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一）、new_job、target_id。不得附加Markdown。"""
         localInferenceBusy=true
         ResidentAI.askStructured(
             prompt,
-            maxTokens=512,
-            systemPrompt="你是居民编号undefined、姓名undefined的独立个人认知引擎。必须从这个人的具体身份、性格、职业、关系、记忆和现实处境出发思考。不能套用其他居民的通用答案，不能复制其他人的思考模板；不同人可以作出相同选择，但理由必须来自各自经历。只输出完整JSON对象，不要输出Markdown。"
+            maxTokens=384,
+            systemPrompt="你是居民编号${r.id}、姓名${r.name}的独立个人认知引擎。只依据该居民自己的经历和处境推理；不得套用通用模板。只输出完整JSON对象，不要输出Markdown。"
         ) { raw ->
             fun recordResidentInferenceIssue(message:String) {
                 val latest=people(p).firstOrNull { it.id==r.id } ?: return
@@ -2884,31 +2898,33 @@ private fun craftBonus(region:String):Int = when(region) {
         if(active.isEmpty()) return
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val day=p.getLong(KEY_DAY,1L)
-        // Unanswered historical opportunities jump the ordinary queue.
-        val urgentIndex=active.indexOfFirst { candidate ->
-            val opportunity=candidate.memory.lastOrNull { it.contains("【历史事件接驳机会") }
-            val opportunityDay=opportunity?.let { Regex("""第([0-9]+)日""").find(it)?.groupValues?.getOrNull(1)?.toLongOrNull() } ?: -1L
-            opportunityDay>candidate.lastThoughtDay
-        }
-        val selectedIndex=if(urgentIndex>=0) urgentIndex else cursor
-        val hero=active[selectedIndex]
-        p.edit().putInt(KEY_HERO_AI_CURSOR,(if(urgentIndex>=0) selectedIndex+1 else cursor+1)%active.size).apply()
+        // Strict round-robin prevents one invalid/unfinished urgent request from starving every other hero.
+        val hero=active[cursor]
+        p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
         val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
         val faction=factionStates(p)[hero.region]
         val publicContext=faction?.let { it.government+"；政策："+it.policy+"；内部张力："+it.internalTension } ?: "无可用地方政体资料"
         val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
-        val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。隐居、沉寂、封印、未公开活动等状态不会取消你的内在意识，但会严格限制感知范围、可接触对象与可执行行动；若处于无法行动状态，应以整理记忆、观察已知环境或维持现状为主，不得擅自解除限制，也不得凭空制造行动结果。\n"+
-            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"；当前持续活动："+hero.dailyActivity+"。\n"+
-            "信念："+hero.belief+"；天道直接改写并长期保存的完整主观人生记忆（若非空，视为真实第一人称经历）： "+hero.identityMemory.ifBlank { "无" }+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
-            "关系："+bonds+"。当前历史锚点："+eraAnchor+"；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
-            "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
-            "若过去思考或经历中出现【历史事件接驳机会】，请把它视为通过具体渠道获得的有限信息；独立评估自己是否参与。可选action：stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event。join_event仅表示决定投入与自身身份相符的行动，不代表瞬间抵达战场或自动成功；decline_event表示明确拒绝；investigate_event表示尝试核实局势。没有相关机会时仍使用原有行动。只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action、reason。"
+        val heroMemory=hero.memory.takeLast(4).joinToString("；") { it.take(130) }.ifBlank { "暂无个人记忆" }
+        val heroHistory=hero.history.takeLast(4).joinToString("；") { it.take(120) }.ifBlank { "暂无新增经历" }
+        val heroIdentity=hero.identityMemory.takeLast(260).ifBlank { "无" }
+        val heroRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
+        val prompt="""你是符文之地的${hero.name}本人，不是旁白。尊重其官方身份、性格、能力边界和当前时代。只依据本人真实记忆、可接触关系与当前可知信息判断；不得预知未来、获取秘密情报或凭空完成行动。
+【人物】${hero.name}；${hero.role}；地区${hero.region}；处境${hero.status}；年龄${if(hero.age>=0) hero.age.toString()+"岁" else "未记录"}；身体${hero.health}；能力${hero.abilities.take(180)}。
+【信念与目标】${hero.belief}；目标${hero.goal}；意图${hero.intent}；当前活动${hero.dailyActivity}。
+【个人记忆】${heroMemory}。
+【人生经历】${heroHistory}。
+【身份记忆】${heroIdentity}。若此处包含天道写入的主观人生记忆，应视为本人真实经历；普通外部信息仍可质疑。
+【关系】${bonds.take(260)}。
+【时代背景】${eraAnchor.take(120)}；当地情况${lore.take(190)}；公共制度${publicContext.take(140)}；日期第${day}日；规则${heroRules}。
+若记忆中有历史事件接驳机会，评估是否回应；参与只代表决定，不代表瞬间抵达或成功。隐居、封印或沉寂状态会限制感知和行动，不会自动取消其个人判断。没有新信息时不要改写旧思考凑数。
+只输出完整JSON：thought（第一人称2-3句，必须体现该英雄的个人身份或具体处境）、belief、intent、goal、action（stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一）、reason。不要输出Markdown。"""
         localInferenceBusy=true
         ResidentAI.askStructured(
             prompt,
-            maxTokens=512,
+            maxTokens=384,
             systemPrompt="你是符文之地人物的个人认知引擎。严格依据角色记忆与可知信息，只输出一个完整JSON对象，字段为thought、belief、intent、goal、action、reason；不要输出Markdown代码围栏。"
         ) { raw ->
             fun recordInferenceIssue(message:String) {
