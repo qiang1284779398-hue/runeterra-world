@@ -1517,7 +1517,7 @@ object WorldEngine {
         candidates.forEach { h ->
             val side=if(h.name in noxusSet) "诺克萨斯方面" else "艾欧尼亚方面"
             val channel=if(h.name in noxusSet) "帝国军政体系、军团命令或与其身份相符的情报渠道" else "当地社群、寺院联系、亲历者或抵抗网络的消息"
-            val invitation="【历史事件接驳机会｜$eventId】第${day}日：$title。${description}。你以$side相关人物身份，通过$channel得知了与你有关的局势。你可以参与、拒绝、调查、等待或采取符合自身身份的其他行动；你不必服从任何官方剧情，也不会自动获得秘密情报或被传送。"
+            val invitation="【历史事件接驳机会｜$eventId】第${day}日：$title。${description}。你以${side}相关人物身份，通过${channel}得知了与你有关的局势。你可以参与、拒绝、调查、等待或采取符合自身身份的其他行动；你不必服从任何官方剧情，也不会自动获得秘密情报或被传送。"
             if(h.memory.none { it.contains("历史事件接驳机会｜$eventId") }) {
                 h.memory.add(invitation)
                 h.history.add("第${day}日｜收到历史事件「$title」的关联信息；是否参与由本人决定。")
