@@ -192,10 +192,7 @@ class AIInferenceService : Service() {
 
                             val startedAt = android.os.SystemClock.elapsedRealtime()
                             val hashBeforeInference = try { sha256(File(modelPath)) } catch (_: Throwable) { "读取失败" }
-                            Log.i(
-                                "RuneterraAI",
-                                "推理开始 id=$id structured=$structured inputChars=${safePrompt.length}/$cap maxTokens=$maxTokens small=$isSmall modelSHA=$hashBeforeInference"
-                            )
+                            diagnostic("INFO", "推理开始 id=$id structured=$structured inputChars=${safePrompt.length}/$cap maxTokens=$maxTokens small=$isSmall modelSHA=$hashBeforeInference")
 
                             val result = Llama.complete(
                                 model = active,
@@ -209,15 +206,12 @@ class AIInferenceService : Service() {
                             val hashAfterInference = try { sha256(File(modelPath)) } catch (_: Throwable) { "读取失败" }
                             val output = result.text.trim()
                             val replacementChars = output.count { it == '\uFFFD' }
-                            Log.i(
-                                "RuneterraAI",
-                                "推理完成 id=$id elapsedMs=$elapsedMs outputChars=${output.length} " +
-                                    "tokens=${result.tokensGenerated} tps=${result.tokensPerSecond} " +
-                                    "promptEvalMs=${result.promptEvalTimeMs} generateMs=${result.generateTimeMs} " +
-                                    "replacementChars=$replacementChars outputPreview=${output.take(100)} " +
-                                    "modelSHA_before=$hashBeforeInference modelSHA_after=$hashAfterInference " +
-                                    "fileStable=${hashBeforeInference == hashAfterInference}"
-                            )
+                            diagnostic("INFO", "推理完成 id=$id elapsedMs=$elapsedMs outputChars=${output.length} " +
+                                "tokens=${result.tokensGenerated} tps=${result.tokensPerSecond} " +
+                                "promptEvalMs=${result.promptEvalTimeMs} generateMs=${result.generateTimeMs} " +
+                                "replacementChars=$replacementChars outputPreview=${output.take(100)} " +
+                                "modelSHA_before=$hashBeforeInference modelSHA_after=$hashAfterInference " +
+                                "fileStable=${hashBeforeInference == hashAfterInference}")
                             reply(to, id, true, output)
                         } catch (e: Throwable) {
                             diagnostic("ERROR", "推理异常", e)
