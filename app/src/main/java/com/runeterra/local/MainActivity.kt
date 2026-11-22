@@ -123,14 +123,14 @@ class MainActivity : Activity() {
         panel.addView(spinner,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         panel.addView(scroll,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
         val dialog=AlertDialog.Builder(this)
-            .setTitle("人物思考与行动观察台")
+            .setTitle("符文之地 · 人物与世界观察台")
             .setView(panel)
             .setPositiveButton("关闭",null)
             .create()
 
         fun showSelected() {
             if(selectedKey.isBlank()) {
-                output.text="当前类别没有可观察的人物。"
+                output.text=if(kind=="世界事件" || kind=="人物互动") "当前筛选暂无已保存记录。" else "当前类别没有可观察的人物。"
             } else {
                 output.text=WorldEngine.observationText(this,kind,selectedKey)
             }
@@ -160,6 +160,19 @@ class MainActivity : Activity() {
         val refreshTask=object:Runnable {
             override fun run() {
                 if(dialog.isShowing) {
+                    if(kind=="世界事件" || kind=="人物互动") {
+                        val latest=WorldEngine.observationNames(this@MainActivity,kind)
+                        if(latest.isNotEmpty() && latest.firstOrNull()!=selectedKey) {
+                            val previous=selectedKey
+                            val adapter=ArrayAdapter(this@MainActivity,android.R.layout.simple_spinner_item,latest).apply {
+                                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+                            }
+                            spinner.adapter=adapter
+                            val position=latest.indexOf(previous).let { if(it>=0) it else 0 }
+                            selectedKey=latest[position]
+                            spinner.setSelection(position)
+                        }
+                    }
                     showSelected()
                     handler.postDelayed(this,2000L)
                 }
