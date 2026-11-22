@@ -31,6 +31,33 @@ object WorldEngine {
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
     private const val KEY_MARKETS="markets"
+    private const val KEY_MAGIC="magic_regions"
+    private fun magicState(p:android.content.SharedPreferences):MutableMap<String,Int>{
+        val raw=p.getString(KEY_MAGIC,null)
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).associate{a.getJSONObject(it).optString("region") to a.getJSONObject(it).optInt("level",10)}.toMutableMap()}}.getOrNull()?.let{if(it.keys.containsAll(regions))return it}
+        return regions.associateWith{region->when(region){"艾欧尼亚","巨神峰","以绪塔尔"->65;"恕瑞玛"->45;"弗雷尔卓德"->35;else->20}}.toMutableMap().also{saveMagic(p,it)}
+    }
+    private fun saveMagic(p:android.content.SharedPreferences,m:Map<String,Int>){
+        p.edit().putString(KEY_MAGIC,JSONArray().apply{m.forEach{(region,level)->put(JSONObject().put("region",region).put("level",level))}}.toString()).apply()
+    }
+    private fun tickMagic(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
+        if(day%90L!=0L)return
+        val levels=magicState(p)
+        regions.forEach{region->
+            val level=levels[region]?:20
+            val change=rng.nextInt(11)-5
+            levels[region]=(level+change).coerceIn(0,100)
+            if(levels[region]>=80 && rng.nextInt(100)<12){
+                val residents=pop.filter{it.alive&&it.region==region}.shuffled(rng).take(1+rng.nextInt(3))
+                residents.forEach{it.health=(it.health+rng.nextInt(8)-3).coerceIn(0,100)}
+                markets[region]?.let{it.food=(it.food-rng.nextInt(20)).coerceAtLeast(0)}
+                events.add("【魔法与符文·模拟】第 $day 日：${region}出现强烈魔法波动，影响${residents.size}名居民，区域魔法强度${levels[region]}。")
+            }else if(levels[region]<=15 && rng.nextInt(100)<10){
+                events.add("【魔法与符文·模拟】第 $day 日：${region}魔法活动趋于沉寂，相关研究与仪式难以开展。")
+            }
+        }
+        saveMagic(p,levels)
+    }
     private const val KEY_HEROES="heroes_state"
     private data class HeroAgent(val name:String,val region:String,val role:String,var status:String,var goal:String,var influence:Int)
     private val heroSeeds=listOf(
@@ -264,6 +291,7 @@ object WorldEngine {
             tickDiplomacy(day,p,pop,markets,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
+            tickMagic(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
             pop.filter { it.alive }.forEach { r ->
