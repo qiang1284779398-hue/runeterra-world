@@ -13,12 +13,16 @@ private data class Resident(
     var skill: Int = 1, var partnerId: Int = -1, var familyCount: Int = 0, var alive: Boolean = true,
     var history: MutableList<String> = mutableListOf(),
     var parentIds: MutableList<Int> = mutableListOf(),
-    var childIds: MutableList<Int> = mutableListOf()
+    var childIds: MutableList<Int> = mutableListOf(),
+    var friendIds: MutableList<Int> = mutableListOf(),
+    var mentorId: Int = -1,
+    var studentIds: MutableList<Int> = mutableListOf()
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds))
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -26,7 +30,10 @@ private data class Resident(
             j.optInt("partnerId",-1),j.optInt("familyCount",0),j.optBoolean("alive",true),
             (0 until (j.optJSONArray("history")?.length() ?: 0)).map { j.getJSONArray("history").getString(it) }.toMutableList(),
             (0 until (j.optJSONArray("parentIds")?.length() ?: 0)).map { j.getJSONArray("parentIds").getInt(it) }.toMutableList(),
-            (0 until (j.optJSONArray("childIds")?.length() ?: 0)).map { j.getJSONArray("childIds").getInt(it) }.toMutableList())
+            (0 until (j.optJSONArray("childIds")?.length() ?: 0)).map { j.getJSONArray("childIds").getInt(it) }.toMutableList(),
+            (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
+            j.optInt("mentorId",-1),
+            (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList())
     }
 }
 
@@ -219,6 +226,38 @@ object WorldEngine {
         }
         saveDiplomacy(p,relations)
     }
+    private fun tickSocialRelations(day:Long,pop:MutableList<Resident>,events:MutableList<String>,rng:Random) {
+        if(day%30L!=0L)return
+        val living=pop.filter{it.alive}
+        living.filter{it.friendIds.size<5}.shuffled(rng).take((living.size/18).coerceAtLeast(1)).forEach { person ->
+            val candidate=living.filter{it.id!=person.id && it.region==person.region && it.friendIds.size<5 && person.id !in it.friendIds && it.job==person.job}.randomOrNull()
+            if(candidate!=null && rng.nextInt(100)<22) {
+                person.friendIds.add(candidate.id);candidate.friendIds.add(person.id)
+                recordLife(person,day,"与"+candidate.name+"结为朋友，彼此开始建立信任。")
+                recordLife(candidate,day,"与"+person.name+"结为朋友，彼此开始建立信任。")
+                events.add("【社会关系·模拟】第 "+day+" 日："+person.name+"与"+candidate.name+"在"+person.region+"成为朋友。")
+            }
+        }
+        living.filter{it.job=="学徒" && it.mentorId<0}.shuffled(rng).take((living.size/30).coerceAtLeast(1)).forEach { apprentice ->
+            val teacher=living.filter{it.id!=apprentice.id && it.region==apprentice.region && it.skill>=15 && it.job in listOf("工匠","护卫") && it.studentIds.size<4}.randomOrNull()
+            if(teacher!=null && rng.nextInt(100)<35) {
+                apprentice.mentorId=teacher.id
+                if(apprentice.id !in teacher.studentIds)teacher.studentIds.add(apprentice.id)
+                recordLife(apprentice,day,"拜"+teacher.name+"为师，开始向其学习技艺。")
+                recordLife(teacher,day,"收"+apprentice.name+"为徒，承担传授技艺的责任。")
+                events.add("【师徒关系·模拟】第 "+day+" 日："+apprentice.name+"拜"+teacher.name+"为师，地点："+apprentice.region+"。")
+            }
+        }
+        living.filter{it.mentorId>=0}.forEach { student ->
+            val mentor=living.firstOrNull{it.id==student.mentorId}
+            if(mentor==null) {
+                student.mentorId=-1
+                recordLife(student,day,"师长离世或失联，独自继续学习。")
+            } else if(student.skill<100 && rng.nextInt(100)<18) {
+                student.skill=(student.skill+1).coerceAtMost(100)
+            }
+        }
+    }
     private const val KEY_LORE="lore_triggers"
     private data class LorePulse(val id:String,val day:Long,val title:String,val description:String,val region:String,val foodLoss:Int,val healthLoss:Int)
     // Official lore inspirations; dates are simulation milestones, not canon chronology.
@@ -345,6 +384,7 @@ object WorldEngine {
             tickDiplomacy(day,p,pop,markets,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
+            tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
             val newborns=mutableListOf<Resident>()
             pop.filter { it.alive }.forEach { r ->
