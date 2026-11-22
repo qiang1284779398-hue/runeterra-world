@@ -39,6 +39,7 @@ class MainActivity : Activity() {
         }
         val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
         val lore = Button(this).apply { text = "符文之地 / 官方世界观设定"; setOnClickListener { showRegionalLoreDirectory() } }
+        val timeline = Button(this).apply { text = "历史时间线 / 时代档案"; setOnClickListener { showTimelineDirectory() } }
         val heroes = Button(this).apply { text = "英雄 / 半神 / 超自然存在档案"; setOnClickListener { showHeroDirectory() } }
         val lineages = Button(this).apply { text = "生命体系 / 种族与族群档案"; setOnClickListener { showLineageDirectory() } }
         val ecology = Button(this).apply { text = "自然生态 / 气候 / 水源 / 植被档案"; setOnClickListener { showEcologyDirectory() } }
@@ -53,7 +54,7 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
@@ -127,6 +128,21 @@ class MainActivity : Activity() {
             .setItems(entries.toTypedArray()) { _, which ->
                 AlertDialog.Builder(this)
                     .setTitle("人物关系档案")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
+    }
+
+    private fun showTimelineDirectory() {
+        val entries=WorldEngine.timelineDirectory(this)
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 历史时间线")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("时代与历史锚点")
                     .setMessage(entries[which])
                     .setPositiveButton("返回",null)
                     .show()
@@ -258,7 +274,7 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val s = WorldEngine.load(this)
-        status.text = "世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 5 秒 = 世界 1 天"
+        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 5 秒 = 世界 1 天"
         log.text = "最近世界记录\n" + (s.events.takeLast(12).asReversed().joinToString("\n") { "• $it" }.ifBlank { "尚无事件。启动世界后将逐步产生记录。" })
     }
 
