@@ -291,7 +291,12 @@ object WorldEngine {
         HeroBond("厄运小姐","俄洛伊","比尔吉沃特权力现实与布胡鲁信仰之间的交集",54,28)
     )
     private const val KEY_HEROES="heroes_state"
-    private data class HeroAgent(val name:String,val region:String,var role:String,var status:String,var goal:String,var influence:Int)
+    private data class HeroAgent(
+        val name:String,val region:String,var role:String,var status:String,var goal:String,var influence:Int,
+        var belief:String="尚未记录稳定的个人信念", var thought:String="", var intent:String="",
+        var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
+        var lastThoughtDay:Long=0L
+    )
     private val heroSeeds=listOf(
         HeroAgent("盖伦","德玛西亚","战士","活跃","维护德玛西亚秩序",70),
         HeroAgent("拉克丝","德玛西亚","法师","隐藏身份","保护秘密与自由",65),
@@ -348,7 +353,11 @@ object WorldEngine {
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
         val raw=p.getString(KEY_HEROES,null)
-        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroAgent(it.optString("name"),it.optString("region"),it.optString("role"),it.optString("status"),it.optString("goal"),it.optInt("influence",50))}.toMutableList()}}.getOrNull()?.let{loaded->
+        if(raw!=null)runCatching{JSONArray(raw).let{a->(0 until a.length()).map{a.getJSONObject(it)}.map{HeroAgent(it.optString("name"),it.optString("region"),it.optString("role"),it.optString("status"),it.optString("goal"),it.optInt("influence",50),
+                    it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
+                    (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
+                    (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
+                    it.optLong("lastThoughtDay",0L))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -357,7 +366,7 @@ object WorldEngine {
         return heroSeeds.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
