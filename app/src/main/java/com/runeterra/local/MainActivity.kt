@@ -37,16 +37,32 @@ class MainActivity : Activity() {
             text = "重置世界"
             setOnClickListener { WorldEngine.reset(this@MainActivity); refresh() }
         }
+        val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
         val biographies = Button(this).apply {
             text = "居民档案 / 人生传记"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, factions, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showFactionDirectory() {
+        val entries=WorldEngine.factionDirectory(this)
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 势力与政体")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("势力档案")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
     }
 
     private fun showResidentDirectory() {
