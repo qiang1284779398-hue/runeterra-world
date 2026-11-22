@@ -23,13 +23,15 @@ private data class Resident(
      var travelDaysRemaining: Int = 0,
      var travelPurpose: String = "",
      var jobBeforeTravel: String = "",
-     var householdId: Int = -1
+     var householdId: Int = -1,
+     var lineage: String = "人类",
+     var lifespanYears: Int = 95
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -41,7 +43,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95))
     }
 }
 
@@ -1171,7 +1173,15 @@ private fun craftBonus(region:String):Int = when(region) {
         val rng=Random(24681357L)
         val list=(0 until 240).map { i ->
             val region=residentRegions[i%residentRegions.size]
-            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i))
+            val lineage=when {
+                region=="弗雷尔卓德" && i%10==0 -> "冰裔血脉（人类）"
+                region=="艾欧尼亚" && i%10==1 -> "瓦斯塔亚"
+                region=="恕瑞玛" && i%10==2 -> "瓦斯塔亚"
+                region=="比尔吉沃特" && i%10==3 -> "瓦斯塔亚"
+                else -> "人类"
+            }
+            val lifespan=if(lineage=="瓦斯塔亚") 500+rng.nextInt(701) else 95+rng.nextInt(11)
+            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,if(lineage=="瓦斯塔亚")80+rng.nextInt(180) else 16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i),lineage=lineage,lifespanYears=lifespan)
             recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}的${resident.settlement}，职业为${resident.job}。")
             resident
         }.toMutableList()
@@ -1344,7 +1354,9 @@ private fun craftBonus(region:String):Int = when(region) {
                     val mate=pop.firstOrNull { it.id==r.partnerId && it.alive }
                     if(mate!=null) mate.familyCount=r.familyCount
                     val id=nextId++
-                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement,householdId=r.householdId)
+                    val mateForLineage=pop.firstOrNull { it.id==r.partnerId && it.alive }
+                    val childLineage=if(r.lineage=="瓦斯塔亚" || mateForLineage?.lineage=="瓦斯塔亚") "混合血脉（非瓦斯塔亚）" else if(r.lineage=="冰裔血脉（人类）" || mateForLineage?.lineage=="冰裔血脉（人类）") "冰裔血脉（人类）" else "人类"
+                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement,householdId=r.householdId,lineage=childLineage,lifespanYears=95+rng.nextInt(11))
                     child.parentIds.add(r.id)
                     r.childIds.add(id)
                     recordLife(r,day,"家庭迎来孩子${child.name}（居民编号$id）。")
@@ -1368,7 +1380,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     } ?: oldRegion
                     if(next!=oldRegion) beginHouseholdTravel(r,next,day,events,"粮食短缺与生计压力",pop)
                 }
-                if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
+                if(r.health<=0 || (r.age>=r.lifespanYears-15 && rng.nextInt(100)<1) || (r.age>=r.lifespanYears && rng.nextInt(100)<12)) {
                     r.alive=false
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
@@ -1519,7 +1531,7 @@ private fun craftBonus(region:String):Int = when(region) {
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age}).map {
-            "${it.id}｜${it.name}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
+            "${it.id}｜${it.name}｜${it.lineage}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
         }
     }
     fun residentHistory(context:Context,id:Int):String {
@@ -1529,7 +1541,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val partner=all.firstOrNull{it.id==r.partnerId}
         return buildString {
             append("人物档案：${r.name}\n")
-            append("居民编号：${r.id}\n年龄：${r.age}岁\n地区：${r.region}\n聚落：${r.settlement}\n职业：${r.job}\n")
+            append("居民编号：${r.id}\n年龄：${r.age}岁\n生命类别：${r.lineage}\n模拟寿命参数：${r.lifespanYears}年（非官方固定寿命）\n地区：${r.region}\n聚落：${r.settlement}\n职业：${r.job}\n")
             if(r.travelDaysRemaining>0) append("旅行状态：途中，${r.travelOrigin}→${r.travelDestination}，剩余约${r.travelDaysRemaining}个模拟日\\n旅行目的：${r.travelPurpose}\\n")
             append("健康：${r.health}/100\n技能：${r.skill}\n财富：${r.coins}\n")
             append("人生状态：${if(r.alive)"在世" else "已故"}\n")
