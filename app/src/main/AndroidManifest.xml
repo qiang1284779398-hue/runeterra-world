@@ -13,6 +13,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service android:name=".AIInferenceService" android:exported="false" android:process=":ai" />
         <service
             android:name=".WorldService"
             android:exported="false"
