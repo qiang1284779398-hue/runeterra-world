@@ -43,6 +43,28 @@ object ResidentAI {
  fun modelPath()=path
  fun ask(prompt:String,callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送普通推理；promptChars="+prompt.length);send(ASK,Bundle().apply{putString("prompt",prompt)}){e->callback(e?:"AI未返回结果")}}
  fun askStructured(prompt:String,maxTokens:Int=192,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit){if(!loaded){callback("请先加载本地GGUF模型");return};record("向AI进程发送结构化推理；promptChars="+prompt.length);send(STRUCT,Bundle().apply{putString("prompt",prompt);putString("system",systemPrompt);putInt("maxTokens",maxTokens)}){e->callback(e?:"AI未返回结果")}}
- fun diagnosticReport(context:Context):String{val c=context.applicationContext;val p=c.getSharedPreferences("runeterra_ai_diagnostics",Context.MODE_PRIVATE);val am=c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager;val mi=ActivityManager.MemoryInfo().also{am.getMemoryInfo(it)};val f=File(c.filesDir,"ai_diagnostics.log");val tail=if(f.exists())f.readLines().takeLast(50).joinToString("\n") else "暂无日志";val model=p.getString("last_model",path?:"")?:"";return "AI独立进程："+(if(remote!=null)"已连接" else "未连接")+"\n绑定中："+binding+"；已绑定："+bound+"\n模型已加载："+loaded+"\n最近阶段："+p.getString("last_stage","无记录")+"\n模型路径："+model+"\n模型大小："+(if(model.isNotBlank()&&File(model).exists())(File(model).length()/1024/1024).toString()+" MB" else "未知")+"\n可用内存："+(mi.availMem/1024/1024)+" MB\n低内存："+mi.lowMemory+"\n\n最近日志：\n"+tail}
+ fun diagnosticReport(context:Context):String{
+  val c=context.applicationContext
+  val p=c.getSharedPreferences("runeterra_ai_diagnostics",Context.MODE_PRIVATE)
+  val am=c.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+  val mi=ActivityManager.MemoryInfo().also{am.getMemoryInfo(it)}
+  val f=File(c.filesDir,"ai_diagnostics.log")
+  val tail=if(f.exists())f.readLines().takeLast(50).joinToString("\\n") else "暂无日志"
+  val model=p.getString("last_model",path?:"")?:""
+  val exits=if(Build.VERSION.SDK_INT>=30){
+   try{
+    am.getHistoricalProcessExitReasons(c.packageName,0,8).joinToString("\\n\\n"){info->
+     val trace=try{info.traceInputStream?.use{it.readBytes().take(6000).toByteArray().toString(Charsets.UTF_8)}?:"无系统堆栈"}catch(e:Throwable){"读取系统堆栈失败："+e.message}
+     "进程="+info.processName+"；原因="+info.reason+"；时间="+info.timestamp+"；描述="+(info.description?:"无")+"\\n系统堆栈：\\n"+trace
+    }.ifBlank{"暂无历史进程退出记录"}
+   }catch(e:Throwable){"读取进程退出记录失败："+e.message}
+  }else "Android 11以下不支持系统退出原因记录"
+  return "AI独立进程："+(if(remote!=null)"已连接" else "未连接")+
+   "\\n绑定中："+binding+"；已绑定："+bound+"\\n模型已加载："+loaded+
+   "\\n最近阶段："+p.getString("last_stage","无记录")+"\\n模型路径："+model+
+   "\\n模型大小："+(if(model.isNotBlank()&&File(model).exists())(File(model).length()/1024/1024).toString()+" MB" else "未知")+
+   "\\n可用内存："+(mi.availMem/1024/1024)+" MB\\n低内存："+mi.lowMemory+
+   "\\n\\n最近日志：\\n"+tail+"\\n\\nAndroid系统记录的最近进程退出信息：\\n"+exits
+ }
  fun systemInfo()="llama.cpp CPU/NEON，独立 :ai 进程"
 }
