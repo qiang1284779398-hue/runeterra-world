@@ -140,7 +140,7 @@ object WorldEngine {
         "弗雷尔卓德" to FactionLore("部族联盟与氏族政治","各部族首领及联盟","敌对部族、流亡者与争夺资源的氏族","在严酷环境中争夺生存资源、盟约与部族领导权","部族首领议会"),
         "恕瑞玛" to FactionLore("帝国复兴与绿洲城邦并存","太阳圆盘信仰者、复兴势力与地方统治者","独立城邦、反帝国势力与掠夺集团","争夺古代遗产、水源、商路与帝国合法性","复兴势力代表"),
         "巨神峰" to FactionLore("山地城邦、宗教组织与星灵影响","烈阳教派与地方守护者","皎月教派及不同信仰群体","信仰、登山朝圣与星灵力量影响地方秩序","烈阳教派长老"),
-        "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","海盗 rival 船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
+        "比尔吉沃特" to FactionLore("港口自治；船长、帮派与海上势力共治","港口商会、悬赏网络与强势船长","敌对海盗船队、走私团伙与底层码头工","争夺港口、航线、赏金和海上贸易控制权","港口势力领袖"),
         "以绪塔尔" to FactionLore("隐秘城邦与元素魔法贵族治理","以绪奥肯统治阶层与元素法师","边境探索者、异议者与外来势力","维持隔绝与元素秩序，防止外界发现其文明","以绪奥肯统治者")
     )
     private fun factionStates(p:android.content.SharedPreferences):MutableMap<String,Faction> {
@@ -159,7 +159,25 @@ object WorldEngine {
     private fun tickFactionGovernance(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
         if(day%30L!=0L)return
         val states=factionStates(p)
+        val groups=organizations(p)
         states.values.forEach { f ->
+            val regionalGroups=groups.filter { it.region in f.territory }
+            val strongest=regionalGroups.maxByOrNull { it.influence + it.publicSupport/2 }
+            if(strongest!=null && strongest.influence>=70 && strongest.publicSupport>=65 && rng.nextInt(100)<12) {
+                val proposed="回应「"+strongest.name+"」的诉求："+strongest.agenda
+                if(f.policy!=proposed) {
+                    f.policy=proposed
+                    f.internalTension=(f.internalTension+2).coerceAtMost(100)
+                    events.add("【政策形成·模拟】第 "+day+" 日："+f.name+"的决策层受到"+strongest.name+"影响，政策调整为「"+proposed+"」。")
+                }
+            }
+            regionalGroups.filter { it.influence>=60 && it.publicSupport>=55 }.forEach { group ->
+                val rivals=group.rivals.mapNotNull { id -> groups.firstOrNull { it.id==id } }
+                if(rivals.any { it.influence>=60 && it.publicSupport>=55 } && rng.nextInt(100)<10) {
+                    f.internalTension=(f.internalTension+2).coerceAtMost(100)
+                    events.add("【社会压力·模拟】第 "+day+" 日："+f.name+"境内的"+group.name+"与竞争组织围绕社会方向形成对立，政治压力上升。")
+                }
+            }
             val count=pop.count{it.alive&&it.region in f.territory}
             val marketWealth=f.territory.sumOf{markets[it]?.wealth?:0}
             f.treasury=(f.treasury+count/5+marketWealth/1000-rng.nextInt(8)).coerceAtLeast(0)
@@ -518,8 +536,8 @@ object WorldEngine {
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
             tickDiplomacy(day,p,pop,markets,events,rng)
-            tickFactionGovernance(day,p,pop,markets,events,rng)
             tickOrganizations(day,p,pop,events,rng)
+            tickFactionGovernance(day,p,pop,markets,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
             tickSocialRelations(day,pop,events,rng)
             tickMagic(day,p,pop,markets,events,rng)
