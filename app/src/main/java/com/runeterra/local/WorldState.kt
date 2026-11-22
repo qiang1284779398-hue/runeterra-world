@@ -65,7 +65,7 @@ object WorldEngine {
             else -> "个人经历与社会变化"
         }
         val stage=when { r.age<6 -> "幼年"; r.age<13 -> "童年"; r.age<18 -> "少年"; r.age<30 -> "青年"; r.age<50 -> "成年"; r.age<70 -> "中年"; else -> "晚年" }
-        val sequence=r.storyRecords.size+1
+        val sequence=(r.storyRecords.lastOrNull()?.let { raw -> runCatching { JSONObject(raw).optInt("sequence",0) }.getOrDefault(0) } ?: 0)+1
         val relations=JSONObject().put("partnerId",r.partnerId).put("parentIds",JSONArray(r.parentIds))
             .put("childIds",JSONArray(r.childIds)).put("friendIds",JSONArray(r.friendIds))
             .put("mentorId",r.mentorId).put("studentIds",JSONArray(r.studentIds)).put("householdId",r.householdId)
@@ -99,6 +99,7 @@ object WorldEngine {
     private const val KEY_LORE_TRIGGER_DAYS="lore_trigger_days"
     private const val ERA_PRE_IONIA="pre_ionia_invasion"
     private const val KEY_EVENTS="events"
+    private const val KEY_EVENT_ARCHIVE="world_event_archive_v1"
     private const val KEY_RUNNING="running"
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
@@ -1731,6 +1732,8 @@ private fun craftBonus(region:String):Int = when(region) {
         val ecology=ecologyState(p)
         val fauna=faunaState(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
+        val initialEventCount=events.size
+        val archivedEvents=runCatching { val a=JSONArray(p.getString(KEY_EVENT_ARCHIVE,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         var nextId=pop.maxOfOrNull { it.id }?.plus(1) ?: p.getInt(KEY_NEXT_ID,240)
         var nextHouseholdId=(households.maxOfOrNull { it.id } ?: -1)+1
         var rngState=p.getLong(KEY_RNG_STATE,0x4D595DF4D0F33173L xor (day*7919L+17L))
@@ -2024,13 +2027,17 @@ private fun craftBonus(region:String):Int = when(region) {
             if(day%360L==0L) events.add("第 $day 日：新年，居民年龄与人生阶段变化。")
             rngState=rng.nextLong()
         }
+        if(events.size>initialEventCount) archivedEvents.addAll(events.drop(initialEventCount))
+        while(archivedEvents.size>20000) archivedEvents.removeAt(0)
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
         saveHouseholds(p,households)
         saveMarkets(p,markets)
         val arr=JSONArray();events.forEach{arr.put(it)}
+        val archiveArray=JSONArray();archivedEvents.forEach { archiveArray.put(it) }
         p.edit().putInt(KEY_NEXT_ID,nextId)
-            .putLong(KEY_DAY,day).putLong(KEY_RNG_STATE,rngState).putString(KEY_EVENTS,arr.toString()).apply()
+            .putLong(KEY_DAY,day).putLong(KEY_RNG_STATE,rngState)
+            .putString(KEY_EVENTS,arr.toString()).putString(KEY_EVENT_ARCHIVE,archiveArray.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
     }
     fun settlementDirectory(context:Context):List<String> {
@@ -2125,6 +2132,9 @@ private fun craftBonus(region:String):Int = when(region) {
         val students=all.filter{it.id in r.studentIds}
         val groups=organizations(p).filter { r.id in it.members }
         val worldEvents=runCatching {
+            val a=JSONArray(p.getString(KEY_EVENT_ARCHIVE,"[]") ?: "[]")
+            (0 until a.length()).map { a.getString(it) }
+        }.getOrDefault(emptyList()) + runCatching {
             val a=JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]")
             (0 until a.length()).map { a.getString(it) }
         }.getOrDefault(emptyList())
@@ -2151,6 +2161,17 @@ private fun craftBonus(region:String):Int = when(region) {
                 val context=worldEvents.filter { (it.contains("第 $d 日") || it.contains("第${d}日")) && (it.contains(region) || it.contains(r.name)) }
                 if(context.isNotEmpty()) { append("同日相关世界背景：\n"); context.take(4).forEach { append("· ").append(it).append("\n") } }
             }
+            append("\n【所处时代与地区事件（背景，不代表本人直接参与）】\n")
+            val livedRegions=packets.map { it.optString("region") }.filter { it.isNotBlank() }.toSet()+r.region
+            val firstKnownDay=packets.minOfOrNull { it.optLong("day",Long.MAX_VALUE) } ?: 1L
+            val contextualEvents=worldEvents.distinct().mapNotNull { event ->
+                val match=Regex("第\\s*(\\d+)\\s*日").find(event)
+                val eventDay=match?.groupValues?.getOrNull(1)?.toLongOrNull()
+                if(eventDay!=null && eventDay>=firstKnownDay && livedRegions.any { event.contains(it) }) eventDay to event else null
+            }.sortedBy { it.first }
+            append("可检索到的相关时代事件：${contextualEvents.size}条\n")
+            contextualEvents.forEach { (eventDay,event) -> append("第${eventDay}日｜${event}\n") }
+            append("这些事件用于还原人物所处的社会环境；除非个人事件明确记载，否则不能推断其目击、参与或受到直接伤害。\n")
             append("\n【人生阶段与事件分类索引】\n")
             packets.groupBy { it.optString("lifeStage","阶段未记录") }.forEach { (stage,items) ->
                 append("${stage}：${items.size}个节点\n")
