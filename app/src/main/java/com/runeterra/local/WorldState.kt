@@ -97,6 +97,7 @@ object WorldEngine {
             "【存档提示】\\n如果这是在旧版本中已经运行过的存档，单纯显示新历史锚点不会改写旧人物经历；如需严格从该时期开始，请使用重置世界建立新存档。"
         )
     }
+    fun timelineStatus(context:Context):String = timelineDirectory(context).firstOrNull()?.substringBefore("\\n")?.removePrefix("【")?.removeSuffix("】") ?: "历史锚点未设定"
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
@@ -874,6 +875,7 @@ object WorldEngine {
         val groups=organizations(p)
         val factions=factionStates(p)
         val relations=diplomacy(p)
+        val heroes=heroAgents(p)
         val triggerDays=runCatching { JSONObject(p.getString(KEY_LORE_TRIGGER_DAYS,"{}")) }.getOrDefault(JSONObject())
         fun group(id:String)=groups.firstOrNull { it.id==id }
         fun ready(id:String):Boolean=when(id) {
@@ -905,6 +907,12 @@ object WorldEngine {
             events.add("【世界演化·模拟分支】第 $day 日 · ${pulse.title}：${pulse.description} 影响${affected.size}名居民，${moved.size}人迁离${pulse.region}。事件由当前势力与社会条件触发，不是预设的官方正史时间表。")
             triggered.add(pulse.id)
             triggerDays.put(pulse.id,day)
+            if(pulse.id=="shurima_rise") {
+                heroes.firstOrNull { it.name=="阿兹尔" }?.let { it.role="复苏的飞升者皇帝"; it.status="太阳圆盘仪式后复苏，开始寻求重建恕瑞玛" }
+                heroes.firstOrNull { it.name=="泽拉斯" }?.let { it.role="苏醒的飞升者"; it.status="古代封印与帝国复兴引发其力量重新进入当代历史" }
+                saveHeroes(p,heroes)
+                events.add("【恕瑞玛历史转折·模拟分支】阿兹尔与泽拉斯重新进入当代事件链；复苏的具体过程和结果属于本世界模拟，不代表官方正史。")
+            }
         }
         p.edit().putString(KEY_LORE,JSONArray().apply { triggered.forEach { put(it) } }.toString()).putString(KEY_LORE_TRIGGER_DAYS,triggerDays.toString()).apply()
         saveOrganizations(p,groups)
