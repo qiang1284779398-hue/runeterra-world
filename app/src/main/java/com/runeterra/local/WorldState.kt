@@ -1972,6 +1972,28 @@ object WorldEngine {
                 recordLocalStory(pop,day,e.region,"当地出现"+cause+"；居民开始担心水源、土地、污染或生计条件对未来的影响。",rng,3,setOf("农夫","采集者","药师","伐木工"))
             }
         }
+        // Piltover and Zaun are one vertically connected urban ecosystem, not isolated region boxes:
+        // industrial runoff descends into Zaun while severe Zaunite fumes can affect the upper city.
+        val zaun=state["祖安"]
+        val piltover=state["皮尔特沃夫"]
+        if(zaun!=null && piltover!=null) {
+            if(piltover.pollution>=55) zaun.pollution=(zaun.pollution+1).coerceAtMost(100)
+            if(zaun.pollution>=75) piltover.pollution=(piltover.pollution+1).coerceAtMost(100)
+            if(day%90L==0L && (zaun.pollution>=75 || piltover.pollution>=75)) {
+                val affectedRegions=buildList {
+                    if(zaun.pollution>=75) add("祖安")
+                    if(piltover.pollution>=75) add("皮尔特沃夫")
+                }
+                affectedRegions.forEach { region ->
+                    val exposed=pop.filter { it.alive && it.region==region }.shuffled(rng).take(1+rng.nextInt(3))
+                    exposed.forEach { person ->
+                        person.health=(person.health-1-rng.nextInt(3)).coerceAtLeast(0)
+                        recordLife(person,day,"双城相连的工业污染持续影响当地空气与生活环境；身体状态受到轻微影响，污染源与治理责任仍是社会争议。","twin_city_environment")
+                    }
+                }
+                events.add("【双城生态连锁·模拟】第 ${day} 日：皮尔特沃夫与祖安的工业污染通过上下城环境联系产生跨区影响；祖安污染${zaun.pollution}/100，皮尔特沃夫污染${piltover.pollution}/100。")
+            }
+        }
         saveEcology(p,state)
     }
     private const val KEY_FAUNA="regional_fauna_state"
