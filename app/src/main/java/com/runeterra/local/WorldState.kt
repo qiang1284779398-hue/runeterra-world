@@ -1095,11 +1095,8 @@ object WorldEngine {
         if(kind=="世界事件" || kind=="人物互动") {
             val archived=runCatching { val a=JSONArray(p.getString(KEY_EVENT_ARCHIVE,"[]") ?: "[]"); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
             val current=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]"); (0 until a.length()).map { a.getString(it) } }.getOrDefault(emptyList())
-            val all=(archived+current).distinct().takeLast(500)
-            val selected=if(kind=="人物互动") all.filter { event ->
-                listOf("关系","分享","帮助","朋友","伴侣","家庭","结识","社交","相识","求助","婚姻","交谈","会面","互动").any { event.contains(it) }
-            } else all
-            return selected.asReversed()
+            val all=archived+current
+            return all.asReversed()
         }
         return if(kind=="英雄") {
             heroAgents(p).sortedBy { it.region }.map { it.name }
@@ -1128,9 +1125,9 @@ object WorldEngine {
                 append("最近思考日期：${if(h.lastThoughtDay>0) "第${h.lastThoughtDay}日" else "尚未推理"}\n")
                 append("最近一次模型推理记录：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
                 append("\n【个人记忆、决策与行动结果（新到旧）】\n")
-                h.memory.takeLast(30).asReversed().forEach { append(it).append('\n') }
+                h.memory.asReversed().forEach { append(it).append('\n') }
                 append("\n【已记录经历（新到旧）】\n")
-                h.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
+                h.history.asReversed().forEach { append(it).append('\n') }
                 append("\n当前世界日期：第${day}日\n说明：这里展示实际保存的推理与事件记录，不会伪造人物正在思考的内容。")
             }
         }
@@ -1144,9 +1141,9 @@ object WorldEngine {
             append("健康：${r.health}/100｜疲劳：${r.fatigue}/100｜生活状态：${r.morale}/100｜粮食：${r.food}｜财富：${r.coins}\n")
             append("\n【最近一次模型推理记录】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
             append("\n【个人记忆、决策与行动结果（新到旧）】\n")
-            r.mindMemory.takeLast(30).asReversed().forEach { append(it).append('\n') }
+            r.mindMemory.asReversed().forEach { append(it).append('\n') }
             append("\n【人生经历（新到旧）】\n")
-            r.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
+            r.history.asReversed().forEach { append(it).append('\n') }
             append("\n当前世界日期：第${day}日\n说明：只显示已保存的思考、活动和事件；不会把模拟推演冒充真实意识。")
         }
     }
