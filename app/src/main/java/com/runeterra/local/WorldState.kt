@@ -2036,6 +2036,75 @@ private fun craftBonus(region:String):Int = when(region) {
         }
     }
 
+
+    private const val KEY_HERO_AI_CURSOR="hero_ai_cursor"
+
+    /** One canon character receives a private reasoning turn using the shared local model. */
+    fun requestLocalHeroThinking(context:Context) {
+        if(!ResidentAI.isLoaded() || localInferenceBusy) return
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val all=heroAgents(p)
+        val active=all.filter { h -> h.region!="虚空" && h.status!="隐居" &&
+            !(h.name in setOf("阿兹尔","泽拉斯") && (h.status.startsWith("沉寂") || h.status.contains("尚未进入本模拟当代活动") || h.status.contains("尚未在当前世界公开活动"))) }
+        if(active.isEmpty()) return
+        val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
+        val hero=active[cursor]
+        p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
+        val day=p.getLong(KEY_DAY,1L)
+        val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
+        val faction=factionStates(p)[hero.region]
+        val publicContext=faction?.let { it.government+"；政策："+it.policy+"；内部张力："+it.internalTension } ?: "无可用地方政体资料"
+        val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
+            .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
+        val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
+            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；目标："+hero.goal+"。\n"+
+            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+
+            "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。日期："+day+"。\n"+
+            "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
+            "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
+        localInferenceBusy=true
+        ResidentAI.ask(prompt) { raw ->
+            try {
+                val a=raw.indexOf(123.toChar()); val b=raw.lastIndexOf(125.toChar())
+                if(a>=0 && b>a) {
+                    val result=JSONObject(raw.substring(a,b+1))
+                    val heroNow=heroAgents(p).firstOrNull { it.name==hero.name } ?: return@ask
+                    val thought=result.optString("thought").take(700)
+                    if(thought.isNotBlank()) {
+                        heroNow.thought=thought
+                        heroNow.belief=result.optString("belief",heroNow.belief).take(220)
+                        heroNow.intent=result.optString("intent",heroNow.intent).take(220)
+                        heroNow.goal=result.optString("goal",heroNow.goal).take(220)
+                        val action=result.optString("action","stay")
+                        val groups=organizations(p)
+                        val localGroup=groups.filter { it.region==heroNow.region }.maxByOrNull { it.influence+it.publicSupport/2 }
+                        val outcome=when(action) {
+                            "train" -> { heroNow.influence=(heroNow.influence+1).coerceAtMost(100); "训练或准备，模拟影响力小幅变化" }
+                            "investigate" -> { if(localGroup!=null) localGroup.influence=(localGroup.influence+1).coerceAtMost(100); "调查可接触的当地事务，未自动获得秘密情报" }
+                            "negotiate" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
+                            "aid" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "投入当地社群事务，影响限于本地组织" }
+                            else -> "决定维持当前安排"
+                        }
+                        heroNow.lastThoughtDay=day
+                        heroNow.memory.add("第"+day+"日："+thought)
+                        heroNow.history.add("第"+day+"日｜思考："+thought+"｜意图："+heroNow.intent+"｜行动："+action+"｜结果："+outcome)
+                        while(heroNow.memory.size>100) heroNow.memory.removeAt(0)
+                        while(heroNow.history.size>3000) heroNow.history.removeAt(0)
+                        if(action!="stay") heroNow.status=heroNow.status+"；近期行动："+outcome
+                        saveHeroes(p,heroAgents(p).map { if(it.name==heroNow.name) heroNow else it })
+                        saveOrganizations(p,groups)
+                        val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+                        events.put("【英雄自主思考·本地AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
+                        while(events.length()>300) events.remove(0)
+                        p.edit().putString(KEY_EVENTS,events.toString()).apply()
+                    }
+                }
+            } catch(_:Throwable) {
+                // Invalid model output must not create fictional biography events.
+            } finally { localInferenceBusy=false }
+        }
+    }
+
     fun advance(context: Context, days: Int=1): WorldSnapshot {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
