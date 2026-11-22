@@ -358,6 +358,9 @@ object WorldEngine {
         val factions=factionStates(p)
         val outcomes=mutableListOf<String>()
         val impactRegions=mutableSetOf<String>()
+        // Physical anomalies are observable locally, not magically broadcast to an entire region.
+        val affectedSettlements=mutableSetOf<Pair<String,String>>()
+        val affectedHeroLocations=mutableSetOf<Pair<String,String>>()
         val directlyChangedResidentIds=mutableSetOf<Int>()
         val directlyChangedHeroNames=mutableSetOf<String>()
         val deathEvents=mutableListOf<Triple<String,Int,Boolean>>()
@@ -375,6 +378,7 @@ object WorldEngine {
         }
         fun appendResidentEvent(r:Resident,detail:String) {
             impactRegions.add(r.region)
+            if(r.settlement.isNotBlank()) affectedSettlements.add(r.region to r.settlement)
             directlyChangedResidentIds.add(r.id)
             r.mindMemory.add("天道直接干预：${detail}")
             while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
@@ -383,6 +387,7 @@ object WorldEngine {
         }
         fun appendHeroEvent(h:HeroAgent,detail:String) {
             impactRegions.add(h.region)
+            if(h.location.isNotBlank()) affectedHeroLocations.add(h.region to h.location)
             directlyChangedHeroNames.add(h.name)
             h.memory.add("天道直接干预：${detail}")
             h.history.add("第${day}日｜${detail}")
@@ -613,7 +618,9 @@ object WorldEngine {
         // not omniscient knowledge of the cause or circumstances.
         deathEvents.forEach { (deadName,deadId,isHero) ->
             if(!isHero) {
-                population.filter { it.alive && it.id!=deadId &&
+                val deadResident=population.firstOrNull { it.id==deadId }
+                population.filter { it.alive && it.id!=deadId && deadResident!=null &&
+                    it.region==deadResident.region &&
                     (it.partnerId==deadId || deadId in it.parentIds || deadId in it.childIds || deadId in it.friendIds)
                 }.forEach { relative ->
                     relative.mindMemory.add("第${day}日：你与${deadName}有亲密关系；你听到其死亡或失踪的消息，但具体经过与原因尚未核实。")
@@ -626,7 +633,9 @@ object WorldEngine {
                 val relatedBonds=bonds.filter { it.a==deadName || it.b==deadName }
                 relatedBonds.forEach { bond ->
                     val relativeName=if(bond.a==deadName) bond.b else bond.a
-                    val relative=heroes.firstOrNull { it.alive && it.name==relativeName } ?: return@forEach
+                    val deadHeroForBond=heroes.firstOrNull { it.name==deadName }
+                    val relative=heroes.firstOrNull { it.alive && it.name==relativeName &&
+                        (deadHeroForBond==null || it.region==deadHeroForBond.region) } ?: return@forEach
                     val closeness=(bond.trust-bond.tension).coerceIn(-100,100)
                     val reaction=when {
                         closeness>=60 -> "这对你是沉重的个人打击；你难以把消息当作普通传闻"
@@ -659,17 +668,26 @@ object WorldEngine {
                 }
             }
         }
-        if(impactRegions.isNotEmpty()) {
-            val publicNote="当地出现与天道直接干预有关的异常变化或传闻。具体经过因个人所在位置、目击情况和信息来源不同而异。"
-            population.filter { it.alive && it.region in impactRegions && it.id !in directlyChangedResidentIds }.forEach { witness ->
-                witness.mindMemory.add("第${day}日，${publicNote}")
+        // Only people sharing the same recorded settlement/location may notice a local anomaly.
+        // This creates a plausible first ring of witnesses without granting region-wide omniscience.
+        if(affectedSettlements.isNotEmpty() || affectedHeroLocations.isNotEmpty()) {
+            population.filter { witness ->
+                witness.alive && witness.id !in directlyChangedResidentIds &&
+                    (witness.region to witness.settlement) in affectedSettlements
+            }.forEach { witness ->
+                val note="你所在的聚落出现了与异常变化有关的动静或传闻；你并未亲历全部经过，也不知道其真正原因。"
+                witness.mindMemory.add("第${day}日：${note}")
                 while(witness.mindMemory.size>120) witness.mindMemory.removeAt(0)
-                recordLife(witness,day,publicNote,"heavenly_indirect_impact")
+                recordLife(witness,day,note,"heavenly_local_observation")
                 changedResidents=true
             }
-            heroes.filter { it.alive && it.region in impactRegions && it.name !in directlyChangedHeroNames }.forEach { witness ->
-                witness.memory.add("第${day}日，${publicNote}")
-                witness.history.add("第${day}日｜${publicNote}")
+            heroes.filter { witness ->
+                witness.alive && witness.name !in directlyChangedHeroNames && witness.location.isNotBlank() &&
+                    (witness.region to witness.location) in affectedHeroLocations
+            }.forEach { witness ->
+                val note="你所在地点出现与异常变化有关的动静或传闻；你没有获得全貌，也不知道其真正原因。"
+                witness.memory.add("第${day}日："+note)
+                witness.history.add("第${day}日｜"+note)
                 while(witness.memory.size>120) witness.memory.removeAt(0)
                 while(witness.history.size>3000) witness.history.removeAt(0)
                 changedHeroes=true
