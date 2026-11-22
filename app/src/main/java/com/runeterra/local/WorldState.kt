@@ -1121,10 +1121,10 @@ object WorldEngine {
             return buildString {
                 append("符文之地 · 人物实时观察\n")
                 append("对象：${h.name}｜${h.region}｜${h.location}\n身份：${h.role}\n状态：${h.status}｜存续：${if(h.alive) "是" else "否"}\n")
-                append("当前活动：${h.dailyActivity}\n目标：${h.goal}\n意图：${h.intent}\n信念：${h.belief}\n")
+                append("当前实际活动（模拟器状态）：${h.dailyActivity}\n当前意图（不代表已经执行）：${h.intent}\n长期目标：${h.goal}\n个人信念：${h.belief}\n")
                 append("最近思考日期：${if(h.lastThoughtDay>0) "第${h.lastThoughtDay}日" else "尚未推理"}\n")
-                append("最近思考：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
-                append("\n【个人思考与记忆（新到旧）】\n")
+                append("最近一次模型推理记录：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
+                append("\n【个人记忆、决策与行动结果（新到旧）】\n")
                 h.memory.takeLast(30).asReversed().forEach { append(it).append('\n') }
                 append("\n【已记录经历（新到旧）】\n")
                 h.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
@@ -1137,10 +1137,10 @@ object WorldEngine {
             append("符文之地 · 人物实时观察\n")
             append("对象：${r.name}｜编号：${r.id}\n地区：${r.region}｜聚落：${r.settlement.ifBlank { "未记录" }}\n")
             append("年龄：${r.age}｜职业：${r.job}｜存续：${if(r.alive) "在世" else "已故"}\n")
-            append("当前活动：${r.dailyActivity}\n目标：${r.goal}\n意图：${r.intent}\n信念：${r.belief}\n")
+            append("当前实际活动（模拟器状态）：${r.dailyActivity}\n当前意图（不代表已经执行）：${r.intent}\n短期目标：${r.goal}\n个人信念：${r.belief}\n")
             append("健康：${r.health}/100｜疲劳：${r.fatigue}/100｜生活状态：${r.morale}/100｜粮食：${r.food}｜财富：${r.coins}\n")
-            append("\n【最近思考】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
-            append("\n【个人记忆与推理（新到旧）】\n")
+            append("\n【最近一次模型推理记录】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
+            append("\n【个人记忆、决策与行动结果（新到旧）】\n")
             r.mindMemory.takeLast(30).asReversed().forEach { append(it).append('\n') }
             append("\n【人生经历（新到旧）】\n")
             r.history.takeLast(30).asReversed().forEach { append(it).append('\n') }
