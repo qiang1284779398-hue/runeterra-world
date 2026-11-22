@@ -54,6 +54,7 @@ object WorldEngine {
     private const val KEY_ERA="world_era"
     private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
     private const val KEY_IONIA_WAR_ENDED="ionia_war_ended"
+    private const val KEY_SWAIN_COUP="noxus_swain_coup"
     private const val KEY_LORE_TRIGGER_DAYS="lore_trigger_days"
     private const val ERA_PRE_IONIA="pre_ionia_invasion"
     private const val KEY_EVENTS="events"
@@ -402,11 +403,15 @@ object WorldEngine {
                     }
                     "薇恩" -> h.status="追猎威胁德玛西亚民众的黑暗生物"
                     "斯维因" -> {
-                        h.status="作为诺克萨斯将领观察帝国军政局势；尚未建立崔法利议会或成为最高统治者"
+                        if(p.getBoolean(KEY_SWAIN_COUP,false)) {
+                            h.role="崔法利议会统治者"
+                            h.status="以远见与谋略维持崔法利议会秩序，同时防范黑色玫瑰与帝国内部权力角力"
+                            factions["诺克萨斯"]?.let { it.stability=(it.stability+1).coerceAtMost(100) }
+                        } else h.status="作为诺克萨斯将领观察帝国军政局势；尚未建立崔法利议会或成为最高统治者"
                     }
                     "德莱厄斯" -> {
                         groups.firstOrNull { it.id=="noxus_legions" }?.let { it.resources=(it.resources+2).coerceAtMost(100); it.influence=(it.influence+1).coerceAtMost(100) }
-                        h.status="整顿军团并执行帝国军事任务"
+                        h.status=if(p.getBoolean(KEY_SWAIN_COUP,false)) "作为崔法利议会的力量代表统领诺克萨斯军团" else "整顿军团并执行帝国军事任务"
                     }
                     "乐芙兰" -> {
                         groups.firstOrNull { it.id=="noxus_black_rose" }?.let { it.influence=(it.influence+2).coerceAtMost(100) }
@@ -845,6 +850,40 @@ object WorldEngine {
         saveFactions(p,factions)
         saveDiplomacy(p,relations)
     }
+    private fun tickNoxusSuccession(day:Long,p:android.content.SharedPreferences,events:MutableList<String>,rng:Random) {
+        if(day%30L!=0L || !p.getBoolean(KEY_IONIA_WAR_ENDED,false) || p.getBoolean(KEY_SWAIN_COUP,false)) return
+        val factions=factionStates(p)
+        val noxus=factions["诺克萨斯"] ?: return
+        val groups=organizations(p)
+        val legions=groups.firstOrNull { it.id=="noxus_legions" } ?: return
+        val blackRose=groups.firstOrNull { it.id=="noxus_black_rose" } ?: return
+        val heroes=heroAgents(p)
+        val swain=heroes.firstOrNull { it.name=="斯维因" } ?: return
+        val domesticCrisis=noxus.internalTension>=48 || noxus.stability<=48 || noxus.treasury<=380
+        val politicalBase=swain.influence>=72 && legions.influence>=55 && blackRose.influence>=60
+        if(domesticCrisis && politicalBase && rng.nextInt(100)<12) {
+            noxus.leader="斯维因与崔法利议会（模拟分支）"
+            noxus.government="崔法利议会制；由力量、远见与狡诈三种权力原则构成（模拟分支）"
+            noxus.rulingBloc="斯维因、德莱厄斯与身份未公开的第三席代表"
+            noxus.opposition="黑色玫瑰、旧贵族与地方总督之间的持续权力竞争"
+            noxus.policy="重建军政秩序，整合军团并防范秘密势力干预"
+            noxus.internalTension=(noxus.internalTension+8).coerceAtMost(100)
+            noxus.stability=(noxus.stability-4).coerceAtLeast(0)
+            val council=groups.firstOrNull { it.id=="noxus_trifarix" }
+            if(council!=null) {
+                council.name="崔法利议会"
+                council.leader="斯维因、德莱厄斯与身份未公开的第三席代表"
+                council.agenda="以力量、远见与狡诈三种原则维系帝国统治"
+                council.influence=78; council.resources=72; council.publicSupport=58; council.status="新政权建立"
+            }
+            swain.role="崔法利议会统治者"
+            swain.status="在诺克萨斯战后政治危机中推翻达克威尔统治，建立崔法利议会"
+            events.add("【诺克萨斯政权更替·模拟分支】第 $day 日：战后军政危机与派系压力促成斯维因推翻达克威尔统治，崔法利议会建立。第三席身份不在模拟中擅自指定；此事件的具体时点与过程属于模拟分支。")
+            p.edit().putBoolean(KEY_SWAIN_COUP,true).apply()
+            saveFactions(p,factions); saveOrganizations(p,groups); saveHeroes(p,heroes)
+        }
+    }
+
     private fun tickSocialRelations(day:Long,pop:MutableList<Resident>,events:MutableList<String>,rng:Random) {
         if(day%30L!=0L)return
         val living=pop.filter{it.alive}
@@ -1542,6 +1581,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickDiplomacy(day,p,pop,markets,events,rng)
             tickOrganizations(day,p,pop,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
+            tickNoxusSuccession(day,p,events,rng)
             tickHeroes(day,p,pop,markets,events,rng)
             tickHeroBonds(day,p,events,rng)
             tickSocialRelations(day,pop,events,rng)
