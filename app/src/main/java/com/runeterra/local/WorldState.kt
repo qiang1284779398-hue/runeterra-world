@@ -916,7 +916,7 @@ object WorldEngine {
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
         var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true,
         var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
-        var identityMemory:String=""
+        var identityMemory:String="", var dailyActivity:String="维持当前处境", var lastDailyLifeDay:Long=0L
     )
     private fun canonicalGender(name:String):String = when(name) {
         "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
@@ -983,7 +983,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false),it.optString("identityMemory",""))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false),it.optString("identityMemory",""),it.optString("dailyActivity","维持当前处境"),it.optLong("lastDailyLifeDay",0L))}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -992,7 +992,7 @@ object WorldEngine {
         return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride).put("identityMemory",it.identityMemory))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride).put("identityMemory",it.identityMemory).put("dailyActivity",it.dailyActivity).put("lastDailyLifeDay",it.lastDailyLifeDay))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
@@ -1091,6 +1091,33 @@ object WorldEngine {
         return heroBonds(p).sortedByDescending{it.tension}.map{
             "【${it.a} ↔ ${it.b}】\n关系背景：${it.basis}\n模拟信任：${it.trust}/100\n模拟矛盾：${it.tension}/100\n说明：关系背景取自英雄联盟人物设定；数值及后续变化是本世界的模拟状态，不代表官方数值或固定剧情。"
         }
+    }
+    // Heroes also persist between reasoning turns. This records constrained ongoing activity,
+    // without granting sealed, dormant or distant figures impossible actions.
+    private fun tickHeroDailyLife(day:Long,p:android.content.SharedPreferences) {
+        val agents=heroAgents(p)
+        var changed=false
+        agents.filter { it.alive && it.lastDailyLifeDay<day }.forEach { h ->
+            val next=when {
+                h.headSevered && !h.survivalOverride -> "身体遭受致命创伤，无法进行常规活动"
+                h.status.contains("沉寂") || h.status.contains("封印") || h.status.contains("不朽领域") -> "受封印或沉寂状态限制，维持既有状态"
+                h.region=="班德尔城" -> "在班德尔城与符文之地入口之间维持约德尔社群事务"
+                h.region=="暗影岛" -> "受黑雾与破败诅咒环境影响，活动限于自身存在状态"
+                h.region=="德玛西亚" && h.name=="拉克丝" -> "在贵族身份、秘密与法师处境之间处理日常事务"
+                h.region=="诺克萨斯" -> "处理帝国军政、人际网络或个人目标相关事务"
+                h.region=="艾欧尼亚" -> "在地方社群、修行传统与精神领域环境中生活"
+                h.region=="皮尔特沃夫" || h.region=="祖安" -> "在双城社会中处理研究、执法、工坊或社区事务"
+                h.region=="弗雷尔卓德" -> "在部族、冰原环境与生存压力下行动"
+                h.region=="恕瑞玛" -> "在沙漠、绿洲、古代遗迹或虚空威胁相关环境中行动"
+                h.region=="比尔吉沃特" -> "处理港口、人际关系、航路或生计事务"
+                h.region=="巨神峰" -> "在朝圣、信仰与星界力量相关处境中行动"
+                h.region=="以绪塔尔" -> "在元素魔法传统与当地政治秩序中处理事务"
+                else -> "维持自身目标相关的日常活动"
+            }
+            if(h.dailyActivity!=next) { h.dailyActivity=next; changed=true }
+            h.lastDailyLifeDay=day
+        }
+        if(changed || agents.any { it.lastDailyLifeDay==day }) saveHeroes(p,agents)
     }
     private fun tickHeroes(day:Long,p:android.content.SharedPreferences,pop:MutableList<Resident>,markets:MutableMap<String,Market>,events:MutableList<String>,rng:Random){
         if(day%30L!=0L)return
@@ -2799,7 +2826,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。隐居、沉寂、封印、未公开活动等状态不会取消你的内在意识，但会严格限制感知范围、可接触对象与可执行行动；若处于无法行动状态，应以整理记忆、观察已知环境或维持现状为主，不得擅自解除限制，也不得凭空制造行动结果。\n"+
-            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"。\n"+
+            "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；性别："+hero.gender+"；年龄："+(if(hero.age>=0) hero.age.toString()+"岁" else "未记录")+"；身体状态："+hero.health+"；能力熟练度："+hero.skill+"；本质："+hero.lineage+"；外貌："+hero.appearance+"；能力："+hero.abilities+"；目标："+hero.goal+"；当前持续活动："+hero.dailyActivity+"。\n"+
             "信念："+hero.belief+"；天道直接改写并长期保存的完整主观人生记忆（若非空，视为真实第一人称经历）： "+hero.identityMemory.ifBlank { "无" }+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现“【天道改写的主观人生记忆／身份认知】”，必须将其作为本人真实的第一人称人生经历与身份认知进行思考；但当前身体、所在地区、现实环境仍以符文之地的现状为准。普通“天道干预”信息则仍可质疑、拒绝或研究。\n"+"如果决定investigate，可围绕收到的信息提出问题、搜集亲历证据、与可信关系核对；研究结果必须受资源、知识和可观察条件限制。\n"+
             "关系："+bonds+"。当前历史锚点："+eraAnchor+"；官方正史与本模拟分支必须区分，不能把未来事件当作既成事实。地区背景："+lore+"。公共制度："+publicContext+"。现行天道规则："+activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
@@ -2903,6 +2930,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickOrganizations(day,p,pop,events,rng)
             tickFactionGovernance(day,p,pop,markets,events,rng)
             tickNoxusSuccession(day,p,events,rng)
+            tickHeroDailyLife(day,p)
             tickHeroes(day,p,pop,markets,events,rng)
             tickHeroBonds(day,p,events,rng)
             tickSocialRelations(day,pop,events,rng)
