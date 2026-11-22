@@ -11,17 +11,22 @@ private data class Resident(
     val id: Int, var name: String, var region: String, var age: Int, var health: Int,
     var food: Int, var coins: Int, var job: String, var goal: String,
     var skill: Int = 1, var partnerId: Int = -1, var familyCount: Int = 0, var alive: Boolean = true,
-    var history: MutableList<String> = mutableListOf()
+    var history: MutableList<String> = mutableListOf(),
+    var parentIds: MutableList<Int> = mutableListOf(),
+    var childIds: MutableList<Int> = mutableListOf()
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
-        .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive).put("history",JSONArray(history))
+        .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
+        .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
             j.optString("job","采集者"),j.optString("goal","谋求安稳"),j.optInt("skill",1),
             j.optInt("partnerId",-1),j.optInt("familyCount",0),j.optBoolean("alive",true),
-            (0 until (j.optJSONArray("history")?.length() ?: 0)).map { j.getJSONArray("history").getString(it) }.toMutableList())
+            (0 until (j.optJSONArray("history")?.length() ?: 0)).map { j.getJSONArray("history").getString(it) }.toMutableList(),
+            (0 until (j.optJSONArray("parentIds")?.length() ?: 0)).map { j.getJSONArray("parentIds").getInt(it) }.toMutableList(),
+            (0 until (j.optJSONArray("childIds")?.length() ?: 0)).map { j.getJSONArray("childIds").getInt(it) }.toMutableList())
     }
 }
 
@@ -380,22 +385,38 @@ object WorldEngine {
                     if(mate!=null) mate.familyCount=r.familyCount
                     val id=nextId++
                     val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习")
-                    recordLife(r,day,"家庭迎来孩子${child.name}。");recordLife(child,day,"出生于${r.region}，父母之一为${r.name}。")
-                    mate?.let{recordLife(it,day,"家庭迎来孩子${child.name}。")}
+                    child.parentIds.add(r.id)
+                    r.childIds.add(id)
+                    recordLife(r,day,"家庭迎来孩子${child.name}（居民编号$id）。")
+                    recordLife(child,day,"出生于${r.region}；父母之一为${r.name}（编号${r.id}）。")
+                    mate?.let {
+                        if(it.id !in child.parentIds) child.parentIds.add(it.id)
+                        if(id !in it.childIds) it.childIds.add(id)
+                        recordLife(it,day,"家庭迎来孩子${child.name}（居民编号$id）。")
+                        recordLife(child,day,"另一位父母为${it.name}（编号${it.id}）。")
+                    }
                     newborns.add(child)
                     events.add("第 $day 日：${r.region}的${r.name}家庭迎来新生儿${child.name}。")
                 }
                 if(r.alive && r.food<=0 && day%30L==0L && rng.nextInt(100)<12) {
-                    val next=regions[(regions.indexOf(r.region)+1)%regions.size]
+                    val oldRegion=r.region
+                    val next=regions[(regions.indexOf(oldRegion)+1)%regions.size]
                     r.region=next
-                    recordLife(r,day,"因生计压力从原居地迁往${next}。")
-                    events.add("第 $day 日：${r.name}因生计压力迁往${next}。")
+                    recordLife(r,day,"因生计压力从${oldRegion}迁往${next}。")
+                    events.add("第 $day 日：${r.name}因生计压力从${oldRegion}迁往${next}。")
                 }
                 if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
                     r.alive=false
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
-                    if(r.partnerId>=0) pop.firstOrNull { it.id==r.partnerId }?.partnerId=-1
+                    if(r.partnerId>=0) {
+                        val formerPartner=pop.firstOrNull { it.id==r.partnerId }
+                        if(formerPartner!=null) {
+                            recordLife(formerPartner,day,"伴侣${r.name}离世，关系因死亡而结束。")
+                            formerPartner.partnerId=-1
+                        }
+                        r.partnerId=-1
+                    }
                 }
                 if(r.alive && r.food==0 && rng.nextInt(100)<3) events.add("第 $day 日：${r.name}在${r.region}遭遇食物短缺，健康恶化。")
                 if(r.alive && rng.nextInt(1000)<2) { recordLife(r,day,"实现阶段目标「${r.goal}」，开始追寻新的方向。");events.add("第 $day 日：${r.name}在${r.region}达成「${r.goal}」，开始追寻新的方向。") }
