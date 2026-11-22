@@ -31,13 +31,13 @@ private data class Resident(
     var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf(),
     var gender:String="未记录", var appearance:String="", var abilities:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
     var identityMemory:String="",
-    var dailyActivity:String="日常生活", var fatigue:Int=0, var morale:Int=50
+    var dailyActivity:String="日常生活", var fatigue:Int=0, var morale:Int=50, var aiResponses:MutableList<String> = mutableListOf()
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride).put("identityMemory",identityMemory).put("dailyActivity",dailyActivity).put("fatigue",fatigue).put("morale",morale)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("aiResponses",JSONArray(aiResponses)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride).put("identityMemory",identityMemory).put("dailyActivity",dailyActivity).put("fatigue",fatigue).put("morale",morale)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -49,7 +49,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false), j.optString("identityMemory",""), j.optString("dailyActivity","日常生活"), j.optInt("fatigue",0), j.optInt("morale",50))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false), j.optString("identityMemory",""), j.optString("dailyActivity","日常生活"), j.optInt("fatigue",0), j.optInt("morale",50), (0 until (j.optJSONArray("aiResponses")?.length() ?: 0)).map { j.getJSONArray("aiResponses").getString(it) }.toMutableList())
     }
 }
 
@@ -919,7 +919,8 @@ object WorldEngine {
         var memory:MutableList<String> = mutableListOf(), var history:MutableList<String> = mutableListOf(),
         var lastThoughtDay:Long=0L, var gender:String="未记录", var appearance:String="", var abilities:String="", var alive:Boolean=true,
         var age:Int=-1, var health:Int=100, var skill:Int=50, var lineage:String="", var location:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
-        var identityMemory:String="", var dailyActivity:String="维持当前处境", var lastDailyLifeDay:Long=0L
+        var identityMemory:String="", var dailyActivity:String="维持当前处境", var lastDailyLifeDay:Long=0L,
+        var aiResponses:MutableList<String> = mutableListOf()
     )
     private fun canonicalGender(name:String):String = when(name) {
         "拉克丝","菲奥娜","薇恩","卡特琳娜","乐芙兰","艾瑞莉娅","阿卡丽","厄运小姐","俄洛伊","瑟庄妮","艾希","丽桑卓","塔莉垭","黛安娜","蕾欧娜","奇亚娜","妮蔻","凯莎","悠米","崔丝塔娜","璐璐" -> "女性"
@@ -986,7 +987,7 @@ object WorldEngine {
                     it.optString("belief","尚未记录稳定的个人信念"),it.optString("thought",""),it.optString("intent",""),
                     (0 until (it.optJSONArray("memory")?.length() ?: 0)).map { idx -> it.getJSONArray("memory").getString(idx) }.toMutableList(),
                     (0 until (it.optJSONArray("history")?.length() ?: 0)).map { idx -> it.getJSONArray("history").getString(idx) }.toMutableList(),
-                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false),it.optString("identityMemory",""),it.optString("dailyActivity","维持当前处境"),it.optLong("lastDailyLifeDay",0L))}.toMutableList()}}.getOrNull()?.let{loaded->
+                    it.optLong("lastThoughtDay",0L),it.optString("gender",canonicalGender(it.optString("name"))),it.optString("appearance",""),it.optString("abilities",""),it.optBoolean("alive",true),it.optInt("age",-1),it.optInt("health",100),it.optInt("skill",50),it.optString("lineage",""),it.optString("location",""),it.optBoolean("headSevered",false),it.optBoolean("survivalOverride",false),it.optString("identityMemory",""),it.optString("dailyActivity","维持当前处境"),it.optLong("lastDailyLifeDay",0L),(0 until (it.optJSONArray("aiResponses")?.length() ?: 0)).map { idx -> it.getJSONArray("aiResponses").getString(idx) }.toMutableList())}.toMutableList()}}.getOrNull()?.let{loaded->
             val known=loaded.map{it.name}.toSet()
             heroSeeds.filter{it.name !in known}.forEach{loaded.add(it)}
             if(loaded.size!=known.size)saveHeroes(p,loaded)
@@ -995,7 +996,7 @@ object WorldEngine {
         return heroSeeds.map { it.copy(gender=canonicalGender(it.name)) }.toMutableList().also{saveHeroes(p,it)}
     }
     private fun saveHeroes(p:android.content.SharedPreferences,heroes:List<HeroAgent>){
-        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride).put("identityMemory",it.identityMemory).put("dailyActivity",it.dailyActivity).put("lastDailyLifeDay",it.lastDailyLifeDay))}}.toString()).apply()
+        p.edit().putString(KEY_HEROES,JSONArray().apply{heroes.forEach{put(JSONObject().put("name",it.name).put("region",it.region).put("role",it.role).put("status",it.status).put("goal",it.goal).put("influence",it.influence).put("belief",it.belief).put("thought",it.thought).put("intent",it.intent).put("memory",JSONArray(it.memory)).put("history",JSONArray(it.history)).put("lastThoughtDay",it.lastThoughtDay).put("gender",it.gender).put("appearance",it.appearance).put("abilities",it.abilities).put("alive",it.alive).put("age",it.age).put("health",it.health).put("skill",it.skill).put("lineage",it.lineage).put("location",it.location).put("headSevered",it.headSevered).put("survivalOverride",it.survivalOverride).put("identityMemory",it.identityMemory).put("dailyActivity",it.dailyActivity).put("lastDailyLifeDay",it.lastDailyLifeDay).put("aiResponses",JSONArray(it.aiResponses)))}}.toString()).apply()
     }
     private fun heroBonds(p:android.content.SharedPreferences):MutableList<HeroBond>{
         val raw=p.getString(KEY_HERO_BONDS,null)
@@ -1124,6 +1125,8 @@ object WorldEngine {
                 append("当前实际活动（模拟器状态）：${h.dailyActivity}\n当前意图（不代表已经执行）：${h.intent}\n长期目标：${h.goal}\n个人信念：${h.belief}\n")
                 append("最近思考日期：${if(h.lastThoughtDay>0) "第${h.lastThoughtDay}日" else "尚未推理"}\n")
                 append("最近一次模型推理记录：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
+                append("\n【AI每轮原始返回（完整保存）】\n")
+                h.aiResponses.forEachIndexed { index, response -> append("原始返回 ").append(index+1).append("\n").append(response).append("\n\n") }
                 append("\n【个人记忆、决策与行动结果（新到旧）】\n")
                 h.memory.asReversed().forEach { append(it).append('\n') }
                 append("\n【已记录经历（新到旧）】\n")
@@ -1140,6 +1143,8 @@ object WorldEngine {
             append("当前实际活动（模拟器状态）：${r.dailyActivity}\n当前意图（不代表已经执行）：${r.intent}\n短期目标：${r.goal}\n个人信念：${r.belief}\n")
             append("健康：${r.health}/100｜疲劳：${r.fatigue}/100｜生活状态：${r.morale}/100｜粮食：${r.food}｜财富：${r.coins}\n")
             append("\n【最近一次模型推理记录】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
+            append("\n【AI每轮原始返回（完整保存）】\n")
+            r.aiResponses.forEachIndexed { index, response -> append("原始返回 ").append(index+1).append("\n").append(response).append("\n\n") }
             append("\n【个人记忆、决策与行动结果（新到旧）】\n")
             r.mindMemory.asReversed().forEach { append(it).append('\n') }
             append("\n【人生经历（新到旧）】\n")
@@ -2848,6 +2853,11 @@ private fun craftBonus(region:String):Int = when(region) {
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
             try {
+                val residentRecord=people(p).firstOrNull { it.id==r.id }
+                if(residentRecord!=null) {
+                    residentRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\\n"+raw)
+                    savePeople(p,people(p).map { if(it.id==residentRecord.id) residentRecord else it })
+                }
                 val result=extractCharacterJson(raw)
                 if(result==null) {
                     recordResidentInferenceIssue(characterOutputFailure(raw))
@@ -3075,6 +3085,11 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
             try {
+                val heroRecord=heroAgents(p).firstOrNull { it.name==hero.name }
+                if(heroRecord!=null) {
+                    heroRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\\n"+raw)
+                    saveHeroes(p,heroAgents(p).map { if(it.name==heroRecord.name) heroRecord else it })
+                }
                 val result=extractCharacterJson(raw)
                 if(result==null) {
                     recordInferenceIssue(characterOutputFailure(raw))
@@ -3664,6 +3679,8 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             append("人生状态：${if(r.alive) "在世" else "已故"}\n健康：${r.health}/100｜技能：${r.skill}/100｜财富：${r.coins}｜粮食：${r.food}\n")
             append("当前生活活动：${r.dailyActivity}\n疲劳程度：${r.fatigue}/100｜生活状态：${r.morale}/100\n说明：活动与状态由持续生活模拟更新；不是强制剧情，也不意味着人物拥有真实人类意识。\n")
             append("\n【个人认知状态】\n说明：带有“本地模型推理”标记的思考来自已加载的 GGUF 本地模型；其他旧记录可能来自世界模拟规则。\n人格倾向值：${r.mindTrait}/100\n当前信念：${r.belief}\n最近思考：${r.currentThought.ifBlank { "尚未产生认知记录" }}\n当前意图：${r.intent}\n认知记忆：${r.mindMemory.size}条\n")
+            append("\n【智谱/AI每轮原始返回（完整保存）】\n")
+            if(r.aiResponses.isEmpty()) append("暂无AI原始返回记录。\n") else r.aiResponses.forEachIndexed { index, response -> append("原始返回 ").append(index+1).append("\n").append(response).append("\n\n") }
             append("\n【个人认知与记忆时间线】\n")
             if(r.mindMemory.isEmpty()) append("尚无保存的个人认知记忆。\n")
             else r.mindMemory.forEachIndexed { index,memory -> append("${index+1}. ${memory}\n") }
