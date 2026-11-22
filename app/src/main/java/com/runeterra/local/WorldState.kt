@@ -118,6 +118,11 @@ object WorldEngine {
                 if(r.alive && rng.nextInt(1000)<2) events.add("第 $day 日：${r.name}在${r.region}达成「${r.goal}」，开始追寻新的方向。")
             }
             pop.addAll(newborns)
+            regions.forEach { region ->
+                val regionalPopulation=pop.count { it.alive && it.region==region }
+                val market=markets[region]
+                if(market!=null) market.food=(market.food-regionalPopulation/4).coerceAtLeast(0)
+            }
             if(day%30L==0L) {
                 regions.forEach { region ->
                     val count=pop.count { it.alive && it.region==region }
