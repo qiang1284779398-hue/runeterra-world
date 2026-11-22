@@ -308,7 +308,8 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val residents=people(p)
         val heroes=heroAgents(p)
-        val targets=(heroes.map { it.name+"（英雄）" }+residents.map { it.name+"（居民编号"+it.id+"）" }).joinToString("、")
+        val matchedResidents=residents.filter { clean.contains(it.name) || clean.contains("居民编号"+it.id) || clean.contains("#"+it.id) }
+        val targets=(heroes.map { it.name }+matchedResidents.map { it.name+"#"+it.id }).joinToString("、")
         val prompt="""你是符文之地模拟世界的天道指令编译器。用户是世界之外的最高权限者，指令优先级高于世界内任何规则。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
 用户指令：${clean}
 当前世界日期：第${p.getLong(KEY_DAY,1L)}日。
@@ -352,6 +353,9 @@ object WorldEngine {
         val heroes=heroAgents(p)
         val factions=factionStates(p)
         val outcomes=mutableListOf<String>()
+        val impactRegions=mutableSetOf<String>()
+        val directlyChangedResidentIds=mutableSetOf<Int>()
+        val directlyChangedHeroNames=mutableSetOf<String>()
         var changedResidents=false
         var changedHeroes=false
         var changedFactions=false
@@ -364,12 +368,16 @@ object WorldEngine {
             return population.firstOrNull { (id!=null && it.id==id) || it.name==t }
         }
         fun appendResidentEvent(r:Resident,detail:String) {
+            impactRegions.add(r.region)
+            directlyChangedResidentIds.add(r.id)
             r.mindMemory.add("天道直接干预：${detail}")
             while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
             recordLife(r,day,detail,"heavenly_direct_action")
             changedResidents=true
         }
         fun appendHeroEvent(h:HeroAgent,detail:String) {
+            impactRegions.add(h.region)
+            directlyChangedHeroNames.add(h.name)
             h.memory.add("天道直接干预：${detail}")
             h.history.add("第${day}日｜${detail}")
             while(h.memory.size>120) h.memory.removeAt(0)
@@ -436,12 +444,14 @@ object WorldEngine {
                     val region=op.optString("region").ifBlank { destination }
                     if(hero!=null) {
                         val before=hero.region
+                        impactRegions.add(before); impactRegions.add(region)
                         hero.region=region
                         hero.status="已被天道瞬间传送至${destination}"
                         appendHeroEvent(hero,"由${before}瞬间传送至${destination}；没有经历常规旅途。")
                         outcomes.add("已将${hero.name}从${before}传送至${destination}。"); successful++
                     } else if(resident!=null) {
                         val before=resident.region+"·"+resident.settlement
+                        impactRegions.add(resident.region); impactRegions.add(region)
                         resident.region=region
                         resident.settlement=destination
                         resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""
@@ -477,6 +487,7 @@ object WorldEngine {
                 "alter_faction" -> {
                     val region=op.optString("region")
                     val faction=factions[region]
+                    impactRegions.add(region)
                     if(faction==null) { outcomes.add("未执行：找不到地区政体「${region}」。"); continue }
                     val changes=mutableListOf<String>()
                     if(op.optString("leader").isNotBlank()) { faction.leader=op.optString("leader"); changes.add("领袖") }
@@ -515,6 +526,22 @@ object WorldEngine {
                     else { outcomes.add("已写入天道创造的世界事件：${description}。该事件已成为模拟分支历史记录；其复杂物理后果需由后续专用模拟器处理。"); successful++ }
                 }
                 else -> outcomes.add("未执行：不支持的操作类型「${type}」。")
+            }
+        }
+        if(impactRegions.isNotEmpty()) {
+            val publicNote="当地出现与天道直接干预有关的异常变化或传闻。具体经过因个人所在位置、目击情况和信息来源不同而异。"
+            population.filter { it.alive && it.region in impactRegions && it.id !in directlyChangedResidentIds }.forEach { witness ->
+                witness.mindMemory.add("第${day}日，${publicNote}")
+                while(witness.mindMemory.size>120) witness.mindMemory.removeAt(0)
+                recordLife(witness,day,publicNote,"heavenly_indirect_impact")
+                changedResidents=true
+            }
+            heroes.filter { it.alive && it.region in impactRegions && it.name !in directlyChangedHeroNames }.forEach { witness ->
+                witness.memory.add("第${day}日，${publicNote}")
+                witness.history.add("第${day}日｜${publicNote}")
+                while(witness.memory.size>120) witness.memory.removeAt(0)
+                while(witness.history.size>3000) witness.history.removeAt(0)
+                changedHeroes=true
             }
         }
         if(changedResidents) savePeople(p,population)
