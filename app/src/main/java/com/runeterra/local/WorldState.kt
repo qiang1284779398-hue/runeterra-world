@@ -2247,6 +2247,20 @@ private fun craftBonus(region:String):Int = when(region) {
                             contributedCoins+=contributors.size
                             if(foodDonor!=null) contributedFood++
                         }
+                        // Household reserves actively protect members facing hunger.
+                        val needy=members.filter { it.food<=1 }.sortedWith(
+                            compareBy<Resident> { if(it.age<13) 0 else if(it.health<45) 1 else 2 }
+                                .thenBy { it.food }.thenBy { it.health }
+                        )
+                        needy.forEach { recipient ->
+                            if(household.foodReserve>0 && recipient.food<=1) {
+                                household.foodReserve--
+                                recipient.food++
+                                recordLife(recipient,day,"家庭共同储粮向我提供1单位口粮；家庭储备因此减少，暂时缓解了个人食物短缺。","household_mutual_aid")
+                                recipient.mindMemory.add("家庭互助：共同储粮为我补充了1单位口粮。")
+                                while(recipient.mindMemory.size>120) recipient.mindMemory.removeAt(0)
+                            }
+                        }
                     }
                 }
                 if(savingHouseholds>0) events.add("【家庭经济·模拟】第 $day 日：$savingHouseholds 个家庭向共同储备转入$contributedCoins 枚金币与$contributedFood 单位粮食；这些资产已从成员个人库存扣除。")
