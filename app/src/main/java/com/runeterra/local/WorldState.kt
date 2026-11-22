@@ -161,6 +161,7 @@ object WorldEngine {
     private const val ERA_PRE_IONIA="pre_ionia_invasion"
     private const val KEY_EVENTS="events"
     private const val KEY_EVENT_ARCHIVE="world_event_archive_v1"
+    private const val KEY_HEAVENLY_ARCHIVE="heavenly_intervention_archive_v1"
     private const val KEY_RUNNING="running"
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
@@ -209,6 +210,89 @@ object WorldEngine {
             else -> "历史锚点未设定"
         }
     }
+
+    /**
+     * External information channel. It never overwrites a recipient's will or belief.
+     */
+    fun heavenlyStatus(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        val latest=if(archive.length()>0) runCatching { JSONObject(archive.getString(archive.length()-1)) }.getOrNull() else null
+        return listOf(
+            "天道系统：已启用",
+            "世界日期：第"+p.getLong(KEY_DAY,1L)+"日",
+            "已记录干预：\${archive.length()}次",
+            "最近干预："+(latest?.let { "第"+it.optLong("day")+"日｜"+it.optString("mode")+"｜"+it.optString("message") } ?: "尚无"),
+            "作用原则：只传递信息，不直接改写居民信念、人格、关系或行动。",
+            "认知原则：接收者可能相信、怀疑、误解、拒绝、研究或传播；不同人物会形成不同解释。",
+            "研究原则：居民可将相关经历纳入知识体系，尝试提出假说并寻找可验证证据。",
+            "边界原则：每次干预都属于模拟分支历史，官方符文之地设定不会因此被改写。"
+        )
+    }
+
+    fun heavenlyInterventionHistory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        return (0 until archive.length()).mapNotNull { i ->
+            runCatching {
+                val item=JSONObject(archive.getString(i))
+                "第\${item.optLong("day")}日｜\${item.optString("mode")}｜\${item.optString("scope")}｜接收者：\${item.optString("recipients")}\\n\${item.optString("message")}\\n结果：接收信息已写入相关人物记忆；是否相信及后续行动尚未预设。"
+            }.getOrNull()
+        }.asReversed()
+    }
+
+    fun heavenlyIntervene(context:Context,scope:String,targetId:Int=-1,targetName:String="",mode:String="神谕",message:String):String {
+        val clean=message.trim().take(1800)
+        if(clean.isBlank()) return "天道信息不能为空。"
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val day=p.getLong(KEY_DAY,1L)
+        val peopleNow=people(p)
+        val heroesNow=heroAgents(p).toMutableList()
+        val residentTargets=when(scope) {
+            "全世界" -> peopleNow.filter { it.alive }
+            "指定居民" -> peopleNow.filter { it.alive && it.id==targetId }
+            else -> emptyList()
+        }
+        val heroTargets=when(scope) {
+            "全世界" -> heroesNow
+            "指定英雄" -> heroesNow.filter { it.name==targetName }
+            else -> emptyList()
+        }
+        if(scope !in setOf("全世界","指定居民","指定英雄")) return "未知的天道干预范围。"
+        if(scope=="指定居民" && residentTargets.isEmpty()) return "没有找到这名在世居民。"
+        if(scope=="指定英雄" && heroTargets.isEmpty()) return "没有找到这名英雄或特殊存在。"
+        val recipients=mutableListOf<String>()
+        residentTargets.forEach { r ->
+            val memory="第\${day}日，接收到天道干预（\${mode}）：\${clean}。这是一条外部信息；其真实性、含义与来源仍需由我自行判断。"
+            r.mindMemory.add(memory)
+            while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
+            r.currentThought="第\${day}日：我接收到一条被称为“天道”的外部信息，尚未决定如何理解。"
+            recordLife(r,day,"接收到天道干预（\${mode}）：\${clean}。该记录只证明信息抵达，不代表此人相信其内容。","heavenly_intervention_received")
+            recipients.add(r.name+"（居民#"+r.id+"）")
+        }
+        if(residentTargets.isNotEmpty()) savePeople(p,peopleNow)
+        heroTargets.forEach { h ->
+            h.memory.add("第\${day}日，接收到天道干预（\${mode}）：\${clean}。信息来源与真实性仍待独立判断。")
+            while(h.memory.size>100) h.memory.removeAt(0)
+            h.history.add("第\${day}日｜接收到天道干预（\${mode}）：\${clean}。接收不等于相信，后续解释与行动未预设。")
+            while(h.history.size>3000) h.history.removeAt(0)
+            recipients.add(h.name)
+        }
+        if(heroTargets.isNotEmpty()) saveHeroes(p,heroesNow)
+        val recipientLabel=if(scope=="全世界") "所有在世居民与已登记英雄/特殊存在" else recipients.joinToString("、")
+        val item=JSONObject().put("day",day).put("mode",mode).put("scope",scope)
+            .put("targetId",targetId).put("targetName",targetName).put("recipients",recipientLabel)
+            .put("message",clean).put("beliefForced",false).put("canonChanged",false)
+        val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        archive.put(item)
+        while(archive.length()>10000) archive.remove(0)
+        val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        events.put("【天道干预·模拟分支】第\${day}日：以\${mode}方式向\${recipientLabel}传达信息：“\${clean}”。接收者不被强制相信。")
+        while(events.length()>300) events.remove(0)
+        p.edit().putString(KEY_HEAVENLY_ARCHIVE,archive.toString()).putString(KEY_EVENTS,events.toString()).apply()
+        return "天道信息已送达。\\n接收对象：\${recipientLabel}\\n已写入人物记忆与历史档案；没有强制改变任何人的信念或选择。"
+    }
+
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
@@ -1901,6 +1985,7 @@ private fun craftBonus(region:String):Int = when(region) {
 同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
 个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
+若个人记忆中出现“天道干预”，它只是一段本人接收到的信息，不是系统替你确认的事实。你可以怀疑、相信、误解、拒绝、追问或研究；不得因为信息自称来自天道就自动服从，也不得假装已经验证。
 当地社会背景：${localLore}。
 当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
 最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
@@ -2072,7 +2157,7 @@ private fun craftBonus(region:String):Int = when(region) {
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
         val prompt="你是符文之地中"+hero.name+"本人的个人认知引擎，不是旁白。尊重官方身份、能力边界、关系和当前模拟时代；未来剧情不能当作已发生。\n"+
             "身份："+hero.role+"；地区："+hero.region+"；处境："+hero.status+"；目标："+hero.goal+"。\n"+
-            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+
+            "信念："+hero.belief+"；过去思考："+hero.memory.takeLast(6).joinToString("；")+"；经历："+hero.history.takeLast(8).joinToString("；")+"。\n"+"若记忆中出现天道干预，它只是本人收到的外部信息；你可以质疑、拒绝、研究或传播，不得自动相信，也不得声称未经验证的内容已成事实。\n"+
             "关系："+bonds+"。地区背景："+lore+"。公共制度："+publicContext+"。日期："+day+"。\n"+
             "只根据自己知道的信息判断，不得全知，不得凭空移动、发动战争、杀人、改变政权或获得秘密情报。不要为了戏剧性强行行动。\n"+
             "只返回JSON：thought（第一人称2-4句判断）、belief、intent、goal、action（stay、train、investigate、negotiate、aid之一）、reason。"
