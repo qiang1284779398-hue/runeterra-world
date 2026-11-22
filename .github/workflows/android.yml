@@ -29,7 +29,15 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Restore cached patched llama JNI AAR
+        id: llama-aar-cache
+        uses: actions/cache@v4
+        with:
+          path: app/libs/llama-android-fixed.aar
+          key: llama-aar-${{ runner.os }}-9f5469fd9fa7ea7bc7b01801923af95dc3b41d52-${{ hashFiles('scripts/patch_llama_jni_utf8.py') }}
+
       - name: Build patched llama JNI AAR
+        if: steps.llama-aar-cache.outputs.cache-hit != 'true'
         run: |
           git clone --recurse-submodules https://github.com/ffmpegkit-maintained/llama-android.git llama-android
           cd llama-android
