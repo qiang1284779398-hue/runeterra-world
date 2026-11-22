@@ -361,6 +361,7 @@ object WorldEngine {
         val directlyChangedResidentIds=mutableSetOf<Int>()
         val directlyChangedHeroNames=mutableSetOf<String>()
         val deathEvents=mutableListOf<Triple<String,Int,Boolean>>()
+        val eventsForIntervention=mutableListOf<String>()
         var changedResidents=false
         var changedHeroes=false
         var changedFactions=false
@@ -622,13 +623,39 @@ object WorldEngine {
                 }
             } else {
                 val bonds=heroBonds(p)
-                val relatedNames=bonds.filter { it.a==deadName || it.b==deadName }.map { if(it.a==deadName) it.b else it.a }.toSet()
-                heroes.filter { it.alive && it.name in relatedNames }.forEach { relative ->
-                    relative.memory.add("第${day}日：你听到与${deadName}有关的死亡或失踪消息；具体经过与原因尚未核实。")
-                    relative.history.add("第${day}日｜听到与${deadName}有关的死亡或失踪消息；具体经过尚未核实。")
+                val relatedBonds=bonds.filter { it.a==deadName || it.b==deadName }
+                relatedBonds.forEach { bond ->
+                    val relativeName=if(bond.a==deadName) bond.b else bond.a
+                    val relative=heroes.firstOrNull { it.alive && it.name==relativeName } ?: return@forEach
+                    val closeness=(bond.trust-bond.tension).coerceIn(-100,100)
+                    val reaction=when {
+                        closeness>=60 -> "这对你是沉重的个人打击；你难以把消息当作普通传闻"
+                        closeness>=20 -> "这件事令你明显不安，但你仍需要核实消息"
+                        closeness<=-30 -> "你与对方关系复杂；你首先评估这件事会带来的局势变化"
+                        else -> "你对消息保持警惕，暂不判断自己的情绪与责任"
+                    }
+                    val detail="第${day}日：你收到关于${deadName}死亡或失踪的初步消息。你与对方的关系背景是：${bond.basis}。消息来源、死亡经过、遗体情况与真正原因均未核实。${reaction}。"
+                    relative.memory.add(detail)
+                    relative.history.add("第${day}日｜${detail}")
+                    relative.thought="我收到关于${deadName}死亡或失踪的初步消息，但来源和经过尚未核实。${reaction}。我需要根据自己能接触到的线索决定下一步。"
+                    relative.intent="核实关于${deadName}的消息，并判断是否需要采取行动"
+                    if(closeness>=60) relative.goal="查明${deadName}遭遇的真相，同时处理这件事对自己的影响"
                     while(relative.memory.size>120) relative.memory.removeAt(0)
                     while(relative.history.size>3000) relative.history.removeAt(0)
+                    bond.lastEventDay=day
                     changedHeroes=true
+                }
+                // A prominent death creates institutional pressure, not an instant scripted coup or war.
+                val deadHero=heroes.firstOrNull { it.name==deadName }
+                val faction=deadHero?.let { factions[it.region] }
+                if(deadHero!=null && faction!=null && deadHero.influence>=55) {
+                    val stabilityShock=if(deadHero.influence>=80) 3 else 1
+                    val tensionShock=if(deadHero.influence>=80) 4 else 2
+                    faction.stability=(faction.stability-stabilityShock).coerceIn(0,100)
+                    faction.internalTension=(faction.internalTension+tensionShock).coerceIn(0,100)
+                    faction.policy=(faction.policy+"；重要人物"+deadName+"死亡/失踪后，相关机构需要处理指挥、继任、公众疑虑与安全调查").take(500)
+                    eventsForIntervention.add("【政治余波·模拟】第${day}日：${deadHero.region}的重要人物${deadName}死亡或失踪，令相关权力结构承受额外压力；稳定度-${stabilityShock}，内部张力+${tensionShock}。这不意味着所有人已知晓死因，也不自动触发政变或战争。")
+                    changedFactions=true
                 }
             }
         }
@@ -654,6 +681,7 @@ object WorldEngine {
         if(successful==0) return "天道指令未产生任何世界变化。\n"+outcomes.joinToString("\n")
         val finalDay=p.getLong(KEY_DAY,day)
         val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        eventsForIntervention.forEach { events.put(it) }
         outcomes.filter { it.startsWith("已") }.forEach { events.put("【天道直接干预·模拟分支】第${finalDay}日：${it} 原始指令：${command}") }
         while(events.length()>500) events.remove(0)
         val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
