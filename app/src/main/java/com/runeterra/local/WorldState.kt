@@ -237,6 +237,19 @@ object WorldEngine {
             val drift=rng.nextInt(3)-1
             if(hostilePair) bond.tension=(bond.tension+drift+warPressure+groupPressure+(if(localPressure>=70)1 else 0)).coerceIn(0,100)
             else bond.trust=(bond.trust+drift+(if(localPressure<35)1 else 0)-(if(localPressure>=75)1 else 0)).coerceIn(0,100)
+            if(bond.tension>=75) {
+                when(setOf(bond.a,bond.b)) {
+                    setOf("斯维因","乐芙兰") -> factions["诺克萨斯"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    setOf("慎","劫") -> factions["艾欧尼亚"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    setOf("艾希","瑟庄妮") -> factions["弗雷尔卓德"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    setOf("阿兹尔","泽拉斯") -> factions["恕瑞玛"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    setOf("蕾欧娜","黛安娜") -> factions["巨神峰"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    setOf("蔚","金克丝") -> {
+                        factions["皮尔特沃夫"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                        factions["祖安"]?.let{it.internalTension=(it.internalTension+1).coerceAtMost(100)}
+                    }
+                }
+            }
             val notable=(bond.tension>=95 || bond.trust<=5)
             if(notable && (bond.lastEventDay==0L || day-bond.lastEventDay>=180L)) {
                 events.add("【人物关系变化·模拟】第 $day 日：${bond.a}与${bond.b}之间的关系因「${bond.basis}」持续承压；信任${bond.trust}，矛盾${bond.tension}。这是模拟分支中的关系状态，不改写官方既定经历。")
@@ -244,6 +257,7 @@ object WorldEngine {
             }
         }
         saveHeroBonds(p,bonds)
+        saveFactions(p,factions)
     }
     fun heroRelationshipDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
