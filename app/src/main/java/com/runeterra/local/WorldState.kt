@@ -329,6 +329,7 @@ object WorldEngine {
 11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。
 13 swap_souls：target与other_target必填。交换两个人的灵魂认知层：记忆、信念、目标、思考、意图与人格倾向；身体、姓名、外貌、性别、能力、健康、位置、社会关系和身体经历档案不交换。两者必须都是英雄，或都是普通居民；不允许跨类别交换。
 12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+14 trigger_event_once：target必填，可选other_target，description必填。用于天道只触发一次有明确参与者的事件；将事件写入参与者的记忆、经历和世界历史，执行后立即结束本次干预，不创建持续控制、不预设后续选择。参与者必须是已存在人物。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
 只输出JSON：{"summary":"简短概括","clarification":"","operations":[{"type":"...","target":"...","gender":"","appearance":"","abilities":"","lineage":"","age":-1,"health":-1,"skill":-1,"job":"","goal":"","belief":"","destination":"","region":"","memory_mode":"","memory_text":"","name":"","rule":"","enabled":true,"day":0,"description":"","role":"","status":"","leader":"","government":"","policy":"","military":-1,"stability":-1,"treasury":-1,"internal_tension":-1,"head_severed":false,"survive":false,"other_target":""}]}
@@ -610,6 +611,30 @@ object WorldEngine {
                     val description=op.optString("description").trim()
                     if(description.isBlank()) outcomes.add("未执行：事件描述为空。")
                     else { outcomes.add("已写入天道创造的世界事件：${description}。该事件已成为模拟分支历史记录；其复杂物理后果需由后续专用模拟器处理。"); successful++ }
+                }
+                "trigger_event_once" -> {
+                    val description=op.optString("description").trim()
+                    val otherTarget=op.optString("other_target").trim()
+                    val otherHero=if(otherTarget.isBlank()) null else findHero(otherTarget)
+                    val otherResident=if(otherTarget.isBlank()) null else findResident(otherTarget)
+                    if(description.isBlank()) {
+                        outcomes.add("未执行：一次性事件描述为空。")
+                    } else if(hero==null && resident==null) {
+                        outcomes.add("未执行：找不到事件参与者「${target}」。")
+                    } else if(otherTarget.isNotBlank() && otherHero==null && otherResident==null) {
+                        outcomes.add("未执行：找不到第二位事件参与者「${otherTarget}」。")
+                    } else if((hero!=null && otherHero===hero) || (resident!=null && otherResident===resident)) {
+                        outcomes.add("未执行：一次性事件的参与者不能是同一个人。")
+                    } else {
+                        val eventLabel="一次性事件：${description}"
+                        if(hero!=null) appendHeroEvent(hero,eventLabel)
+                        if(resident!=null) appendResidentEvent(resident,eventLabel)
+                        if(otherHero!=null) appendHeroEvent(otherHero,eventLabel)
+                        if(otherResident!=null) appendResidentEvent(otherResident,eventLabel)
+                        eventsForIntervention.add("【天道一次性事件·模拟分支】第${day}日：${description}。本次干预到此结束；参与者之后的行动、关系变化与心理反应不由天道预设。")
+                        outcomes.add("已触发并记录一次性事件：${description}。参与者已获得各自的经历记录；本次干预立即结束，后续由人物自主思考及世界因果演化。")
+                        successful++
+                    }
                 }
                 else -> outcomes.add("未执行：不支持的操作类型「${type}」。")
             }
