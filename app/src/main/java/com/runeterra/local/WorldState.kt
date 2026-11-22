@@ -93,10 +93,10 @@ object WorldEngine {
                 val target=regionResidents.randomOrNull()
                 if(target!=null){
                     when(h.name){
-                        "盖伦"->{target.health=(target.health+3).coerceAtMost(100);h.status="巡逻"}
-                        "拉克丝"->{target.health=(target.health+2).coerceAtMost(100);h.status="秘密援助"}
-                        "艾瑞莉娅"->{target.health=(target.health+2).coerceAtMost(100);h.status="抵抗行动"}
-                        "厄运小姐"->{target.coins+=2;h.status="港口行动"}
+                        "盖伦"->{target.health=(target.health+3).coerceAtMost(100);h.status="巡逻";recordLife(target,day,"在${h.name}巡逻时获得保护。")}
+                        "拉克丝"->{target.health=(target.health+2).coerceAtMost(100);h.status="秘密援助";recordLife(target,day,"在${h.name}的秘密援助下得到帮助。")}
+                        "艾瑞莉娅"->{target.health=(target.health+2).coerceAtMost(100);h.status="抵抗行动";recordLife(target,day,"受到${h.name}领导的抵抗行动影响。")}
+                        "厄运小姐"->{target.coins+=2;h.status="港口行动";recordLife(target,day,"参与${h.name}主导的港口行动，获得报酬。")}
                         "杰斯"->{markets[h.region]?.let{it.wealth+=5};h.status="技术研究"}
                         "维克托"->{markets[h.region]?.let{it.wealth+=3};h.status="技术实验"}
                         else->{h.status="行动中"}
@@ -308,8 +308,12 @@ object WorldEngine {
         val raw=p.getString(KEY_PEOPLE,null)
         if(raw!=null) return runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
         val rng=Random(24681357L)
-        val list=(0 until 240).map { i -> Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),regions[i%regions.size],
-            16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)]) }.toMutableList()
+        val list=(0 until 240).map { i ->
+            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),regions[i%regions.size],
+                16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)])
+            recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}，职业为${resident.job}。")
+            resident
+        }.toMutableList()
         p.edit().putInt(KEY_NEXT_ID,240).apply()
         savePeople(p,list); return list
     }
