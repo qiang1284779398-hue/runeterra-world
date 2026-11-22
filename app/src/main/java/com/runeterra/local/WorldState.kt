@@ -2614,7 +2614,7 @@ private fun craftBonus(region:String):Int = when(region) {
         }.getOrDefault("")
         val publicInstitutions=localFaction?.let { "当地公开政治结构：${it.government}；当前公共议题：${it.policy}；公开领袖或机构：${it.leader}" } ?: "当地没有可用的公开政体细节"
         val prompt="""你是符文之地中一名有自身经历、局限知识、关系和利益的居民的个人认知引擎。你不是旁白，不是游戏角色，不知道全世界发生的事。只能依据此人的亲历、可信记忆和当前可观察信息判断；不得替别人决定，也不得捏造对话、事件或知识。
-人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；性别：${r.gender}；外貌：${r.appearance.ifBlank { "未特别记录" }}；能力：${r.abilities.ifBlank { "依职业与既有设定" }}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
+人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；性别：${r.gender}；外貌：${r.appearance.ifBlank { "未特别记录" }}；能力：${r.abilities.ifBlank { "依职业与既有设定" }}；职业：${r.job}；当前活动：${r.dailyActivity}；疲劳：${r.fatigue}/100；生活状态：${r.morale}/100；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
 人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
 已知关系：${relations}。
 同一聚落中可能接触的人：${socialCandidates.ifBlank { "目前没有适合建立新友谊的已登记对象" }}。只有双方确实可能接触时，才可以选择主动交往；不得凭空建立关系。
@@ -2627,7 +2627,7 @@ private fun craftBonus(region:String):Int = when(region) {
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
 当前生效的天道规则：${activeHeavenlyRules(context).joinToString("；").ifBlank { "无额外规则" }}。
-请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
+请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、疲劳、技能、资源、职业和所处地区；疲劳过高或正在休养时，不应安排高强度劳动、远行或战斗。行动还必须符合当地真实社会条件：德玛西亚需考虑王室秩序、贵族与禁魔制度；诺克萨斯需考虑帝国军政、军团与地方权力；艾欧尼亚需考虑地方社群自治、寺院传统和精神领域影响；皮尔特沃夫需考虑议会、贸易家族与工坊；祖安需考虑地下城环境、化学工业、污染和阶层差异；弗雷尔卓德需考虑严寒、部族与迁徙；恕瑞玛需考虑水源、绿洲与商路；比尔吉沃特需考虑港口、船长与海上风险。不要把地区背景误当成个人已知的秘密，也不要把所有居民写成同一种文化。不合理时选择stay。不要为了制造剧情而行动。
 行动选择应体现这个人自己的长期兴趣和处境，而不只是生存：可以维持现状、寻找食物、求职或转行、向可信亲友求助、练习现有职业技能，或主动结识同一聚落中真实存在的人。不要为了制造剧情而强行选择社交或成长。
 如果个人记忆中有天道干预、异常信息或关于世界本质的疑问，可以自主选择investigate_world来整理假说、观察现象并寻找证据，或选择discuss_world与真实可接触的亲友交流；没有研究条件时也可以暂缓。
 只返回JSON对象：thought（第一人称思考，1-3句）、belief（可保持或修正的个人信念）、intent（当前意图）、goal（短期目标）、action（stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一；investigate_world用于独立研究世界规律或核验天道信息，discuss_world仅在有可接触的可信关系时交流；不得自动得出超出证据的结论）、new_job（seek_work或change_job时可填写；仅限农夫、采集者、药师、商贩、工匠、矿工、护卫、学徒、伐木工、海克斯技师、魔法材料采集者）、target_id（socialize时必须是上方真实候选人的编号；其他行动填-1）。"""
