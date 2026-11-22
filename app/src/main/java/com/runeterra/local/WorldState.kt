@@ -831,7 +831,7 @@ private fun craftBonus(region:String):Int = when(region) {
     fun residentDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age}).map {
-            "${it.id}｜${it.name}｜${it.age}岁｜${it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
+            "${it.id}｜${it.name}｜${it.age}岁｜${if(it.travelDaysRemaining>0)"途中：${it.travelOrigin}→${it.travelDestination}" else it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
         }
     }
     fun residentHistory(context:Context,id:Int):String {
@@ -842,6 +842,7 @@ private fun craftBonus(region:String):Int = when(region) {
         return buildString {
             append("人物档案：${r.name}\n")
             append("居民编号：${r.id}\n年龄：${r.age}岁\n地区：${r.region}\n聚落：${r.settlement}\n职业：${r.job}\n")
+            if(r.travelDaysRemaining>0) append("旅行状态：途中，${r.travelOrigin}→${r.travelDestination}，剩余约${r.travelDaysRemaining}个模拟日\\n旅行目的：${r.travelPurpose}\\n")
             append("健康：${r.health}/100\n技能：${r.skill}\n财富：${r.coins}\n")
             append("人生状态：${if(r.alive)"在世" else "已故"}\n")
             append("伴侣：${partner?.name ?: if(r.partnerId>=0)"关系对象档案不可用" else "暂无记录"}\n")
