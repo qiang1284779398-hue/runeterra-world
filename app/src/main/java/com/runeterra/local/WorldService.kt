@@ -7,28 +7,38 @@ import android.app.Service
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
-import android.os.Looper
 
 class WorldService : Service() {
-    private val handler = Handler(Looper.getMainLooper())
+    private lateinit var workerThread: HandlerThread
+    private lateinit var worker: Handler
+    private var ticks = 0L
+
     private val tick = object : Runnable {
         override fun run() {
-            val state = WorldEngine.advance(this@WorldService)
-            updateNotification(state.day)
-            handler.postDelayed(this, 5_000L) // 初始节奏：现实 5 秒推进 1 个世界日
+            if (!WorldEngine.load(this@WorldService).running) return
+            // 目标模拟速度：现实每秒推进 200 个世界日。
+            val state = WorldEngine.advance(this@WorldService, DAYS_PER_SECOND)
+            ticks++
+            if (ticks % NOTIFICATION_INTERVAL_TICKS == 0L) {
+                updateNotification(state.day)
+            }
+            worker.postDelayed(this, TICK_INTERVAL_MS)
         }
     }
 
     override fun onCreate() {
         super.onCreate()
         createChannel()
+        workerThread = HandlerThread("RuneterraWorldSimulation").apply { start() }
+        worker = Handler(workerThread.looper)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                handler.removeCallbacks(tick)
+                worker.removeCallbacks(tick)
                 WorldEngine.setRunning(this, false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
@@ -37,13 +47,14 @@ class WorldService : Service() {
         }
         startForeground(NOTIFICATION_ID, notification(WorldEngine.load(this).day))
         WorldEngine.setRunning(this, true)
-        handler.removeCallbacks(tick)
-        handler.post(tick)
+        worker.removeCallbacks(tick)
+        worker.post(tick)
         return START_STICKY
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(tick)
+        if (::worker.isInitialized) worker.removeCallbacksAndMessages(null)
+        if (::workerThread.isInitialized) workerThread.quitSafely()
         WorldEngine.setRunning(this, false)
         super.onDestroy()
     }
@@ -59,8 +70,8 @@ class WorldService : Service() {
 
     private fun notification(day: Long): Notification {
         val builder = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
-        return builder.setContentTitle("符文之地正在运行")
-            .setContentText("世界第 $day 日 · 本机模拟中")
+        return builder.setContentTitle("符文之地正在高速运行")
+            .setContentText("世界第 $day 日 · 现实 1 秒约推进 200 天")
             .setSmallIcon(android.R.drawable.ic_popup_sync)
             .setOngoing(true)
             .build()
@@ -74,5 +85,8 @@ class WorldService : Service() {
         const val ACTION_STOP = "com.runeterra.local.STOP"
         private const val CHANNEL_ID = "runeterra_world"
         private const val NOTIFICATION_ID = 701
+        private const val DAYS_PER_SECOND = 200
+        private const val TICK_INTERVAL_MS = 1_000L
+        private const val NOTIFICATION_INTERVAL_TICKS = 5L
     }
 }
