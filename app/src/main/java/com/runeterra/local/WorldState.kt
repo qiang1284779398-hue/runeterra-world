@@ -125,7 +125,7 @@ object WorldEngine {
             val count=pop.count{it.alive&&it.region in f.territory}
             val marketWealth=f.territory.sumOf{markets[it]?.wealth?:0}
             f.treasury=(f.treasury+count/5+marketWealth/1000-rng.nextInt(8)).coerceAtLeast(0)
-            f.stability=(f.stability+(if(count>0)1 else -2)+(if(f.treasury<150)-3 else 1)).coerceIn(0,100)
+            f.stability=(f.stability+(if(count>0)1 else -2)+(if(f.treasury<150) -3 else 1)).coerceIn(0,100)
             f.military=(f.military+if(f.treasury>800 && rng.nextInt(100)<10)5 else 0).coerceAtMost(10000)
             if(f.stability<25 && rng.nextInt(100)<12){
                 events.add("【政局】第 $day 日：${f.name}局势动荡，财政${f.treasury}，稳定度${f.stability}；出现抗议、权力斗争或地方自治迹象。")
