@@ -1052,12 +1052,25 @@ object WorldEngine {
             val residents=pop.filter { it.alive && it.region==stage.region }
             residents.forEach { r -> r.health=(r.health+stage.healthDelta).coerceIn(0,100); recordLife(r,day,"受到历史事件「${stage.title}」影响，身处${stage.region}。") }
             val displaced=residents.filter { rng.nextInt(100)<stage.migrationChance }
+            val localPopulation=residentRegions.associateWith { region -> pop.count { it.alive && it.region==region } }.toMutableMap()
+            val saferDestinations=residentRegions.filter { it!=stage.region && markets.containsKey(it) }
+                .sortedByDescending { region ->
+                    val market=markets[region]!!
+                    val crowdPenalty=(localPopulation[region]?:0)*3
+                    market.food*2 + market.wealth/80 + (market.stock["粮食"]?:0)/3 - crowdPenalty
+                }.take(4)
             displaced.forEach { r ->
-                val destination=residentRegions[(residentRegions.indexOf(stage.region).coerceAtLeast(0)+1)%residentRegions.size]
+                val destination=saferDestinations.maxByOrNull { region ->
+                    val market=markets[region]!!
+                    market.food*2 + market.wealth/80 + (market.stock["粮食"]?:0)/3 - (localPopulation[region]?:0)*3 + rng.nextInt(18)
+                } ?: return@forEach
+                val origin=r.region
                 r.region=destination
-                recordLife(r,day,"因「${stage.title}」从${stage.region}迁往${destination}。")
+                r.settlement=defaultSettlement(destination,r.id)
+                localPopulation[destination]=(localPopulation[destination]?:0)+1
+                recordLife(r,day,"因「${stage.title}」从${origin}迁往${destination}，选择当时粮食供应与生计条件相对较好的可居住聚落。")
             }
-            events.add("【历史事件链·模拟】第 ${day} 日 ${stage.title}；${stage.region}影响${residents.size}人，迁徙${displaced.size}人。")
+            events.add("【历史事件链·模拟】第 ${day} 日 ${stage.title}；${stage.region}影响${residents.size}人，迁徙${displaced.size}人；目的地依据粮食库存、市场财富与人口压力选择，而非固定轮转。")
             done.add(stage.id)
         }
         p.edit().putString("lore_chain_done",JSONArray().apply { done.forEach { put(it) } }.toString()).apply()
