@@ -188,7 +188,18 @@ object WorldEngine {
         HeroAgent("艾克","祖安","发明家与社区守护者","保护社区","守护祖安街区与萤火成员",64),
         HeroAgent("奇亚娜","以绪塔尔","元素法师与王族","争夺继承权","争取以绪塔尔王位与云塔认可",70),
         HeroAgent("妮蔻","以绪塔尔","瓦斯塔亚变形者","寻找归属","寻找同伴并保护瓦斯塔亚族群",58),
-        HeroAgent("凯莎","恕瑞玛","虚空战士","巡行","抵御虚空威胁",65)
+        HeroAgent("凯莎","恕瑞玛","虚空战士","巡行","抵御虚空威胁",65),
+        HeroAgent("内瑟斯","恕瑞玛","飞升者与知识守护者","守护古代知识","阻止恕瑞玛历史与飞升者遗产被滥用",76),
+        HeroAgent("雷克顿","恕瑞玛","飞升者战士","受疯狂与仇恨驱使","追寻内瑟斯并寻求复仇",70),
+        HeroAgent("亚托克斯","恕瑞玛","暗裔","被封存的远古威胁","寻求挣脱武器封印并终结自身痛苦",88),
+        HeroAgent("佛耶戈","暗影岛","破败之王","受封印的亡灵君王","执念于失去的王后，破败诅咒仍留下后果",82),
+        HeroAgent("锤石","暗影岛","灵魂典狱长","黑雾中的操纵者","收集并折磨灵魂，扩大对生者的威胁",80),
+        HeroAgent("瑞兹","符文之地","符文法师","隐秘巡行","寻找并封存世界符文，避免再次引发灾难",92),
+        HeroAgent("奥恩","弗雷尔卓德","半神与锻造之神","隐居","远离凡人纷争，守护古老锻造力量",78),
+        HeroAgent("沃利贝尔","弗雷尔卓德","半神与风暴之神","远古力量苏醒","维护原始荒野与古老信仰",82),
+        HeroAgent("艾尼维亚","弗雷尔卓德","半神与冰霜之灵","守护冰原","在灾厄来临时守护弗雷尔卓德生命",82),
+        HeroAgent("贝蕾亚","虚空","虚空女皇","异界扩张","在虚空深处扩张领域并威胁现实世界",90),
+        HeroAgent("莫德凯撒","诺克萨斯","亡灵征服者","不朽领域中的潜在威胁","积蓄力量并谋求重返生者世界",86)
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
         val raw=p.getString(KEY_HEROES,null)
@@ -258,6 +269,12 @@ object WorldEngine {
         }
         saveHeroBonds(p,bonds)
         saveFactions(p,factions)
+    }
+    fun heroDirectory(context:Context):List<String>{
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        return heroAgents(p).sortedBy{it.region}.map{
+            "【${it.name}】\\n所在领域：${it.region}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n影响力指标：${it.influence}/100\\n说明：此处只记录世界模拟中的人物状态；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+        }
     }
     fun heroRelationshipDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
@@ -401,6 +418,32 @@ object WorldEngine {
                         h.status="履行娜迦卡波洛丝信仰使命并考验灵魂"
                     }
                     "妮蔻" -> h.status="寻找同伴并保护瓦斯塔亚族群"
+                    "内瑟斯" -> h.status="守护恕瑞玛古代知识，警惕飞升者遗产再次引发灾难"
+                    "雷克顿" -> h.status="在恕瑞玛沙漠中受仇恨驱使，追寻内瑟斯"
+                    "亚托克斯" -> {
+                        h.status="暗裔意识依附于武器，持续寻找宿主与挣脱封印的机会"
+                        events.add("【暗裔威胁·模拟】第 $day 日：亚托克斯相关的暗裔力量出现征兆；暗裔是远古飞升者堕落后的存在，不是普通军队。")
+                    }
+                    "佛耶戈" -> {
+                        h.status="仍受破败事件后的封印与残余诅咒影响"
+                        groups.firstOrNull { it.id=="shadow_black_mist" }?.let { it.influence=(it.influence+1).coerceAtMost(100) }
+                    }
+                    "锤石" -> {
+                        h.status="在黑雾与灵魂领域中继续操纵被囚禁的灵魂"
+                        groups.firstOrNull { it.id=="shadow_black_mist" }?.let { it.resources=(it.resources+1).coerceAtMost(100) }
+                    }
+                    "瑞兹" -> h.status="追踪世界符文的线索，避免凡人再次触碰足以毁灭文明的力量"
+                    "奥恩" -> h.status="隐居于炉乡与弗雷尔卓德荒野，不主动参与凡人政权"
+                    "沃利贝尔" -> {
+                        h.status="古老风暴信仰在弗雷尔卓德部分地区回响"
+                        factions["弗雷尔卓德"]?.let { it.internalTension=(it.internalTension+1).coerceAtMost(100) }
+                    }
+                    "艾尼维亚" -> h.status="以冰霜与重生传说守护弗雷尔卓德生命"
+                    "贝蕾亚" -> {
+                        h.status="虚空深处的意识扩张，寻找侵入现实的机会"
+                        events.add("【虚空威胁·模拟】第 $day 日：虚空女皇贝蕾亚相关的异界活动增强；虚空不受符文之地常规国家边界约束。")
+                    }
+                    "莫德凯撒" -> h.status="仍处于不朽领域，影响通过古老秘密与追随者传闻渗入诺克萨斯"
                     else -> h.status="在所属地区推进个人目标"
                 }
                 h.influence=(h.influence+rng.nextInt(3)-1).coerceIn(0,100)
