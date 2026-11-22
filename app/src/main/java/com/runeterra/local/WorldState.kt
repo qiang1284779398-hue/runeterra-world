@@ -50,6 +50,11 @@ private data class Resident(
 object WorldEngine {
     private const val PREFS="runeterra_world"
     private fun recordLife(r:Resident,day:Long,detail:String){ r.history.add("第${day}日：${detail}") }
+    // Story entries are selective: record only residents whose region or role plausibly intersects a meaningful event.
+    private fun recordLocalStory(pop:List<Resident>,day:Long,region:String,detail:String,rng:Random,limit:Int=3,roles:Set<String> = emptySet()) {
+        val candidates=pop.filter { it.alive && it.region==region && (roles.isEmpty() || it.job in roles) }
+        candidates.shuffled(rng).take(limit.coerceAtLeast(1)).forEach { recordLife(it,day,detail) }
+    }
     private const val KEY_DAY="day"
     private const val KEY_ERA="world_era"
     private const val KEY_IONIA_INVASION_STARTED="ionia_invasion_started"
@@ -162,8 +167,9 @@ object WorldEngine {
                     "班德尔城" -> events.add("【班德尔入口·模拟】第 $day 日：班德尔城与符文之地之间的入口发生短暂异动。")
                     else -> events.add("【魔法与符文·模拟】第 $day 日：${region}出现局部魔法异常，区域魔法活动强度${newLevel}。")
                 }
+                if(residents.isNotEmpty()) residents.forEach { recordLife(it,day,"身处${region}时遭遇魔法异动；异常现象引发当地居民对安全、信仰或研究的不同反应。") }
                 if(region!="暗影岛" && region!="班德尔城" && residents.isNotEmpty() && rng.nextInt(100)<20) {
-                    residents.forEach { it.health=(it.health+rng.nextInt(5)-2).coerceIn(0,100) }
+                    residents.forEach { it.health=(it.health+rng.nextInt(5)-2).coerceIn(0,100); recordLife(it,day,"魔法异动对身体状态造成短暂影响。") }
                 }
             } else if(newLevel<=15 && rng.nextInt(100)<10) {
                 events.add("【魔法与符文·模拟】第 $day 日：${region}魔法活动趋于沉寂，相关研究与仪式难以开展。")
@@ -739,6 +745,7 @@ object WorldEngine {
                 if(group.id=="ionia_shadow_order" && p.getBoolean(KEY_IONIA_PLACIDIUM,false)) {
                     group.status="形成初期"; group.influence=24; group.resources=18; group.publicSupport=20
                     events.add("【组织形成·模拟分支】第 $day 日：战争创伤与理念分歧推动艾欧尼亚影流开始形成；其发展仍取决于人物选择与地方局势。")
+                    recordLocalStory(pop,day,"艾欧尼亚","战争后的理念分歧推动影流开始形成；当地居民开始感受到教派与地方社群之间的变化。",rng,4)
                 } else return@forEach
             }
             val livingMembers=group.members.mapNotNull { id -> pop.firstOrNull { it.id==id && it.alive } }
@@ -792,6 +799,7 @@ object WorldEngine {
                 val rival=groups.firstOrNull { it.id==rivalId }
                 if(rival!=null && group.influence>=65 && rival.influence>=65 && rng.nextInt(100)<4){
                     events.add("【组织冲突·模拟】第 "+day+" 日："+group.name+"与"+rival.name+"围绕理念、地盘或资源发生冲突。")
+                    recordLocalStory(pop,day,group.region,"当地的"+group.name+"与"+rival.name+"发生公开冲突；居民开始面对治安、资源与立场选择带来的压力。",rng,3)
                     group.resources=(group.resources-2).coerceAtLeast(0)
                     rival.resources=(rival.resources-2).coerceAtLeast(0)
                     group.publicSupport=(group.publicSupport-1).coerceAtLeast(0)
@@ -852,6 +860,8 @@ object WorldEngine {
                     rel.aWins=0
                     rel.bWins=0
                     events.add("【战争爆发·模拟分支】第 $day 日：${rel.a}与${rel.b}的外交危机升级为公开战争。战争目标、补给与国内政治将共同影响后续进程。")
+                recordLocalStory(pop,day,rel.a,"国家与${rel.b}正式进入战争状态；征兵、税赋、边境安全与贸易前景开始成为当地社会议题。",rng,3,setOf("护卫","商贩","工匠"))
+                recordLocalStory(pop,day,rel.b,"国家与${rel.a}正式进入战争状态；边境安全、物资供应与家人去向成为当地社会议题。",rng,3,setOf("护卫","商贩","工匠"))
                 }
             }
             if(rel.war && sideA!=null && sideB!=null) {
@@ -892,11 +902,16 @@ object WorldEngine {
                     if(localReadiness && rng.nextInt(100)<30) {
                         militias?.let { it.influence=(it.influence+8).coerceAtMost(100); it.publicSupport=(it.publicSupport+8).coerceAtMost(100) }
                         events.add("【普雷西典战线·模拟分支】第 $day 日：诺克萨斯军团的推进威胁到艾欧尼亚重要圣地与省地交通；地方民兵、武道寺院和居民开始更广泛地组织抵抗。战局结果仍由后续资源、动员与军事行动决定。")
+                        recordLocalStory(pop,day,"艾欧尼亚","普雷西典战线局势恶化；地方社群开始组织抵抗与互助，个人生活受到战争前线变化牵动。",rng,8)
                         p.edit().putBoolean(KEY_IONIA_PLACIDIUM,true).apply()
                         saveOrganizations(p,ionianGroups)
                     }
                 }
-                if(rel.warMonths%3==0)events.add("【战争进程·模拟】第 $day 日：${rel.a}与${rel.b}的战争已持续${rel.warMonths}个月；双方军力、财政与社会稳定持续消耗。")
+                if(rel.warMonths%3==0) {
+                    events.add("【战争进程·模拟】第 $day 日：${rel.a}与${rel.b}的战争已持续${rel.warMonths}个月；双方军力、财政与社会稳定持续消耗。")
+                    recordLocalStory(pop,day,regionA,"战争持续至第${rel.warMonths}个月；征用、物价与亲友安危逐渐改变当地人的生活判断。",rng,2)
+                    recordLocalStory(pop,day,regionB,"战争持续至第${rel.warMonths}个月；补给压力与国内局势影响当地居民对未来的预期。",rng,2)
+                }
                 val exhaustion=rel.exhaustionA+rel.exhaustionB
                 val domesticCrisis=sideA.stability<25 || sideB.stability<25 || sideA.treasury<35 || sideB.treasury<35
                 val minimumWarMonths=if(isNoxusIonia)24 else 3
@@ -922,6 +937,8 @@ object WorldEngine {
                     }
                     rel.tension=(rel.tension-18).coerceAtLeast(45)
                     events.add("【停战谈判·模拟分支】第 $day 日：长期战争造成的财政、军力与社会压力迫使${rel.a}和${rel.b}接受暂时停火；边界争端与政治敌意尚未解决。")
+                    recordLocalStory(pop,regionA,regionA,"停战消息传来；居民开始评估失散亲友、贸易恢复与家园重建的可能。",rng,5)
+                    recordLocalStory(pop,regionB,regionB,"停战消息传来；居民对边境是否安全、军队是否撤离仍抱有疑虑。",rng,5)
                     rel.warMonths=0
                     rel.exhaustionA=0
                     rel.exhaustionB=0
@@ -1272,6 +1289,7 @@ object WorldEngine {
             if(day%360L==0L && (e.water<20||e.vegetation<20||e.pollution>75)){
                 val cause=when{e.pollution>75->"污染累积";e.water<20->"水源压力";else->"植被衰退"}
                 events.add("【生态变化·模拟】第 "+day+" 日："+e.region+"出现"+cause+"，可能影响当地生计、健康与迁徙选择。")
+                recordLocalStory(pop,day,e.region,"当地出现"+cause+"；居民开始担心水源、土地、污染或生计条件对未来的影响。",rng,3,setOf("农夫","采集者","药师","伐木工"))
             }
         }
         saveEcology(p,state)
@@ -1365,6 +1383,7 @@ object WorldEngine {
                 f.health=(f.health+(if(target>55)1 else -1)-stress).coerceIn(0,100)
                 if(f.abundance<=8&&target>=45&&day%360L==0L){
                     events.add("【生态警讯·模拟】第 "+day+" 日："+region+"的"+f.guild+"数量降至极低水平，栖息地或食物网承受压力。")
+                    recordLocalStory(pop,day,region,"当地"+f.guild+"数量降至极低水平；依赖狩猎、采集或野外通行的居民开始调整生计与活动范围。",rng,2,setOf("采集者","农夫","护卫","药师"))
                 }
             }
             val meanAbundance=if(groups.isEmpty())0 else groups.map{it.abundance}.average().toInt()
