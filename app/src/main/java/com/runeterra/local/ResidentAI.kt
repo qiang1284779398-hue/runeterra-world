@@ -39,7 +39,7 @@ object ResidentAI {
         Log.i("RuneterraAI", line)
         ctx.getSharedPreferences("runeterra_ai_diagnostics", Context.MODE_PRIVATE)
             .edit().putString("last_stage", line).putString("last_model", loadedPath ?: "").commit()
-        try { File(ctx.filesDir, "ai_diagnostics.log").appendText(line + "\\n") } catch (_: Throwable) {}
+        try { File(ctx.filesDir, "ai_diagnostics.log").appendText(line + "\n") } catch (_: Throwable) {}
     }
 
     fun diagnosticReport(context: Context): String {
@@ -50,8 +50,8 @@ object ResidentAI {
         val path = prefs.getString("last_model", "").orEmpty()
         val size = if (path.isNotBlank()) File(path).let { if (it.exists()) it.length() else -1L } else -1L
         val logFile = File(ctx.filesDir, "ai_diagnostics.log")
-        val tail = if (logFile.exists()) logFile.readLines().takeLast(30).joinToString("\\n") else "暂无日志"
-        return "最近阶段：${prefs.getString("last_stage", "无记录")}\\n模型路径：$path\\n模型大小：${if (size >= 0) "${size / 1024 / 1024} MB" else "未知"}\\n系统可用内存：${mi.availMem / 1024 / 1024} MB\\n系统低内存状态：${mi.lowMemory}\\n\\n最近日志：\\n$tail"
+        val tail = if (logFile.exists()) logFile.readLines().takeLast(30).joinToString("\n") else "暂无日志"
+        return "最近阶段：${prefs.getString("last_stage", "无记录")}\n模型路径：$path\n模型大小：${if (size >= 0) "${size / 1024 / 1024} MB" else "未知"}\n系统可用内存：${mi.availMem / 1024 / 1024} MB\n系统低内存状态：${mi.lowMemory}\n\n最近日志：\n$tail"
     }
 
     fun isLoaded(): Boolean = model?.isLoaded == true
@@ -98,6 +98,7 @@ object ResidentAI {
                 )
                 model = loaded
                 loadedPath = path
+                recordStage("模型加载成功")
                 withContext(Dispatchers.Main.immediate) { callback(null) }
               } catch (e: Throwable) {
                 recordStage("模型加载异常：${e.message ?: e.toString()}")
