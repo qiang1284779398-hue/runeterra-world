@@ -98,7 +98,14 @@ object WorldEngine {
             "【存档提示】\n如果这是在旧版本中已经运行过的存档，单纯显示新历史锚点不会改写旧人物经历；如需严格从该时期开始，请使用重置世界建立新存档。"
         )
     }
-    fun timelineStatus(context:Context):String = timelineDirectory(context).firstOrNull()?.substringBefore("\n")?.removePrefix("【")?.removeSuffix("】") ?: "历史锚点未设定"
+    fun timelineStatus(context:Context):String {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        return when(p.getString(KEY_ERA,null)) {
+            ERA_PRE_IONIA -> "诺克萨斯第一次入侵艾欧尼亚之前"
+            "legacy_unanchored" -> "旧存档：历史起点未确认"
+            else -> "历史锚点未设定"
+        }
+    }
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
     }
