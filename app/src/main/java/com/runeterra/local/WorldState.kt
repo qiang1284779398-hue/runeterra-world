@@ -30,13 +30,14 @@ private data class Resident(
     var mindTrait: Int = 50, var belief: String = "重视生存与身边的人", var currentThought: String = "",
     var intent: String = "维持当前生活", var mindMemory: MutableList<String> = mutableListOf(),
     var gender:String="未记录", var appearance:String="", var abilities:String="", var headSevered:Boolean=false, var survivalOverride:Boolean=false,
-    var identityMemory:String=""
+    var identityMemory:String="",
+    var dailyActivity:String="日常生活", var fatigue:Int=0, var morale:Int=50
 ) {
     fun json() = JSONObject().put("id",id).put("name",name).put("region",region).put("age",age)
         .put("health",health).put("food",food).put("coins",coins).put("job",job).put("goal",goal)
         .put("skill",skill).put("partnerId",partnerId).put("familyCount",familyCount).put("alive",alive)
         .put("history",JSONArray(history)).put("parentIds",JSONArray(parentIds)).put("childIds",JSONArray(childIds))
-        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride).put("identityMemory",identityMemory)
+        .put("friendIds",JSONArray(friendIds)).put("mentorId",mentorId).put("studentIds",JSONArray(studentIds)).put("settlement",settlement).put("travelOrigin",travelOrigin).put("travelDestination",travelDestination).put("travelDaysRemaining",travelDaysRemaining).put("travelPurpose",travelPurpose).put("jobBeforeTravel",jobBeforeTravel).put("householdId",householdId).put("lineage",lineage).put("lifespanYears",lifespanYears).put("storyRecords",JSONArray(storyRecords)).put("mindTrait",mindTrait).put("belief",belief).put("currentThought",currentThought).put("intent",intent).put("mindMemory",JSONArray(mindMemory)).put("gender",gender).put("appearance",appearance).put("abilities",abilities).put("headSevered",headSevered).put("survivalOverride",survivalOverride).put("identityMemory",identityMemory).put("dailyActivity",dailyActivity).put("fatigue",fatigue).put("morale",morale)
     companion object {
         fun from(j: JSONObject) = Resident(j.optInt("id"),j.optString("name"),j.optString("region"),
             j.optInt("age",18),j.optInt("health",100),j.optInt("food",5),j.optInt("coins",10),
@@ -48,7 +49,7 @@ private data class Resident(
             (0 until (j.optJSONArray("friendIds")?.length() ?: 0)).map { j.getJSONArray("friendIds").getInt(it) }.toMutableList(),
             j.optInt("mentorId",-1),
             (0 until (j.optJSONArray("studentIds")?.length() ?: 0)).map { j.getJSONArray("studentIds").getInt(it) }.toMutableList(),
-            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false), j.optString("identityMemory",""))
+            j.optString("settlement",""),j.optString("travelOrigin",""),j.optString("travelDestination",""),j.optInt("travelDaysRemaining",0),j.optString("travelPurpose",""),j.optString("jobBeforeTravel",""),j.optInt("householdId",-1),j.optString("lineage","人类"),j.optInt("lifespanYears",95),(0 until (j.optJSONArray("storyRecords")?.length() ?: 0)).map { j.getJSONArray("storyRecords").getString(it) }.toMutableList(), j.optInt("mindTrait",50), j.optString("belief","重视生存与身边的人"), j.optString("currentThought",""), j.optString("intent","维持当前生活"), (0 until (j.optJSONArray("mindMemory")?.length() ?: 0)).map { j.getJSONArray("mindMemory").getString(it) }.toMutableList(), j.optString("gender","未记录"), j.optString("appearance",""), j.optString("abilities",""), j.optBoolean("headSevered",false), j.optBoolean("survivalOverride",false), j.optString("identityMemory",""), j.optString("dailyActivity","日常生活"), j.optInt("fatigue",0), j.optInt("morale",50))
     }
 }
 
@@ -87,6 +88,64 @@ object WorldEngine {
             .put("dialogueRecorded",false).put("psychologyRecorded",false)
         r.storyRecords.add(packet.toString())
         while(r.storyRecords.size>5000) r.storyRecords.removeAt(0)
+    }
+    // Daily life continues for every resident between local-model reasoning turns.
+    // This is a persistent state process, not a quest or scripted storyline.
+    private fun tickDailyLife(day:Long,pop:MutableList<Resident>,rng:Random) {
+        val workingJobs=setOf("农夫","采集者","商贩","工匠","护卫","伐木工","矿工","药师","魔法材料采集者","海克斯技师")
+        pop.filter { it.alive }.forEach { r ->
+            val previous=r.dailyActivity
+            val next=when {
+                r.travelDaysRemaining>0 -> "旅途："+r.travelPurpose.ifBlank { "迁徙" }
+                r.health<30 -> "休养与寻求照料"
+                r.food<=1 -> "寻找口粮与生计"
+                r.age<6 -> "依赖家庭照料"
+                r.age<13 -> if(r.mentorId>=0) "跟随师长学习" else "家庭生活与基础学习"
+                r.job=="学徒" -> "跟随师长实践技艺"
+                r.fatigue>=85 -> "休息与恢复体力"
+                r.job in workingJobs -> when(r.job) {
+                    "农夫" -> if(r.region=="恕瑞玛") "灌溉、耕作与维护水渠" else "耕作、播种与收获"
+                    "采集者" -> "采集当地食物与生活材料"
+                    "商贩" -> "采购、议价与经营交易"
+                    "工匠" -> if(r.region=="皮尔特沃夫" || r.region=="祖安") "工坊制造与器件维修" else "制作工具与日用器物"
+                    "护卫" -> "巡逻、护送与维持治安"
+                    "伐木工" -> "采伐木材与林地维护"
+                    "矿工" -> "采矿与矿料分拣"
+                    "药师" -> "采药、配制与照料病患"
+                    "魔法材料采集者" -> "谨慎采集并辨识特殊材料"
+                    "海克斯技师" -> "研究、装配与维修海克斯器件"
+                    else -> "职业劳动"
+                }
+                else -> "处理个人事务与社区往来"
+            }
+            r.dailyActivity=next
+            when {
+                next.startsWith("旅途") -> r.fatigue=(r.fatigue+7).coerceIn(0,100)
+                next=="休息与恢复体力" || next=="休养与寻求照料" -> r.fatigue=(r.fatigue-24).coerceAtLeast(0)
+                next=="依赖家庭照料" || next.contains("学习") -> r.fatigue=(r.fatigue-5).coerceAtLeast(0)
+                next.contains("劳动") || next.contains("耕作") || next.contains("采集") || next.contains("经营") || next.contains("巡逻") || next.contains("采伐") || next.contains("采矿") || next.contains("采药") || next.contains("工坊") || next.contains("装配") -> r.fatigue=(r.fatigue+8+rng.nextInt(5)).coerceIn(0,100)
+                else -> r.fatigue=(r.fatigue-8).coerceAtLeast(0)
+            }
+            val familyNearby=pop.any { it.alive && it.id!=r.id && it.householdId>=0 && it.householdId==r.householdId && it.region==r.region && it.travelDaysRemaining<=0 }
+            val socialNearby=pop.any { it.alive && it.id in r.friendIds && it.region==r.region && it.settlement==r.settlement && it.travelDaysRemaining<=0 }
+            val moraleShift=when {
+                r.health<30 || r.food<=0 -> -2
+                r.food>=3 && (familyNearby || socialNearby) && rng.nextInt(100)<18 -> 1
+                r.food>=3 && r.health>=65 && rng.nextInt(100)<8 -> 1
+                r.fatigue>=90 -> -1
+                else -> 0
+            }
+            r.morale=(r.morale+moraleShift).coerceIn(0,100)
+            if(previous!=next && (next.startsWith("旅途") || next=="休养与寻求照料" || next=="寻找口粮与生计" || previous.startsWith("旅途"))) {
+                r.mindMemory.add("第"+day+"日，生活状态变化："+previous+" → "+next+"。")
+                while(r.mindMemory.size>120) r.mindMemory.removeAt(0)
+            }
+            if(r.fatigue>=95 && previous!="因过度疲劳而被迫休息") {
+                r.dailyActivity="休息与恢复体力"
+                r.fatigue=(r.fatigue-20).coerceAtLeast(0)
+                recordLife(r,day,"长期劳动与奔波造成明显疲劳，被迫暂停日常工作以恢复体力。","daily_life_transition")
+            }
+        }
     }
     // Individual cognition: residents evaluate their own situation, update beliefs/intents, and retain bounded private memory.
     private fun thinkIndividually(day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
@@ -2810,6 +2869,7 @@ private fun craftBonus(region:String):Int = when(region) {
             tickMagic(day,p,pop,markets,events,rng)
             tickEcology(day,p,pop,events,rng,ecology)
             tickFauna(day,p,ecology,pop,events,rng,fauna)
+            tickDailyLife(day,pop,rng)
             thinkIndividually(day,pop,markets,rng)
             // Continuous food production follows local growers, skill and ecological conditions.
             residentRegions.forEach { region ->
