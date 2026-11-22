@@ -41,8 +41,8 @@ object ResidentAI {
                 val loaded = Llama.loadModel(
                     modelPath = path,
                     config = LlamaConfig(
-                        contextSize = 2048,
-                        threads = 4,
+                        contextSize = 1536,
+                        threads = 3,
                         gpuLayers = 0,
                         temperature = 0.55f,
                         topP = 0.85f,
@@ -86,7 +86,7 @@ object ResidentAI {
                         systemPrompt = "你是符文之地居民的个人认知引擎。严格依据提供的个人经历、知识和所处环境思考，不得假装知道未经历的事情。输出简洁、可执行的结果。",
                         maxTokens = 256
                     )
-                    withContext(Dispatchers.Main.immediate) { callback(result.text.trim()) }
+                    withContext(Dispatchers.Main.immediate) { callback(cleanStructuredOutput(result.text)) }
                 } catch (e: Throwable) {
                     withContext(Dispatchers.Main.immediate) { callback("本地推理错误：${e.message ?: e.toString()}") }
                 }
@@ -94,7 +94,7 @@ object ResidentAI {
         }
     }
 
-    fun askStructured(prompt:String,maxTokens:Int=768,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit) {
+    fun askStructured(prompt:String,maxTokens:Int=192,systemPrompt:String="你是符文之地模拟世界的天道指令解析器。只输出符合要求的JSON，不要输出解释。",callback:(String)->Unit) {
         scope.launch {
             inferenceMutex.withLock {
                 val active=model
@@ -117,6 +117,19 @@ object ResidentAI {
                 }
             }
         }
+    }
+
+    /** Strip Qwen analysis markers and extract only final JSON for simulation parsing. */
+    private fun cleanStructuredOutput(raw: String): String {
+        val text = raw.replace(Regex("(?s)<think>.*?</think>"), "")
+            .replace("<think>", "").replace("</think>", "")
+            .replace("```json", "").replace("```", "").trim()
+        val start = text.indexOf('{')
+        val end = text.lastIndexOf('}')
+        if (start >= 0 && end > start) return text.substring(start, end + 1).trim()
+        if (listOf("用户让我", "系统要求", "按照要求输出", "扮演", "JSON格式").any { text.contains(it) })
+            return "格式错误：模型复述了任务指令，没有生成角色JSON。"
+        return text.take(500)
     }
 
     fun systemInfo(): String = try { Llama.getSystemInfo() } catch (e: Throwable) { e.message ?: "不可用" }
