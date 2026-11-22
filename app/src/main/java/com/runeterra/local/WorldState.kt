@@ -2183,6 +2183,35 @@ private fun craftBonus(region:String):Int = when(region) {
                     r.alive=false
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
+                    // Personal movable savings pass to close surviving heirs; household reserves remain collective property.
+                    // This models narrow inheritance without inventing land titles, wills or regional law.
+                    val heirs=buildList {
+                        pop.firstOrNull { it.alive && it.id==r.partnerId }?.let { add(it) }
+                        r.childIds.mapNotNull { childId -> pop.firstOrNull { it.alive && it.id==childId } }
+                            .sortedByDescending { it.age }.forEach { if(it !in this) add(it) }
+                    }
+                    if(heirs.isNotEmpty()) {
+                        val coinsPerHeir=r.coins/heirs.size
+                        val foodPerHeir=r.food/heirs.size
+                        var coinRemainder=r.coins%heirs.size
+                        var foodRemainder=r.food%heirs.size
+                        heirs.forEach { heir ->
+                            val inheritedCoins=coinsPerHeir+(if(coinRemainder>0){coinRemainder--;1}else 0)
+                            val inheritedFood=foodPerHeir+(if(foodRemainder>0){foodRemainder--;1}else 0)
+                            heir.coins+=inheritedCoins
+                            heir.food+=inheritedFood
+                            if(inheritedCoins>0 || inheritedFood>0) {
+                                recordLife(heir,day,"继承已故亲属${r.name}的个人遗留财物：金币${inheritedCoins}、粮食${inheritedFood}；这是个人动产分配，不包含家庭共同储备或未登记的不动产。","inheritance")
+                                heir.mindMemory.add("继承记录：从${r.name}处获得金币${inheritedCoins}、粮食${inheritedFood}。")
+                                while(heir.mindMemory.size>120) heir.mindMemory.removeAt(0)
+                            }
+                        }
+                        recordLife(r,day,"其个人遗留动产由在世伴侣及子女继承，共涉及${heirs.size}名继承人；家庭共同储备未纳入个人遗产。","inheritance")
+                        events.add("【继承·模拟】第 $day 日：${r.name}的个人遗留金币与粮食分配给${heirs.joinToString("、"){it.name}}；家庭共同储备保持集体所有。")
+                    } else if(r.coins>0 || r.food>0) {
+                        recordLife(r,day,"去世时未发现登记在案的在世伴侣或子女继承人；个人遗留动产暂列为未分配遗产，未凭空转入任何人的库存。","inheritance")
+                        events.add("【遗产待定·模拟】第 $day 日：${r.name}去世后没有登记在案的直系继承人，其个人遗留动产暂未分配。")
+                    }
                     // Death is recorded as a relationship event for surviving relatives and close ties too.
                     // This links separate biographies without inventing grief, dialogue or private thoughts.
                     pop.filter { it.alive && it.id in r.childIds }.forEach { child ->
