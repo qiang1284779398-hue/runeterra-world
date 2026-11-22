@@ -94,6 +94,20 @@ object WorldEngine {
     private data class Market(var food: Int, var wealth: Int) {
         fun json(region:String)=JSONObject().put("region",region).put("food",food).put("wealth",wealth)
     }
+    // Regional specializations are simulation modifiers inspired by lore, not canonical game stats.
+    private fun foodBonus(region:String):Int = when(region) {
+        "德玛西亚" -> 1
+        "弗雷尔卓德" -> 0
+        "恕瑞玛" -> -1
+        "比尔吉沃特" -> -1
+        "以绪塔尔" -> 1
+        else -> 0
+    }
+    private fun craftBonus(region:String):Int = when(region) {
+        "皮尔特沃夫","祖安" -> 2
+        "艾欧尼亚" -> 1
+        else -> 0
+    }
     private fun markets(p: android.content.SharedPreferences): MutableMap<String,Market> {
         val raw=p.getString(KEY_MARKETS,null)
         if(raw!=null) runCatching {
@@ -141,9 +155,9 @@ object WorldEngine {
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
                 if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
-                    "农夫","采集者" -> {r.food+=2+rng.nextInt(3);r.coins++;markets[r.region]?.let { it.food+=2;it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "农夫","采集者" -> {r.food+=(2+rng.nextInt(3)+foodBonus(r.region)).coerceAtLeast(1);r.coins++;markets[r.region]?.let { it.food+=(2+foodBonus(r.region)).coerceAtLeast(1);it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
                     "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
-                    "工匠" -> {r.coins+=2;markets[r.region]?.let { it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "工匠" -> {r.coins+=2+craftBonus(r.region);markets[r.region]?.let { it.wealth+=2+craftBonus(r.region) };r.skill=(r.skill+1).coerceAtMost(100)}
                     "护卫" -> {r.coins++;if(rng.nextInt(100)<4)r.health=(r.health-3).coerceAtLeast(0)}
                     else -> {if(r.coins>0)r.coins--;if(rng.nextInt(100)<20)r.food++}
                 }
