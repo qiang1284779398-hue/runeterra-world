@@ -499,7 +499,7 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val s = WorldEngine.load(this)
-        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 200 个世界日\n本地 AI：${if (ResidentAI.isLoaded()) "8B 模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
+        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 1 个世界小时（重大事件期间自动减速）\n本地 AI：${if (ResidentAI.isLoaded()) "8B 模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
         log.text = "最近世界记录\n" + (s.events.takeLast(12).asReversed().joinToString("\n") { "• $it" }.ifBlank { "尚无事件。启动世界后将逐步产生记录。" })
     }
 
