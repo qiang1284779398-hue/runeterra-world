@@ -1862,7 +1862,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 // a consequential threshold. Ordinary daily work and small numerical drift stay out.
                 if(biographyBeforeSkill<10 && r.skill>=10) recordLife(r,day,"长期工作与练习初见成效，掌握了职业基础技能。")
                 if(biographyBeforeSkill<25 && r.skill>=25) recordLife(r,day,"技能积累达到新的阶段，已能独立处理较复杂的工作。")
-                if(biographyBeforeSkill<50 && r.skill>=50) recordLife(r,day,"多年经验使其成为熟练从业者，开始拥有更大的职业选择空间。")
+                if(biographyBeforeSkill<50 && r.skill>=50) recordLife(r,day,"持续积累的实践经验使其成为熟练从业者，开始拥有更大的职业选择空间。")
                 if(biographyBeforeSkill<75 && r.skill>=75) recordLife(r,day,"技艺达到资深水准，在当地同行中具备较强经验。")
                 if(biographyBeforeSkill<100 && r.skill>=100) recordLife(r,day,"职业技能臻于当前模拟体系的顶点，成为当地极有经验的从业者。")
                 if(biographyBeforeCoins<25 && r.coins>=25) recordLife(r,day,"积蓄首次达到25枚，开始拥有应对短期意外的经济余地。")
