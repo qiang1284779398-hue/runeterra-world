@@ -30,10 +30,27 @@ object WorldEngine {
     private const val KEY_RUNNING="running"
     private const val KEY_PEOPLE="people"
     private const val KEY_NEXT_ID="next_id"
+    private const val KEY_MARKETS="markets"
     private val regions=listOf("德玛西亚","诺克萨斯","艾欧尼亚","皮尔特沃夫","祖安","弗雷尔卓德","恕瑞玛","巨神峰","比尔吉沃特","以绪塔尔")
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
+    private data class Market(var food: Int, var wealth: Int) {
+        fun json(region:String)=JSONObject().put("region",region).put("food",food).put("wealth",wealth)
+    }
+    private fun markets(p: android.content.SharedPreferences): MutableMap<String,Market> {
+        val raw=p.getString(KEY_MARKETS,null)
+        if(raw!=null) runCatching {
+            val a=JSONArray(raw); val map=mutableMapOf<String,Market>()
+            for(i in 0 until a.length()) { val j=a.getJSONObject(i); map[j.optString("region")]=Market(j.optInt("food",300),j.optInt("wealth",1000)) }
+            if(map.keys.containsAll(regions)) return map
+        }
+        val fresh=regions.associateWith { Market(300+Random(it.hashCode().toLong()).nextInt(250),1000) }.toMutableMap()
+        saveMarkets(p,fresh); return fresh
+    }
+    private fun saveMarkets(p: android.content.SharedPreferences, map: Map<String,Market>) {
+        val a=JSONArray(); map.forEach { (name,m)->a.put(m.json(name)) }; p.edit().putString(KEY_MARKETS,a.toString()).apply()
+    }
     private fun people(p: android.content.SharedPreferences): MutableList<Resident> {
         val raw=p.getString(KEY_PEOPLE,null)
         if(raw!=null) return runCatching { val a=JSONArray(raw); (0 until a.length()).map { Resident.from(a.getJSONObject(it)) }.toMutableList() }.getOrDefault(mutableListOf())
@@ -55,6 +72,7 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         var day=p.getLong(KEY_DAY,1L)
         val pop=people(p)
+        val markets=markets(p)
         val events=runCatching { val a=JSONArray(p.getString(KEY_EVENTS,"[]")); (0 until a.length()).map { a.getString(it) }.toMutableList() }.getOrDefault(mutableListOf())
         repeat(days.coerceAtLeast(1)) {
             day++
@@ -65,9 +83,9 @@ object WorldEngine {
                 r.food=(r.food-1).coerceAtLeast(0)
                 if(r.food==0) r.health=(r.health-2).coerceAtLeast(0)
                 if(rng.nextInt(100)<(42+r.skill.coerceAtMost(15))) when(r.job) {
-                    "农夫","采集者" -> {r.food+=2+rng.nextInt(3);r.coins++;r.skill=(r.skill+1).coerceAtMost(100)}
-                    "商贩" -> if(r.food>1){r.food--;r.coins+=2;r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
-                    "工匠" -> {r.coins+=2;r.skill=(r.skill+1).coerceAtMost(100)}
+                    "农夫","采集者" -> {r.food+=2+rng.nextInt(3);r.coins++;markets[r.region]?.let { it.food+=2;it.wealth++ };r.skill=(r.skill+1).coerceAtMost(100)}
+                    "商贩" -> if(r.food>1){r.food--;r.coins+=2;markets[r.region]?.let { if(it.food>0)it.food--;it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}else r.food++
+                    "工匠" -> {r.coins+=2;markets[r.region]?.let { it.wealth+=2 };r.skill=(r.skill+1).coerceAtMost(100)}
                     "护卫" -> {r.coins++;if(rng.nextInt(100)<4)r.health=(r.health-3).coerceAtLeast(0)}
                     else -> {if(r.coins>0)r.coins--;if(rng.nextInt(100)<20)r.food++}
                 }
@@ -100,12 +118,20 @@ object WorldEngine {
                 if(r.alive && rng.nextInt(1000)<2) events.add("第 $day 日：${r.name}在${r.region}达成「${r.goal}」，开始追寻新的方向。")
             }
             pop.addAll(newborns)
-            if(day%30L==0L) events.add("第 $day 日：月度结算，居民存粮、收入与健康影响生存。")
+            if(day%30L==0L) {
+                regions.forEach { region ->
+                    val count=pop.count { it.alive && it.region==region }
+                    val market=markets[region] ?: return@forEach
+                    val price=if(market.food<100) "高" else if(market.food>500) "低" else "稳定"
+                    events.add("第 $day 日市场：$region，人口$count，粮食库存${market.food}，财富指数${market.wealth}，粮价$price。")
+                }
+            }
             if(day%90L==0L) events.add("第 $day 日：季节转变，地区居民面对环境压力。")
             if(day%360L==0L) events.add("第 $day 日：新年，居民年龄与人生阶段变化。")
         }
         while(events.size>1200)events.removeAt(0)
         savePeople(p,pop)
+        saveMarkets(p,markets)
         val arr=JSONArray();events.forEach{arr.put(it)}
         p.edit().putInt(KEY_NEXT_ID,nextId)
             .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
