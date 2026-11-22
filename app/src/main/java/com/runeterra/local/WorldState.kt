@@ -52,6 +52,7 @@ private data class Resident(
 
 object WorldEngine {
     private const val PREFS="runeterra_world"
+    private val beliefs=listOf("重视亲情与互助","追求财富与独立","相信传统与秩序","渴望探索未知","警惕权力与不公","倾向冒险改变命运","珍视平静生活","希望证明自己的能力","关注家乡与共同体","怀疑传闻并寻求证据")
     // Versioned factual life packets: snapshots, event classification and contemporaneous relationship state.
     private fun recordLife(r:Resident,day:Long,detail:String,role:String="individual_transition"){
         r.history.add("第${day}日：${detail}")
@@ -1750,7 +1751,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 else -> "人类"
             }
             val lifespan=if(lineage=="瓦斯塔亚") 500+rng.nextInt(701) else 95+rng.nextInt(11)
-            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,if(lineage=="瓦斯塔亚")80+rng.nextInt(180) else 16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i),lineage=lineage,lifespanYears=lifespan)
+            val resident=Resident(i,names[rng.nextInt(names.size)]+"·"+(i+1),region,if(lineage=="瓦斯塔亚")80+rng.nextInt(180) else 16+rng.nextInt(54),65+rng.nextInt(36),12+rng.nextInt(24),rng.nextInt(40),jobs[rng.nextInt(jobs.size)],goals[rng.nextInt(goals.size)],settlement=defaultSettlement(region,i),lineage=lineage,lifespanYears=lifespan,mindTrait=rng.nextInt(101),belief=beliefs[rng.nextInt(beliefs.size)])
             recordLife(resident,1,"世界模拟档案建立；当时${resident.age}岁，居住于${resident.region}的${resident.settlement}，职业为${resident.job}。")
             resident
         }.toMutableList()
@@ -1983,7 +1984,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     val id=nextId++
                     val mateForLineage=pop.firstOrNull { it.id==r.partnerId && it.alive }
                     val childLineage=if(r.lineage=="瓦斯塔亚" || mateForLineage?.lineage=="瓦斯塔亚") "混合血脉（非瓦斯塔亚）" else if(r.lineage=="冰裔血脉（人类）" || mateForLineage?.lineage=="冰裔血脉（人类）") "冰裔血脉（人类）" else "人类"
-                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement,householdId=r.householdId,lineage=childLineage,lifespanYears=95+rng.nextInt(11))
+                    val child=Resident(id,names[rng.nextInt(names.size)]+"·"+id,r.region,0,100,3,0,"学徒","成长与学习",settlement=r.settlement,householdId=r.householdId,lineage=childLineage,lifespanYears=95+rng.nextInt(11),mindTrait=rng.nextInt(101),belief=beliefs[rng.nextInt(beliefs.size)])
                     child.parentIds.add(r.id)
                     r.childIds.add(id)
                     recordLife(r,day,"家庭迎来孩子${child.name}（居民编号$id）。")
