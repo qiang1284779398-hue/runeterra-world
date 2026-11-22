@@ -2706,28 +2706,13 @@ private fun craftBonus(region:String):Int = when(region) {
      * A syntactically valid JSON object is not proof of character POV.
      * Require a first-person, situation-specific thought and reject near-verbatim repetition.
      */
+    /**
+     * Lenient acceptance: local models often produce short, third-person, or repetitive
+     * character thoughts. Preserve any non-empty thought instead of rejecting usable turns.
+     * Only an actually empty thought is considered a failed inference.
+     */
     private fun characterPerspectiveFailure(thought:String,previousThought:String,characterName:String):String? {
-        val value=thought.trim()
-        if(value.isBlank()) return "JSON中的thought为空；本轮未写入人物档案。"
-        if(isMetaCharacterThought(value))
-            return "模型复述了提示词、任务或输出格式，没有进入人物视角；本轮未写入人物档案。"
-        if(!listOf("我","我的","自己","自身").any { value.contains(it) })
-            return "thought没有第一人称自我视角，仍像旁白或角色介绍；本轮未写入人物档案。"
-        val compact=value.replace(Regex("[\\s，。！？、；：,.!?;:'\"“”‘’（）()【】\\[\\]—-]"),"")
-        if(compact.length<14)
-            return "thought过短，没有形成具体的个人判断；本轮未写入人物档案。"
-        val previous=previousThought
-            .replace(Regex("^第\\d+日（本地模型推理）："),"")
-            .replace(Regex("^第\\d+日："),"")
-            .replace(Regex("[\\s，。！？、；：,.!?;:'\"“”‘’（）()【】\\[\\]—-]"),"")
-        if(previous.length>=18 && compact.length>=18) {
-            fun bigrams(s:String):Set<String> = (0 until s.length-1).map { s.substring(it,it+2) }.toSet()
-            val a=bigrams(compact)
-            val b=bigrams(previous)
-            val overlap=if(a.isEmpty()) 0.0 else a.intersect(b).size.toDouble()/a.size.coerceAtLeast(1)
-            if(overlap>=0.78)
-                return "thought与上一轮几乎重复，只是换词或原样复述；本轮未写入人物档案。"
-        }
+        if(thought.isBlank()) return "JSON中的thought为空；本轮未写入人物档案。"
         return null
     }
 
