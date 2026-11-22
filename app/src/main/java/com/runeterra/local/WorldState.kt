@@ -2003,7 +2003,13 @@ private fun craftBonus(region:String):Int = when(region) {
                         market.stock[good]=((market.stock[good]?:0)-amount).coerceAtLeast(0)
                     }
                     val shortages=goods.filter { it!="粮食" && (market.stock[it]?:0)<=5 }
-                    if(shortages.isNotEmpty()) events.add("第 $day 日市场：${region}出现商品短缺——${shortages.joinToString("、")}；供需变化正在影响当地价格。")
+                    if(shortages.isNotEmpty()) {
+                        events.add("第 $day 日市场：${region}出现商品短缺——${shortages.joinToString("、")}；供需变化正在影响当地价格。")
+                        val directlyPressured=local.filter { it.food<=2 || (it.coins<goodPrice(market,"粮食") && it.food<=4) }
+                        directlyPressured.forEach { resident ->
+                            recordLife(resident,day,"当地市场出现${shortages.joinToString("、")}短缺；其个人储粮或购买能力已处于脆弱水平，面临价格与供应压力。","livelihood_affected")
+                        }
+                    }
                 }
             }
             if(day%30L==0L) {
