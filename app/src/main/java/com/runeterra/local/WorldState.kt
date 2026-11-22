@@ -63,6 +63,7 @@ object WorldEngine {
             detail.contains("职业") || detail.contains("工匠") || detail.contains("学徒") || detail.contains("转行") || detail.contains("谋生") -> "职业与技能"
             detail.contains("战争") || detail.contains("战线") || detail.contains("停战") || detail.contains("入侵") -> "战争与政治"
             detail.contains("粮食") || detail.contains("口粮") || detail.contains("市场") || detail.contains("积蓄") || detail.contains("经济") -> "生计与经济"
+            detail.contains("天道干预") || detail.contains("外部信息") -> "天道干预与世界本体"
             detail.contains("魔法") || detail.contains("灵性") || detail.contains("黑雾") || detail.contains("星界") -> "魔法与超自然"
             detail.contains("生态") || detail.contains("污染") || detail.contains("水源") || detail.contains("植被") -> "环境与生态"
             detail.contains("英雄") || detail.contains("交集") -> "英雄交集与个人经历"
