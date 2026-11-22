@@ -2145,6 +2145,27 @@ private fun craftBonus(region:String):Int = when(region) {
                 val context=worldEvents.filter { (it.contains("第 $d 日") || it.contains("第${d}日")) && (it.contains(region) || it.contains(r.name)) }
                 if(context.isNotEmpty()) { append("同日相关世界背景：\n"); context.take(4).forEach { append("· ").append(it).append("\n") } }
             }
+            append("\n【人生阶段与事件分类索引】\n")
+            packets.groupBy { it.optString("lifeStage","阶段未记录") }.forEach { (stage,items) ->
+                append("${stage}：${items.size}个节点\n")
+                items.forEach { append("  · 第${it.optLong("day")}日｜${it.optString("eventType","未分类")}｜${it.optString("detail")}\n") }
+            }
+            packets.groupBy { it.optString("eventType","未分类") }.forEach { (type,items) ->
+                append("${type}：${items.size}条\n")
+            }
+            append("\n【关系网络的历史快照】\n")
+            packets.filter { it.optJSONObject("relationships")!=null }.forEach { e ->
+                val rel=e.optJSONObject("relationships")!!
+                val partnerName=all.firstOrNull { it.id==rel.optInt("partnerId",-1) }?.name ?: "无/档案不可用"
+                val parentNames=(0 until (rel.optJSONArray("parentIds")?.length() ?: 0)).mapNotNull { idx -> all.firstOrNull { it.id==rel.optJSONArray("parentIds")!!.optInt(idx) }?.name }
+                val childNames=(0 until (rel.optJSONArray("childIds")?.length() ?: 0)).mapNotNull { idx -> all.firstOrNull { it.id==rel.optJSONArray("childIds")!!.optInt(idx) }?.name }
+                append("第${e.optLong("day")}日｜伴侣：${partnerName}｜父母：${parentNames.joinToString("、").ifBlank{"未记录"}}｜子女：${childNames.joinToString("、").ifBlank{"未记录"}}\n")
+            }
+            append("\n【可作为章节锚点的转折事件】\n")
+            packets.filter { it.optString("eventType") in setOf("家庭与关系","死亡与人生终点","迁徙与居住","职业与技能","战争与政治","生计与经济","环境与生态","魔法与超自然") }.forEachIndexed { index,e ->
+                append("${index+1}. 第${e.optLong("day")}日｜${e.optString("eventType")}｜${e.optString("detail")}\n")
+            }
+            append("说明：章节锚点只整理已有事实；节点之间缺失的行动、对白和心理过程仍然未知。\n")
             append("\n【旧版本人生时间线】\n")
             if(r.history.isEmpty()) append("暂无旧版人生事件。\n") else r.history.forEach { append("• ").append(it).append("\n") }
             append("\n【创作边界】\n档案可用于组织人物成长、时代背景、迁徙、职业、关系和重大事件章节。未记录的对白、具体动作、心理活动及旧版本缺失经历均属于未知，不能冒充既成事实。\n")
