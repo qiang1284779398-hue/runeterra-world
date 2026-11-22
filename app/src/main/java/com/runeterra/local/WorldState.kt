@@ -728,7 +728,7 @@ private fun craftBonus(region:String):Int = when(region) {
                     a!=null && b!=null && b.wealth>=20 && goods.any { good ->
                         val sourceStock=if(good=="粮食")a.food else a.stock[good]?:0
                         val targetStock=if(good=="粮食")b.food else b.stock[good]?:0
-                        sourceStock>=if(good=="粮食")90 else 35 && targetStock<=if(good=="粮食")180 else 12
+                        sourceStock >= (if(good=="粮食") 90 else 35) && targetStock <= (if(good=="粮食") 180 else 12)
                     }
                 }
                 .sortedByDescending { (from,to,_) ->
