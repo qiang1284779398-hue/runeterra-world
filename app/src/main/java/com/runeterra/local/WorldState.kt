@@ -557,19 +557,43 @@ object WorldEngine {
     private val jobs=listOf("农夫","工匠","商贩","护卫","学徒","采集者","旅人")
     private val goals=listOf("积攒财富","寻找亲人","学习技艺","改善家园","探索远方","获得认可","守护家人")
     private val names=listOf("艾琳","卡伦","米娅","托伦","塞拉","诺安","伊芙","莱恩","凯娅","罗克","维娜","奥伦","塔莎","梅林","德拉","阿斯","菲恩")
-    private data class Market(var food: Int, var wealth: Int) {
+    private val goods=listOf("粮食","木材","矿石","药材","工具","魔法材料","海克斯器件")
+    private data class Market(var food:Int,var wealth:Int,var stock:MutableMap<String,Int> = mutableMapOf()) {
         fun json(region:String)=JSONObject().put("region",region).put("food",food).put("wealth",wealth)
+            .put("stock",JSONObject().apply { stock.forEach { (k,v)->put(k,v) } })
     }
     private data class Caravan(
         val id:Int,var from:String,var to:String,var cargo:Int,var daysRemaining:Int,
-        var owner:String,var alive:Boolean=true
+        var owner:String,var good:String="粮食",var alive:Boolean=true
     ) {
         fun json()=JSONObject().put("id",id).put("from",from).put("to",to).put("cargo",cargo)
-            .put("daysRemaining",daysRemaining).put("owner",owner).put("alive",alive)
+            .put("daysRemaining",daysRemaining).put("owner",owner).put("good",good).put("alive",alive)
         companion object {
             fun from(j:JSONObject)=Caravan(j.optInt("id"),j.optString("from"),j.optString("to"),
-                j.optInt("cargo"),j.optInt("daysRemaining"),j.optString("owner","独立商队"),j.optBoolean("alive",true))
+                j.optInt("cargo"),j.optInt("daysRemaining"),j.optString("owner","独立商队"),
+                j.optString("good","粮食"),j.optBoolean("alive",true))
         }
+    }
+    private fun regionalGoods(region:String):Map<String,Int> = when(region) {
+        "皮尔特沃夫" -> mapOf("工具" to 3,"海克斯器件" to 5,"矿石" to 1)
+        "祖安" -> mapOf("工具" to 2,"海克斯器件" to 2,"药材" to 1)
+        "德玛西亚" -> mapOf("粮食" to 3,"木材" to 2,"工具" to 1)
+        "诺克萨斯" -> mapOf("工具" to 2,"矿石" to 2,"粮食" to 1)
+        "艾欧尼亚" -> mapOf("药材" to 4,"木材" to 2,"魔法材料" to 2)
+        "弗雷尔卓德" -> mapOf("矿石" to 3,"木材" to 1,"药材" to 1)
+        "恕瑞玛" -> mapOf("魔法材料" to 3,"矿石" to 2,"粮食" to 1)
+        "比尔吉沃特" -> mapOf("药材" to 2,"木材" to 1,"矿石" to 1)
+        "以绪塔尔" -> mapOf("药材" to 3,"魔法材料" to 3,"木材" to 1)
+        "巨神峰" -> mapOf("魔法材料" to 3,"矿石" to 1,"药材" to 1)
+        else -> mapOf("木材" to 1,"药材" to 1)
+    }
+    private fun goodPrice(market:Market,good:String):Int {
+        val stock=if(good=="粮食")market.food else market.stock[good]?:0
+        val base=when(good){"海克斯器件"->8;"魔法材料"->7;"工具"->4;"矿石"->3;"药材"->3;"木材"->2;else->1}
+        return (base*(100.0/(stock+50).coerceAtLeast(1))).toInt().coerceIn(1,base*4)
+    }
+    private fun ensureGoods(market:Market,region:String) {
+        goods.forEach { good -> market.stock.putIfAbsent(good,if(good=="粮食")market.food else 25+regionalGoods(region).getOrDefault(good,0)*5) }
     }
     // Regional specializations are simulation modifiers inspired by lore, not canonical game stats.
     private fun foodBonus(region:String):Int = when(region) {
@@ -645,14 +669,23 @@ private fun craftBonus(region:String):Int = when(region) {
         val raw=p.getString(KEY_MARKETS,null)
         if(raw!=null) runCatching {
             val a=JSONArray(raw); val map=mutableMapOf<String,Market>()
-            for(i in 0 until a.length()) { val j=a.getJSONObject(i); map[j.optString("region")]=Market(j.optInt("food",300),j.optInt("wealth",1000)) }
+            for(i in 0 until a.length()) {
+                val j=a.getJSONObject(i);val region=j.optString("region")
+                val stock=mutableMapOf<String,Int>();val rawStock=j.optJSONObject("stock")
+                if(rawStock!=null) goods.forEach { good -> stock[good]=rawStock.optInt(good,0) }
+                val market=Market(j.optInt("food",300),j.optInt("wealth",1000),stock)
+                ensureGoods(market,region);map[region]=market
+            }
             if(map.isNotEmpty()) {
                 regions.filter { it !in map }.forEach { region -> map[region]=Market(300+Random(region.hashCode().toLong()).nextInt(250),1000) }
                 saveMarkets(p,map)
                 return map
             }
         }
-        val fresh=regions.associateWith { Market(300+Random(it.hashCode().toLong()).nextInt(250),1000) }.toMutableMap()
+        val fresh=regions.associateWith { region ->
+            val market=Market(300+Random(region.hashCode().toLong()).nextInt(250),1000)
+            ensureGoods(market,region);market
+        }.toMutableMap()
         saveMarkets(p,fresh); return fresh
     }
 
@@ -673,9 +706,10 @@ private fun craftBonus(region:String):Int = when(region) {
             if(caravan.daysRemaining<=0) {
                 val destination=markets[caravan.to]
                 if(destination!=null) {
-                    destination.food+=caravan.cargo
-                    destination.wealth=(destination.wealth-caravan.cargo).coerceAtLeast(0)
-                    events.add("【商队抵达·模拟】第 $day 日：${caravan.owner}从${caravan.from}运抵${caravan.to}，交付${caravan.cargo}单位粮食。")
+                    if(caravan.good=="粮食") destination.food+=caravan.cargo
+                    else destination.stock[caravan.good]=(destination.stock[caravan.good]?:0)+caravan.cargo
+                    destination.wealth=(destination.wealth-caravan.cargo*goodPrice(destination,caravan.good)).coerceAtLeast(0)
+                    events.add("【商队抵达·模拟】第 $day 日：${caravan.owner}从${caravan.from}运抵${caravan.to}，交付${caravan.cargo}单位${caravan.good}。")
                 }
                 caravan.alive=false
             } else if(rng.nextInt(100)<2) {
@@ -691,16 +725,33 @@ private fun craftBonus(region:String):Int = when(region) {
                 .distinctBy { minOf(it.first.hashCode(),it.second.hashCode()).toString()+":"+maxOf(it.first.hashCode(),it.second.hashCode()) }
                 .filter { (from,to,_) ->
                     val a=markets[from];val b=markets[to]
-                    a!=null && b!=null && a.food>=90 && b.food<=180 && b.wealth>=20
+                    a!=null && b!=null && b.wealth>=20 && goods.any { good ->
+                        val sourceStock=if(good=="粮食")a.food else a.stock[good]?:0
+                        val targetStock=if(good=="粮食")b.food else b.stock[good]?:0
+                        sourceStock>=if(good=="粮食")90 else 35 && targetStock<=if(good=="粮食")180 else 12
+                    }
                 }
-                .sortedByDescending { (from,to,_) -> (markets[from]?.food?:0)-(markets[to]?.food?:0) }
+                .sortedByDescending { (from,to,_) ->
+                    val a=markets[from]!!;val b=markets[to]!!
+                    goods.maxOf { good ->
+                        val sourceStock=if(good=="粮食")a.food else a.stock[good]?:0
+                        val targetStock=if(good=="粮食")b.food else b.stock[good]?:0
+                        sourceStock-targetStock
+                    }
+                }
             candidates.take((2-active.size).coerceAtLeast(0)).forEach { (from,to,days) ->
                 val source=markets[from] ?: return@forEach
                 val destination=markets[to] ?: return@forEach
-                val cargo=minOf(35,source.food-60,(destination.wealth/2).coerceAtLeast(1))
+                val good=goods.maxByOrNull { item ->
+                    val sourceStock=if(item=="粮食")source.food else source.stock[item]?:0
+                    val targetStock=if(item=="粮食")destination.food else destination.stock[item]?:0
+                    sourceStock-targetStock
+                } ?: "粮食"
+                val sourceStock=if(good=="粮食")source.food else source.stock[good]?:0
+                val cargo=minOf(35,sourceStock-(if(good=="粮食")60 else 20),(destination.wealth/2).coerceAtLeast(1))
                 if(cargo<8)return@forEach
-                source.food-=cargo
-                source.wealth+=cargo
+                if(good=="粮食")source.food-=cargo else source.stock[good]=(source.stock[good]?:0)-cargo
+                source.wealth+=cargo*goodPrice(source,good)
                 val id=(active.maxOfOrNull { it.id } ?: 0)+1
                 val owner=when(from) {
                     "皮尔特沃夫","祖安" -> "双城商贸行"
@@ -708,8 +759,8 @@ private fun craftBonus(region:String):Int = when(region) {
                     "恕瑞玛" -> "绿洲商路商队"
                     else -> "独立粮食商队"
                 }
-                active.add(Caravan(id,from,to,cargo,days,owner))
-                events.add("【商队出发·模拟】第 $day 日：${owner}从${from}出发前往${to}，运送${cargo}单位粮食，预计${days}个模拟日。")
+                active.add(Caravan(id,from,to,cargo,days,owner,good))
+                events.add("【商队出发·模拟】第 $day 日：${owner}从${from}出发前往${to}，运送${cargo}单位${good}，预计${days}个模拟日。")
             }
         }
         saveCaravans(p,active)
@@ -858,8 +909,12 @@ private fun craftBonus(region:String):Int = when(region) {
             }
             pop.addAll(newborns)
             regions.forEach { region ->
-                val market=markets[region]
-                if(market!=null) market.food=market.food.coerceAtLeast(0)
+                val market=markets[region] ?: return@forEach
+                market.food=market.food.coerceAtLeast(0)
+                if(day%30L==0L) regionalGoods(region).forEach { (good,amount) ->
+                    if(good=="粮食") market.food+=amount
+                    else market.stock[good]=(market.stock[good]?:0)+amount
+                }
             }
             if(day%30L==0L) {
                 regions.forEach { region ->
@@ -915,7 +970,8 @@ private fun craftBonus(region:String):Int = when(region) {
                 m.food>350 -> "低"
                 else -> "平稳"
             }
-            "${region}｜粮食库存 ${m.food}｜市场财富 ${m.wealth}｜粮价：${price}"
+            "${region}｜粮食库存 ${m.food}｜市场财富 ${m.wealth}｜粮价：${price}｜商品：" +
+                goods.filter { it!="粮食" }.joinToString("、") { good -> "${good}${m.stock[good]?:0}（价${goodPrice(m,good)}）" }
         })
         return rows
     }
