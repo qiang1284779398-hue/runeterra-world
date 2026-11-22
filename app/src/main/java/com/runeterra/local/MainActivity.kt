@@ -38,16 +38,32 @@ class MainActivity : Activity() {
             setOnClickListener { WorldEngine.reset(this@MainActivity); refresh() }
         }
         val factions = Button(this).apply { text = "各地区势力 / 政体档案"; setOnClickListener { showFactionDirectory() } }
+        val organizations = Button(this).apply { text = "组织 / 家族 / 教派 / 军团档案"; setOnClickListener { showOrganizationDirectory() } }
         val biographies = Button(this).apply {
             text = "居民档案 / 人生传记"
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, start, pause, step, factions, biographies, reset, log).forEach {
+        listOf(title, status, start, pause, step, factions, organizations, biographies, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
         refresh()
+    }
+
+    private fun showOrganizationDirectory() {
+        val entries=WorldEngine.organizationDirectory(this)
+        AlertDialog.Builder(this)
+            .setTitle("符文之地 · 组织与社会势力")
+            .setItems(entries.toTypedArray()) { _, which ->
+                AlertDialog.Builder(this)
+                    .setTitle("组织档案")
+                    .setMessage(entries[which])
+                    .setPositiveButton("返回",null)
+                    .show()
+            }
+            .setNegativeButton("关闭",null)
+            .show()
     }
 
     private fun showFactionDirectory() {
