@@ -425,6 +425,28 @@ object WorldEngine {
             .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
     }
+    fun residentDirectory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        return people(p).sortedWith(compareBy<Resident>{!it.alive}.thenByDescending{it.age}).map {
+            "${it.id}｜${it.name}｜${it.age}岁｜${it.region}｜${it.job}｜${if(it.alive)"在世" else "已故"}"
+        }
+    }
+    fun residentHistory(context:Context,id:Int):String {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val all=people(p)
+        val r=all.firstOrNull{it.id==id} ?: return "未找到该居民档案。"
+        val partner=all.firstOrNull{it.id==r.partnerId}
+        return buildString {
+            append("人物档案：${r.name}\n")
+            append("居民编号：${r.id}\n年龄：${r.age}岁\n地区：${r.region}\n职业：${r.job}\n")
+            append("健康：${r.health}/100\n技能：${r.skill}\n财富：${r.coins}\n")
+            append("人生状态：${if(r.alive)"在世" else "已故"}\n")
+            append("伴侣：${partner?.name ?: if(r.partnerId>=0)"关系对象档案不可用" else "暂无记录"}\n")
+            append("子女数量记录：${r.familyCount}\n\n人生时间线\n")
+            if(r.history.isEmpty()) append("暂时没有人生事件记录。")
+            else r.history.forEach { append("• ").append(it).append("\n") }
+        }
+    }
     fun setRunning(context: Context,running:Boolean) {
         context.getSharedPreferences(PREFS,Context.MODE_PRIVATE).edit().putBoolean(KEY_RUNNING,running).apply()
     }
