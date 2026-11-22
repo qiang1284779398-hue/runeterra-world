@@ -209,7 +209,7 @@ object WorldEngine {
         HeroAgent("库奇","班德尔城","约德尔飞行员","空中巡逻","驾驶飞行器执行巡逻与运输任务",58),
         HeroAgent("维迦","班德尔城","约德尔法师","追求强大力量","在黑暗魔法与自我认知之间行动",66),
         HeroAgent("黑默丁格","皮尔特沃夫","约德尔科学家","科学研究","以科学研究推动皮尔特沃夫发展并警惕技术风险",72),
-        HeroAgent("悠米","班德尔城","约德尔魔法伙伴","寻找主人","借助魔典寻找诺拉并穿梭于不同领域",62)
+        HeroAgent("悠米","班德尔城","魔法猫与魔典守护者","寻找主人","借助魔典寻找诺拉并穿梭于不同领域",62)
     )
     private fun heroAgents(p:android.content.SharedPreferences):MutableList<HeroAgent>{
         val raw=p.getString(KEY_HEROES,null)
@@ -280,10 +280,26 @@ object WorldEngine {
         saveHeroBonds(p,bonds)
         saveFactions(p,factions)
     }
+    private fun heroLineage(name:String):String=when(name){
+        "提莫","崔丝塔娜","璐璐","兰博","库奇","维迦","黑默丁格" -> "约德尔人"
+        "悠米" -> "魔法猫（非约德尔人）"
+        "妮蔻" -> "瓦斯塔亚"
+        "阿兹尔","泽拉斯","内瑟斯","雷克顿" -> "飞升者"
+        "亚托克斯" -> "暗裔"
+        "奥恩","沃利贝尔","艾尼维亚" -> "弗雷尔卓德半神"
+        "卑尔维斯" -> "虚空存在"
+        "佛耶戈","锤石","莫德凯撒" -> "亡灵／不朽领域相关存在"
+        "黛安娜" -> "皎月星灵宿主"
+        "蕾欧娜" -> "烈阳星灵宿主"
+        "潘森" -> "人类宿主（曾承载战争星灵）"
+        "凯莎" -> "人类（与虚空生物共生）"
+        "瑟庄妮","艾希","丽桑卓" -> "冰裔（人类中的特殊个体）"
+        else -> "人类或人类出身（具体个体背景见传记）"
+    }
     fun heroDirectory(context:Context):List<String>{
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         return heroAgents(p).sortedBy{it.region}.map{
-            "【${it.name}】\\n所在领域：${it.region}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n影响力指标：${it.influence}/100\\n说明：此处只记录世界模拟中的人物状态；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
+            "【${it.name}】\\n所在领域：${it.region}\\n族类／本质：${heroLineage(it.name)}\\n身份：${it.role}\\n当前状态：${it.status}\\n个人目标：${it.goal}\\n影响力指标：${it.influence}/100\\n说明：此处只记录世界模拟中的人物状态；神祇、半神、亡灵、暗裔与虚空存在不作为普通居民参与人口、家庭和职业系统。"
         }
     }
     fun heroRelationshipDirectory(context:Context):List<String>{
@@ -1558,7 +1574,7 @@ private fun craftBonus(region:String):Int = when(region) {
             val count=living.count{it.lineage==name}
             "【${name}】\\n当前模拟在世人口：${count}\\n世界设定：${description}\\n运行规则：${rule}\\n注意：人口数量和寿命参数均为模拟数据，不是官方人口统计。"
         }.toMutableList()
-        val yordles=heroAgents(p).filter{it.region=="班德尔城" || it.name=="黑默丁格"}
+        val yordles=heroAgents(p).filter{it.name in setOf("提莫","崔丝塔娜","璐璐","兰博","库奇","维迦","黑默丁格")}
         rows.add("【约德尔人】\\n独立特殊社群：约德尔人不混入普通人类居民人口。当前已登记重要人物：${yordles.size}位（${yordles.joinToString("、"){it.name}}）。\\n世界设定：班德尔城位于精神领域，入口与符文之地相连；入口并非随时对所有人开放。约德尔人的时间体验与凡人不同，不能直接套用人类人口年龄模型。\\n运行规则：约德尔人物作为独立世界行动者记录，不计入普通居民出生、死亡与市场人口。")
         rows.add("【其他特殊存在】\\n飞升者、暗裔、半神、星灵、亡灵与虚空生物按独立超自然实体处理，不归入普通居民族群；其存在与活动通过英雄行动、组织、地区魔法和世界危机影响凡人社会。")
         return rows
