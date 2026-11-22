@@ -1855,14 +1855,24 @@ private fun craftBonus(region:String):Int = when(region) {
             r.friendIds.take(5).mapNotNull { id -> population.firstOrNull { it.id==id } }.forEach { add("友人：${it.name}（${it.job}）") }
             population.firstOrNull { it.id==r.mentorId }?.let { add("师长：${it.name}（${it.job}）") }
         }.take(10).joinToString("；").ifBlank { "目前没有已记录的亲密关系信息" }
-        val localLore=regionalLore.firstOrNull { it.name==r.region }?.let { "${it.political}；${it.magic}" } ?: "当地社会情况尚无详细记录"
+        val localFaction=factionStates(p)[r.region]
+        val localLore=regionalLore.firstOrNull { it.name==r.region }?.let { "${it.political}；${it.magic}；${it.forces}；${it.boundary}" } ?: "当地社会情况尚无详细记录"
+        val localEvents=runCatching {
+            val a=JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]")
+            (0 until a.length()).map { a.getString(it) }
+                .filter { it.contains(r.region) && (it.contains("第 ${day}") || it.contains("第${day}")) }
+                .takeLast(5).joinToString("；")
+        }.getOrDefault("")
+        val publicInstitutions=localFaction?.let { "当地公开政治结构：${it.government}；当前公共议题：${it.policy}；公开领袖或机构：${it.leader}" } ?: "当地没有可用的公开政体细节"
         val prompt="""你是符文之地中一名有自身经历、局限知识、关系和利益的居民的个人认知引擎。你不是旁白，不是游戏角色，不知道全世界发生的事。只能依据此人的亲历、可信记忆和当前可观察信息判断；不得替别人决定，也不得捏造对话、事件或知识。
 人物：${r.name}；地区：${r.region}；聚落：${r.settlement}；年龄：${r.age}；职业：${r.job}；健康：${r.health}/100；个人粮食：${r.food}；财富：${r.coins}；技能：${r.skill}/100。
 人格倾向：${r.mindTrait}/100；既有信念：${r.belief}；当前目标：${r.goal}。
 已知关系：${relations}。
 近期人生经历：${r.history.takeLast(6).joinToString("；").ifBlank { "没有更多已记录经历" }}。
 个人记忆：${r.mindMemory.takeLast(10).joinToString("；").ifBlank { "尚未形成明确记忆" }}。
-当地社会背景：${localLore}。这只是居民可能接触到的环境常识，不代表他知道政治内幕。
+当地社会背景：${localLore}。
+当地公开制度与公共议题：${publicInstitutions}。只允许居民知道公开制度和自己能够接触的信息，不得凭空知道秘密组织内幕。
+最近当地公开事件：${localEvents.ifBlank { "没有记录到可确认的近期本地公共事件" }}。远方事件不自动成为此人的知识。
 当地市场观察：粮食库存${market?.food ?: 0}；市场财富${market?.wealth ?: 0}；此人无法直接知道未观察到的远方市场。
 当前世界日期：第${day}日。
 请先形成独立判断，再选择一个当前确实能尝试的行动。行动必须符合年龄、健康、技能、资源、职业和所处地区；不合理时选择stay。不要为了制造剧情而行动。
