@@ -939,7 +939,7 @@ private fun craftBonus(region:String):Int = when(region) {
                         market.stock[good]=((market.stock[good]?:0)-amount).coerceAtLeast(0)
                     }
                     val shortages=goods.filter { it!="粮食" && (market.stock[it]?:0)<=5 }
-                    if(shortages.isNotEmpty()) events.add("第 $day 日市场：$region出现商品短缺——${shortages.joinToString("、")}；供需变化正在影响当地价格。")
+                    if(shortages.isNotEmpty()) events.add("第 $day 日市场：${region}出现商品短缺——${shortages.joinToString("、")}；供需变化正在影响当地价格。")
                 }
             }
             if(day%30L==0L) {
