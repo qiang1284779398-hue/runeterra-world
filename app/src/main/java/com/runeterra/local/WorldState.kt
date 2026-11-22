@@ -700,11 +700,18 @@ object WorldEngine {
                 }
                 if(r.alive && r.food<=0 && day%30L==0L && rng.nextInt(100)<12) {
                     val oldRegion=r.region
-                    val next=regions[(regions.indexOf(oldRegion)+1)%regions.size]
-                    r.region=next
-                    r.settlement=defaultSettlement(next,r.id)
-                    recordLife(r,day,"因生计压力从${oldRegion}迁往${next}，定居于${r.settlement}。")
-                    events.add("第 $day 日：${r.name}因生计压力从${oldRegion}迁往${next}。")
+                    val destinations=residentRegions.filter { it!=oldRegion }
+                    val next=destinations.maxByOrNull { candidate ->
+                        val supply=markets[candidate]?.food?:0
+                        val crowd=pop.count { it.alive && it.region==candidate }
+                        supply-crowd*2+(markets[candidate]?.wealth?:0)/100
+                    } ?: oldRegion
+                    if(next!=oldRegion) {
+                        r.region=next
+                        r.settlement=defaultSettlement(next,r.id)
+                        recordLife(r,day,"因生计压力从${oldRegion}迁往${next}，选择当地相对更有粮食与生计条件的${r.settlement}。")
+                        events.add("第 $day 日：${r.name}因生计压力从${oldRegion}迁往${next}。")
+                    }
                 }
                 if(r.health<=0 || (r.age>78 && rng.nextInt(100)<1) || (r.age>95 && rng.nextInt(100)<12)) {
                     r.alive=false
