@@ -658,6 +658,18 @@ object WorldEngine {
             .putLong(KEY_DAY,day).putString(KEY_EVENTS,arr.toString()).apply()
         return WorldSnapshot(day,pop.count{it.alive},events,p.getBoolean(KEY_RUNNING,false))
     }
+    fun settlementDirectory(context:Context):List<String> {
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val all=people(p)
+        return settlementSeeds.flatMap { (region,names) -> names.mapIndexed { index,name ->
+            val residents=all.filter { it.alive && it.region==region && it.settlement==name }
+            val farmers=residents.count { it.job=="农夫" || it.job=="采集者" }
+            val artisans=residents.count { it.job=="工匠" }
+            val traders=residents.count { it.job=="商贩" }
+            val guards=residents.count { it.job=="护卫" }
+            "【"+name+"】\n所属区域："+region+"\n聚落性质："+when(index){0->"核心城市或主要营地";1->"交通、军事或产业聚落";else->"乡村、边境或隐居聚落"}+"\n常住居民："+residents.size+"人\n生产与职业：农采"+farmers+"、工匠"+artisans+"、商贩"+traders+"、护卫"+guards+"\n（人口按居民个人居住地统计；聚落分类为当前模拟设定。）"
+        } }.sorted()
+    }
     fun factionDirectory(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val states=factionStates(p)
