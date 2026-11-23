@@ -174,7 +174,7 @@ object WorldEngine {
         }
     }
     // Individual cognition: residents evaluate their own situation, update beliefs/intents, and retain bounded private memory.
-    private fun thinkIndividually(day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
+    private fun thinkIndividually(p:android.content.SharedPreferences,day:Long,pop:MutableList<Resident>,markets:Map<String,Market>,rng:Random){
         // The rule-based fallback is only a no-model simulation. Never let it overwrite or imitate local-LLM cognition.
         if(ResidentAI.isLoaded()) return
         if(day%30L!=0L)return
@@ -3341,7 +3341,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             tickEcology(day,p,pop,events,rng,ecology)
             tickFauna(day,p,ecology,pop,events,rng,fauna)
             tickDailyLife(day,pop,rng)
-            thinkIndividually(day,pop,markets,rng)
+            thinkIndividually(p,day,pop,markets,rng)
             // Continuous food production follows local growers, skill and ecological conditions.
             residentRegions.forEach { region ->
                 val market=markets[region] ?: return@forEach
