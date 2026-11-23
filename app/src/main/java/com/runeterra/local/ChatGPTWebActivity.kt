@@ -189,16 +189,16 @@ class ChatGPTWebActivity : Activity() {
 
     private fun extractLatestAnswerFromDiagnostic(raw: String, submittedPrompt: String): String {
         if (raw.isBlank() || submittedPrompt.isBlank()) return ""
-        val normalized = raw.replace("\\r", "").replace('\\u00a0', ' ')
-            .replace(Regex("[ \\t]+"), " ")
-            .replace(Regex("\\n{3,}"), "\\n\\n")
+        val normalized = raw.replace("\r", "").replace('\u00a0', ' ')
+            .replace(Regex("[ \t]+"), " ")
+            .replace(Regex("\n{3,}"), "\n\n")
             .trim()
-        val prompt = submittedPrompt.replace("\\r", "").trim()
+        val prompt = submittedPrompt.replace("\r", "").trim()
         if (prompt.isEmpty()) return ""
 
-        // Prefer an exact whole-line prompt match so an earlier occurrence in
-        // conversation history cannot leak into the extracted answer.
-        val lines = normalized.split('\\n')
+        // Prefer an exact whole-line prompt match so earlier conversation history
+        // cannot leak into the extracted answer.
+        val lines = normalized.split('\n')
         var offset = 0
         var promptEnd = -1
         for (line in lines) {
@@ -222,7 +222,7 @@ class ChatGPTWebActivity : Activity() {
             .filter { it >= 0 }.minOrNull()
         if (footerAt != null) answer = answer.substring(0, footerAt)
 
-        answer = answer.lineSequence()
+        return answer.lineSequence()
             .map { it.trim() }
             .filterNot { line ->
                 line.isBlank() || line.equals("与 ChatGPT 聊天", true) ||
@@ -230,10 +230,9 @@ class ChatGPTWebActivity : Activity() {
                     line.equals("发送消息给 ChatGPT", true) ||
                     line.equals("ChatGPT", true)
             }
-            .joinToString("\\n")
-            .replace(Regex("\\n{3,}"), "\\n\\n")
+            .joinToString("\n")
+            .replace(Regex("\n{3,}"), "\n\n")
             .trim()
-        return answer
     }
 
     private fun readLatest(force: Boolean) {
