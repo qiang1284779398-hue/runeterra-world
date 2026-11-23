@@ -176,6 +176,35 @@ object WorldAIProvider {
   } finally {conn?.disconnect()}
  }
 
+ fun recordVerifiedOutcome(context:Context,actorId:String,day:Long,action:String,outcome:String) {
+  val app=context.applicationContext
+  val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+  val baseUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
+  if(baseUrl.isBlank()||actorId.isBlank()||outcome.isBlank())return
+  val token=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
+  thread(name="RuneterraWorldOutcome") {
+   var conn:HttpURLConnection?=null
+   try {
+    conn=(URL(baseUrl.trimEnd('/')+"/v1/autonomy/world-event").openConnection() as HttpURLConnection).apply {
+     requestMethod="POST";connectTimeout=8000;readTimeout=10000;doOutput=true
+     setRequestProperty("Content-Type","application/json")
+     if(token.isNotBlank())setRequestProperty("X-Runeterra-Token",token)
+    }
+    val body=JSONObject().put("world_id","runeterra-world").put("actor_id",actorId)
+     .put("day",day).put("action",action.take(2000)).put("outcome",outcome.take(12000))
+     .put("authority","world_engine").toString()
+    conn.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
+    val code=conn.responseCode
+    if(code !in 200..299) {
+     val raw=(conn.errorStream?:conn.inputStream).bufferedReader(Charsets.UTF_8).use{it.readText()}
+     android.util.Log.w("RuneterraAI","世界经历写入失败 HTTP $code：$raw")
+    }
+   } catch(e:Throwable) {
+    android.util.Log.w("RuneterraAI","世界经历写入异常："+(e.message?:e.javaClass.simpleName))
+   } finally {conn?.disconnect()}
+  }
+ }
+
  fun ask(
   context:Context,prompt:String,maxTokens:Int,systemPrompt:String,
   actorId:String?=null,actorName:String?=null,worldDay:Long=0L,
