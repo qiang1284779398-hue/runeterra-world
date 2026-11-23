@@ -135,10 +135,20 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, unloadAI, testAI, aiDiagnostics, deepSeek, zhipu, worldAiProvider, gptWebTest, gptWebLog, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        // The main screen contains many tools; it must scroll instead of clipping everything below
+        // the first viewport. Keep the world controls immediately below the status for quick access.
+        listOf(title, status, start, pause, step, heavenly, observation, biographies,
+            worldAiProvider, gptWebTest, gptWebLog, localModel, unloadAI, testAI, aiDiagnostics,
+            deepSeek, zhipu, timeline, lore, heroes, lineages, ecology, fauna, heroRelations,
+            factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
-        setContentView(root)
+        val mainScroll = ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            addView(root, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        setContentView(mainScroll)
         refresh()
         if (!providerDefaults.getBoolean("world_ai_provider_selected", false)) {
             AlertDialog.Builder(this)
