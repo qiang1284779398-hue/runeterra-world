@@ -184,6 +184,19 @@ object PersonalLearningNetwork {
             for (i in 0 until INPUT) m.w1[j][i] += LR * dh[j] * x[i] * 0.2f
         }
     }
+    /** Returns a learned action only after enough actor-specific verified feedback exists. */
+    fun autonomousChoice(c: Context, actor: String, prompt: String): String? {
+        val model = read(c, actor)
+        if (model.updates < 24) return null
+        val (_, probabilities) = forward(model, encode(prompt))
+        val ranked = probabilities.indices.sortedByDescending { probabilities[it] }
+        val best = ranked.firstOrNull() ?: return null
+        val second = ranked.getOrNull(1)?.let { probabilities[it] } ?: 0f
+        if (probabilities[best] < 0.14f || probabilities[best] - second < 0.018f) return null
+        val labels = if (actor.startsWith("hero:")) heroActions else actionNames
+        return labels.getOrNull(best)
+    }
+
     fun report(c: Context, actor: String): String {
         val key = safeKey(actor)
         val m = read(c, actor)
