@@ -120,9 +120,38 @@ object WorldAIProvider {
   } finally {conn?.disconnect()}
  }
 
- fun ask(context:Context,prompt:String,maxTokens:Int,systemPrompt:String,callback:(String)->Unit) {
+ private fun requestCognitiveBackend(
+  baseUrl:String,token:String,worldId:String,actorId:String,actorName:String,day:Long,
+  characterContext:String,prompt:String,systemPrompt:String
+ ):String {
+  var conn:HttpURLConnection?=null
+  try {
+   conn=(URL(baseUrl.trimEnd('/')+"/v1/think").openConnection() as HttpURLConnection).apply {
+    requestMethod="POST";connectTimeout=15000;readTimeout=180000;doOutput=true
+    setRequestProperty("Content-Type","application/json")
+    if(token.isNotBlank())setRequestProperty("X-Runeterra-Token",token)
+   }
+   val body=JSONObject().put("world_id",worldId).put("actor_id",actorId).put("actor_name",actorName)
+    .put("day",day).put("character_context",characterContext.take(16000))
+    .put("prompt",prompt.take(20000)).put("system_prompt",systemPrompt.take(12000)).toString()
+   conn.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
+   val code=conn.responseCode
+   val stream=if(code in 200..299)conn.inputStream else conn.errorStream
+   val raw=stream?.bufferedReader(Charsets.UTF_8)?.use{it.readText()}?:"后端无响应正文"
+   if(code !in 200..299)throw IllegalStateException("认知后端 HTTP $code：$raw")
+   return JSONObject(raw).optString("output").ifBlank{throw IllegalStateException("认知后端未返回 output")}
+  } finally {conn?.disconnect()}
+ }
+
+ fun ask(
+  context:Context,prompt:String,maxTokens:Int,systemPrompt:String,
+  actorId:String?=null,actorName:String?=null,worldDay:Long=0L,
+  callback:(String)->Unit
+ ) {
   val app=context.applicationContext
   val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+  val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
+  val backendToken=p.getString("cognitive_backend_token","").orEmpty()
   val apiKey=try{decrypt(app)}catch(_:Throwable){""}
   if(apiKey.isBlank()) {
    if(ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
@@ -131,6 +160,19 @@ object WorldAIProvider {
   }
   val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
   thread(name="SharedCloudAI") {
+   if(backendUrl.isNotBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
+    try {
+     val backendOutput=requestCognitiveBackend(
+      backendUrl,backendToken,"runeterra-world",actorId,actorName,worldDay,
+      prompt,prompt,systemPrompt
+     )
+     callback(backendOutput)
+     return@thread
+    } catch(_:Throwable) {
+     // Keep the world playable if the optional cognitive backend is unavailable.
+     // The direct Zhipu path below remains the fallback.
+    }
+   }
    var output=""
    var cloudFailed=false
    try {
