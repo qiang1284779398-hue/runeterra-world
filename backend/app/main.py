@@ -124,6 +124,32 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
         raise HTTPException(status_code=502, detail=f"Letta memory request failed: {exc}") from exc
 
 
+def letta_store_experience(actor_key: str, display_name: str, day: int, experience: str) -> None:
+    agent_id = get_or_create_letta_agent(actor_key, display_name)
+    payload = {
+        "messages": [{
+            "role": "user",
+            "content": (
+                f"请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
+                f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\\n"
+                + experience[:10000]
+            ),
+        }],
+        "streaming": False,
+        "max_steps": 4,
+    }
+    try:
+        response = httpx.post(
+            f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
+            json=payload,
+            headers=letta_headers(),
+            timeout=120,
+        )
+        response.raise_for_status()
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Letta memory write failed: {exc}") from exc
+
+
 class ThinkRequest(BaseModel):
     world_id: str = Field(min_length=1, max_length=100)
     actor_id: str = Field(min_length=1, max_length=120)
@@ -201,16 +227,25 @@ Letta 持久记忆：{state.get('memories','')}
         output = result.content if isinstance(result.content, str) else json.dumps(result.content, ensure_ascii=False)
         return {"output": output, "trace": state.get("trace", []) + [{"stage": "zhipu_final_decision", "ok": True}]}
 
+    def memory_commit_node(state: CognitiveState) -> dict[str, Any]:
+        letta_store_experience(
+            state["actor_key"], state["actor_name"], state["day"],
+            "反思：" + state.get("reflection", "") + "\\n计划：" + state.get("plan", "") + "\\n最终决定与行动：" + state.get("output", ""),
+        )
+        return {"trace": state.get("trace", []) + [{"stage": "letta_memory_commit", "ok": True}]}
+
     graph = StateGraph(CognitiveState)
     graph.add_node("letta_recall", recall_node)
     graph.add_node("reflection", reflect_node)
     graph.add_node("planning", plan_node)
     graph.add_node("decision", act_node)
+    graph.add_node("memory_commit", memory_commit_node)
     graph.add_edge(START, "letta_recall")
     graph.add_edge("letta_recall", "reflection")
     graph.add_edge("reflection", "planning")
     graph.add_edge("planning", "decision")
-    graph.add_edge("decision", END)
+    graph.add_edge("decision", "memory_commit")
+    graph.add_edge("memory_commit", END)
     return graph.compile(checkpointer=_checkpointer)
 
 
