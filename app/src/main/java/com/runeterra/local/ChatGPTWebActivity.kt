@@ -384,9 +384,21 @@ class ChatGPTWebActivity : Activity() {
                 answer = clean(answer.split(prompt).join(' '));
                 method += '/prompt-removed';
               }
+              // A hidden/stale stop control may remain mounted after generation.
+              // Only treat a visible, enabled stop control as active streaming.
               const stop = roots.some(root => {
-                try { return !!root.querySelector('[data-testid*="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]'); }
-                catch (_) { return false; }
+                try {
+                  const candidates = Array.from(root.querySelectorAll(
+                    '[data-testid*="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]'
+                  ));
+                  return candidates.some(button => {
+                    const rect = button.getBoundingClientRect();
+                    const style = getComputedStyle(button);
+                    return rect.width > 0 && rect.height > 0 &&
+                      style.display !== 'none' && style.visibility !== 'hidden' &&
+                      !button.disabled && button.getAttribute('aria-disabled') !== 'true';
+                  });
+                } catch (_) { return false; }
               });
               const previews = [];
               const diagnosticParts = [];
@@ -397,7 +409,8 @@ class ChatGPTWebActivity : Activity() {
                   diagnosticParts.push(body);
                 } catch (_) {}
               }
-              const diagnosticText = (diagnosticParts.filter(t => !prompt || t.includes(prompt)).sort((a,b) => b.length-a.length)[0] || diagnosticParts.sort((a,b) => b.length-a.length)[0] || '').slice(-12000);
+              // Keep enough transcript to retain long world-task prompts and their answers.
+              const diagnosticText = (diagnosticParts.filter(t => !prompt || t.includes(prompt)).sort((a,b) => b.length-a.length)[0] || diagnosticParts.sort((a,b) => b.length-a.length)[0] || '').slice(-50000);
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
