@@ -290,10 +290,15 @@ class ChatGPTWebActivity : Activity() {
                   const promptAt = fullRootText.lastIndexOf(promptText);
                   if (promptAt < 0) continue;
                   let answer = fullRootText.slice(promptAt + promptText.length).trim();
-                  answer = answer
-                    .replace(/^[:：\\s|｜-]+/, '')
-                    .replace(/\\s*(ChatGPT\\s*是\\s*AI，可能会犯错。.*|ChatGPT\\s*is\\s*AI.*|与\\s*ChatGPT\\s*聊天.*)$/i, '')
-                    .trim();
+                  // The disclaimer is a page footer, not part of the model response.
+                  // Match it across line breaks and remove everything from that footer onward.
+                  const footerPatterns = [
+                    /\s*ChatGPT\s*是\s*AI[，,]\s*可能会犯错。[\s\S]*$/i,
+                    /\s*ChatGPT\s*is\s*AI[\s\S]*$/i,
+                    /\s*与\s*ChatGPT\s*聊天[\s\S]*$/i
+                  ];
+                  for (const pattern of footerPatterns) answer = answer.replace(pattern, '');
+                  answer = answer.replace(/^[:：\s|｜-]+/, '').trim();
                   if (answer.length >= 2 && answer.length <= 20000 &&
                       !/^(登录|Log in|Sign up|登录或注册)$/i.test(answer)) {
                     chosen = {text:answer, el:null};
