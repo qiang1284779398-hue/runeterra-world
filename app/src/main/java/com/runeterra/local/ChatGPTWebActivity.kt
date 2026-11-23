@@ -327,9 +327,9 @@ class ChatGPTWebActivity : Activity() {
             val submittedPrompt = data.optString("submittedPrompt").ifBlank {
                 prompt.text?.toString().orEmpty()
             }.trim()
-            text = text.replace("\\r", "").replace('\\u00a0', ' ')
-                .replace(Regex("[ \\t]+"), " ")
-                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
+            text = text.replace("\r", "").replace('\u00a0', ' ')
+                .replace(Regex("[ \t]+"), " ")
+                .replace(Regex("\n{3,}"), "\n\n").trim()
 
             if (submittedPrompt.isNotEmpty()) {
                 val promptAt = text.lastIndexOf(submittedPrompt, ignoreCase = false)
