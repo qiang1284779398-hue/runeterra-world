@@ -410,7 +410,8 @@ object WorldEngine {
 允许输出的operation type：
 1 transform_person：字段target必填；可选gender、appearance、abilities、lineage、age、health、skill、job、goal、belief。只填写用户明确要求改变的属性，其他属性保持不变。
 2 erase_person：target必填，将目标从世界中抹杀。
-3 resurrect_person：target必填，复活目标。
+3 resurrect_person：target必填，复活目标；灵魂湮灭者不可复活，复活会产生代价。
+4 reincarnate_person：target必填；对尚存灵魂执行转生，前世记忆封存，不继承前世财富与社会身份。
 4 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
 5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。replace表示直接改写其主观人生记忆，可植入任意虚构/跨世界人物身份与完整经历；目标会把它当作自己的记忆，但身体仍是符文之地原身体。
 6 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
@@ -577,6 +578,32 @@ object WorldEngine {
                     else if(soul?.optString("state")=="灵魂湮灭")outcomes.add("天道裁决：拒绝复活「"+target+"」。其灵魂已湮灭，不存在可供召回的灵魂主体。")
                     else if(hero!=null){hero.alive=true;hero.health=60;hero.status="经天道裁决复活；承受复生代价";if(soul!=null){soul.put("state","已复归").put("resurrectionCount",soul.optInt("resurrectionCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)};appendHeroEvent(hero,"经天道最终裁决准予复活。复生代价：初始健康仅恢复至60；原有记忆与关系保留。");outcomes.add("天道裁决：准予复活英雄「"+hero.name+"」，健康恢复至60。");successful++}
                     else if(resident!=null){resident.alive=true;resident.health=60;resident.coins=(resident.coins-20).coerceAtLeast(0);if(soul!=null){soul.put("state","已复归").put("resurrectionCount",soul.optInt("resurrectionCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)};appendResidentEvent(resident,"经天道最终裁决准予复活。复生代价：健康恢复至60并失去20枚金币（不足则扣至0）；原有记忆、关系与经历保留。");outcomes.add("天道裁决：准予复活居民「"+resident.name+"」，健康恢复至60并扣除20枚金币。");successful++}
+                }
+                "reincarnate_person" -> {
+                    val key=if(hero!=null)"hero:"+hero.name else "resident:"+(resident?.id?:-1)
+                    val ledger=soulLedger(p); val soul=soulEntry(ledger,key); val prohibition=soulLawVerdict(p,"reincarnate")
+                    if(hero==null&&resident==null) outcomes.add("未执行：找不到转生对象「"+target+"」。")
+                    else if(hero?.alive==true||resident?.alive==true) outcomes.add("未执行：目标仍然在世，不能进行死后转生。")
+                    else if(prohibition!=null) outcomes.add("天道裁决：拒绝转生「"+target+"」。依据生效法则：「"+prohibition+"」。")
+                    else if(soul?.optString("state")=="灵魂湮灭") outcomes.add("天道裁决：拒绝转生「"+target+"」。灵魂已经湮灭。")
+                    else if(hero!=null) {
+                        hero.alive=true; hero.age=0; hero.health=100; hero.headSevered=false; hero.survivalOverride=false
+                        hero.status="转生为新生个体；前世记忆封存"
+                        if(soul!=null){soul.put("state","已转生").put("integrity",soul.optInt("integrity",100)).put("reincarnationCount",soul.optInt("reincarnationCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)}
+                        appendHeroEvent(hero,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存为潜在记忆，不自动获得前世知识；原有因果记录保留。")
+                        outcomes.add("天道裁决：准予英雄「"+hero.name+"」转生。年龄归零，前世记忆封存，因果档案保留。"); successful++
+                    } else if(resident!=null) {
+                        resident.alive=true; resident.age=0; resident.health=100; resident.food=3; resident.coins=0
+                        resident.job="儿童"; resident.goal="成长并逐渐形成自己的生活道路"; resident.partnerId=-1
+                        resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""
+                        resident.currentThought="我刚刚开始自己的人生，对前世只有难以理解的梦境与模糊感受。"
+                        resident.intent="成长、学习并逐渐理解周围世界"
+                        resident.mindMemory.add("【转生封存记忆】前世经历没有被抹除，但当前意识不能直接调用；可能以梦境、直觉或碎片化熟悉感出现。")
+                        while(resident.mindMemory.size>120) resident.mindMemory.removeAt(0)
+                        if(soul!=null){soul.put("state","已转生").put("integrity",soul.optInt("integrity",100)).put("reincarnationCount",soul.optInt("reincarnationCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)}
+                        appendResidentEvent(resident,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存；不自动继承前世财富、职业与社会身份。")
+                        outcomes.add("天道裁决：准予居民「"+resident.name+"」转生。年龄归零，前世记忆封存，金币与职业重置。"); successful++
+                    }
                 }
                 "set_anatomy_survival" -> {
                     if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
@@ -849,9 +876,12 @@ object WorldEngine {
         if(old!=null) for(i in a.length()-1 downTo 0) if(a.optJSONObject(i)?.optString("entityKey")==key)a.remove(i)
         a.put(e); while(a.length()>20000)a.remove(0); saveSoulLedger(p,a)
     }
-    private fun soulLawVerdict(p:android.content.SharedPreferences):String?{
+    private fun soulLawVerdict(p:android.content.SharedPreferences,action:String="resurrect"):String?{
         val a=runCatching{JSONArray(p.getString(KEY_DIVINE_RULES,"[]")?:"[]")}.getOrDefault(JSONArray())
-        val denied=listOf("禁止复活","不可复活","死亡不可逆","永久死亡","禁止死者复生","禁止转生","不可转生","不得轮回","轮回已断","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
+        val denied=when(action){
+            "reincarnate" -> listOf("禁止转生","不可转生","不得轮回","轮回已断","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
+            else -> listOf("禁止复活","不可复活","死亡不可逆","永久死亡","禁止死者复生","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
+        }
         return (0 until a.length()).map{a.optString(it).trim()}.firstOrNull{r->r.isNotBlank()&&denied.any{r.contains(it)}}
     }
     private fun advanceSoulLedger(p:android.content.SharedPreferences,day:Long,events:MutableList<String>){
