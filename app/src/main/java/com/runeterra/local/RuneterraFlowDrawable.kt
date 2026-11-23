@@ -8,6 +8,7 @@ import android.graphics.LinearGradient
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.os.SystemClock
+import android.view.Choreographer
 import kotlin.math.sin
 import kotlin.math.cos
 
@@ -28,7 +29,7 @@ class RuneterraFlowDrawable : Drawable() {
         )
     }
     private var scheduled = false
-    private val frame = Runnable {
+    private val frameCallback = Choreographer.FrameCallback {
         scheduled = false
         invalidateSelf()
     }
@@ -92,9 +93,9 @@ class RuneterraFlowDrawable : Drawable() {
             canvas.drawCircle(x, y, p[2] * 1.25f, paint)
         }
 
-        if (!scheduled) {
+        if (!scheduled && isVisible) {
             scheduled = true
-            scheduleSelf(frame, SystemClock.uptimeMillis() + 33L)
+            Choreographer.getInstance().postFrameCallback(frameCallback)
         }
     }
 
@@ -106,6 +107,17 @@ class RuneterraFlowDrawable : Drawable() {
     override fun onBoundsChange(bounds: android.graphics.Rect) {
         super.onBoundsChange(bounds)
         invalidateSelf()
+    }
+
+    override fun setVisible(visible: Boolean, restart: Boolean): Boolean {
+        val changed = super.setVisible(visible, restart)
+        if (!visible && scheduled) {
+            Choreographer.getInstance().removeFrameCallback(frameCallback)
+            scheduled = false
+        } else if (visible) {
+            invalidateSelf()
+        }
+        return changed
     }
 
     override fun unscheduleSelf(what: Runnable) {
