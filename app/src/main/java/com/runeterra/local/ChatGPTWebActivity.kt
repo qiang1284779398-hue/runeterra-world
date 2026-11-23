@@ -31,6 +31,9 @@ class ChatGPTWebActivity : Activity() {
     private var baseline = ""
     private var lastText = ""
     private var stableCount = 0
+    private var baselineAssistantCount = 0
+    private var pollStartedAt = 0L
+    private val maxPollDurationMs = 180_000L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -98,6 +101,9 @@ class ChatGPTWebActivity : Activity() {
         val script = """
             (function() {
               const text = $quoted;
+              const beforeNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+              const baselineCount = beforeNodes.length;
+              const baselineText = beforeNodes.length ? ((beforeNodes[beforeNodes.length-1].innerText || beforeNodes[beforeNodes.length-1].textContent || '').trim()) : '';
               const box =
                 document.querySelector('[data-testid="prompt-textarea"]') ||
                 document.querySelector('#prompt-textarea') ||
@@ -124,17 +130,20 @@ class ChatGPTWebActivity : Activity() {
                   box.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', bubbles:true}));
                 }
               }, 250);
-              return JSON.stringify({ok:true, reason:'已填入输入框，正在触发发送'});
+              return JSON.stringify({ok:true, baselineText:baselineText, baselineCount:baselineCount, reason:'已填入输入框，正在触发发送'});
             })();
         """.trimIndent()
         web.evaluateJavascript(script) { raw ->
             val parsed = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val obj = try { JSONObject(parsed ?: "{}") } catch (_: Exception) { JSONObject() }
             if (obj.optBoolean("ok")) {
-                baseline = lastText
+                baseline = obj.optString("baselineText", lastText)
+                baselineAssistantCount = obj.optInt("baselineCount", 0)
+                lastText = ""
                 stableCount = 0
-                result.text = "已提交发送动作，等待 ChatGPT 回答……"
-                status.text = obj.optString("reason")
+                pollStartedAt = System.currentTimeMillis()
+                result.text = "已触发发送，正在等待本轮新回答……"
+                status.text = obj.optString("reason") + "；发送前已有回答数=" + baselineAssistantCount
                 startPolling()
             } else {
                 status.text = obj.optString("reason", "发送失败")
@@ -158,7 +167,9 @@ class ChatGPTWebActivity : Activity() {
     }
 
     private fun readLatest(force: Boolean) {
-        // Traverse document, open shadow roots and accessible iframes.
+        // Traverse the live document, open shadow roots and same-origin iframes.
+        // Only accept assistant message containers; never treat the whole page or
+        // the user's own prompt as an assistant answer.
         val script = """
             (function() {
               const roots = [], seen = new Set();
@@ -168,7 +179,9 @@ class ChatGPTWebActivity : Activity() {
                 roots.push(root);
                 let els = [];
                 try { els = Array.from(root.querySelectorAll('*')); } catch (_) {}
-                for (const el of els) if (el.shadowRoot) addRoot(el.shadowRoot);
+                for (const el of els) {
+                  try { if (el.shadowRoot) addRoot(el.shadowRoot); } catch (_) {}
+                }
                 if (root === document) {
                   for (const frame of Array.from(document.querySelectorAll('iframe'))) {
                     try { if (frame.contentDocument) addRoot(frame.contentDocument); } catch (_) {}
@@ -177,54 +190,93 @@ class ChatGPTWebActivity : Activity() {
               };
               addRoot(document);
               const all = [];
-              for (const root of roots) { try { all.push(...Array.from(root.querySelectorAll('*'))); } catch (_) {} }
-              const visible = el => {
-                try { const r=el.getBoundingClientRect(), s=getComputedStyle(el); return r.width>0 && r.height>0 && s.visibility!=='hidden' && s.display!=='none'; }
-                catch (_) { return false; }
-              };
-              const textOf = el => ((el && (el.innerText || el.textContent)) || '').trim();
-              const candidates = [];
               for (const root of roots) {
-                let nodes=[];
-                try { nodes=Array.from(root.querySelectorAll('[data-message-author-role], [data-testid^="conversation-turn-"], article, [data-message-id]')); } catch (_) {}
+                try { all.push(...Array.from(root.querySelectorAll('*'))); } catch (_) {}
+              }
+              const visible = el => {
+                try {
+                  const r = el.getBoundingClientRect(), st = getComputedStyle(el);
+                  return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+                } catch (_) { return false; }
+              };
+              const textOf = el => ((el && (el.innerText || el.textContent)) || '').replace(/\u00a0/g, ' ').trim();
+              const contentOf = el => {
+                const selectors = '[data-message-content], [data-testid*="message-content"], .markdown, [class*="markdown"]';
+                let parts = [];
+                try { parts = Array.from(el.querySelectorAll(selectors)).filter(visible).map(textOf).filter(Boolean); } catch (_) {}
+                if (parts.length) return parts.sort((a,b) => b.length - a.length)[0];
+                return textOf(el);
+              };
+              const assistantNodes = [], seenNodes = new Set();
+              const turns = [];
+              for (const root of roots) {
+                let nodes = [];
+                try { nodes = Array.from(root.querySelectorAll('[data-message-author-role="assistant"]')); } catch (_) {}
                 for (const el of nodes) {
-                  const role=(el.getAttribute('data-message-author-role')||'').toLowerCase(), txt=textOf(el);
-                  if (txt && visible(el)) candidates.push({el,txt,role,kind:el.tagName.toLowerCase()});
+                  if (seenNodes.has(el) || !visible(el)) continue;
+                  seenNodes.add(el);
+                  const txt = contentOf(el);
+                  if (txt) assistantNodes.push({text:txt, el:el});
+                }
+                let turnNodes = [];
+                try { turnNodes = Array.from(root.querySelectorAll('[data-testid^="conversation-turn-"]')); } catch (_) {}
+                for (const el of turnNodes) if (visible(el)) turns.push(el);
+              }
+              let chosen = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
+              let method = chosen ? 'assistant-role+markdown' : 'none';
+              // Some ChatGPT layouts expose a conversation turn before the role
+              // attribute is attached. Use it only if it explicitly contains an
+              // assistant marker, avoiding accidental capture of the user prompt.
+              if (!chosen && turns.length) {
+                for (let i = turns.length - 1; i >= 0; i--) {
+                  const turn = turns[i];
+                  let assistant = null;
+                  try { assistant = turn.querySelector('[data-message-author-role="assistant"]'); } catch (_) {}
+                  if (assistant) {
+                    const txt = contentOf(assistant);
+                    if (txt) { chosen = {text:txt, el:assistant}; method='conversation-turn-assistant'; break; }
+                  }
                 }
               }
-              let chosen=candidates.filter(x=>x.role==='assistant').slice(-1)[0], method=chosen?'deep-assistant-role':'none';
-              if (!chosen) {
-                const turns=candidates.filter(x=>x.el.getAttribute('data-testid') && x.el.getAttribute('data-testid').startsWith('conversation-turn-'));
-                if (turns.length) { chosen=turns[turns.length-1]; method='deep-conversation-turn'; }
-              }
-              const rootBodies = roots.map((root, index) => {
+              const stop = roots.some(root => {
+                try {
+                  return !!root.querySelector(
+                    '[data-testid*="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"], button[title*="Stop"]'
+                  );
+                } catch (_) { return false; }
+              });
+              const rootBodies = roots.map((root,index) => {
                 let body = '';
                 try { body = textOf(root.body || root.documentElement); } catch (_) {}
-                return {index, length:body.length, preview:body.slice(-1800), text:body};
+                return {index:index, length:body.length, preview:body.slice(-1200)};
               });
-              const bodyText = rootBodies.map(x=>x.text).filter(Boolean).join('\\n');
-              const shadowHosts=all.filter(e=>!!e.shadowRoot).length;
-              const iframeInfo=Array.from(document.querySelectorAll('iframe')).map((f,index)=>{
-                let body='', title='', url='';
-                try { const d=f.contentDocument; if(d){body=textOf(d.body || d.documentElement);title=d.title||'';url=d.location.href||'';} } catch(_){}
-                return {index,src:(f.getAttribute('src')||'').slice(0,180),accessible:!!(function(){try{return f.contentDocument}catch(_){return null}})(),title,url,bodyLength:body.length,bodyPreview:body.slice(-1200)};
+              const bodyLength = rootBodies.reduce((n,x)=>n+x.length,0);
+              const iframeInfo = Array.from(document.querySelectorAll('iframe')).map((f,index) => {
+                let body='', title='', url='', accessible=false;
+                try {
+                  const d=f.contentDocument;
+                  if(d){accessible=true;body=textOf(d.body||d.documentElement);title=d.title||'';url=d.location.href||'';}
+                } catch (_) {}
+                return {index:index,src:(f.getAttribute('src')||'').slice(0,140),accessible:accessible,title:title,url:url,bodyLength:body.length,bodyPreview:body.slice(-500)};
               });
-              if (!chosen) {
-                const frameBody = rootBodies.filter(x=>x.index>0 && x.text.length>20).sort((a,b)=>b.length-a.length)[0];
-                const usefulBody = frameBody || rootBodies.filter(x=>x.text.length>80 && !/登录\\s*$/.test(x.text)).sort((a,b)=>b.length-a.length)[0];
-                if (usefulBody) { chosen={txt:usefulBody.text,role:'',kind:'body'}; method='iframe-body-fallback'; }
-              }
-              const stop=roots.some(root=>{try{return !!root.querySelector('[data-testid="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]')}catch(_){return false}});
+              const shadowHostCount = all.filter(e => { try { return !!e.shadowRoot; } catch (_) { return false; } }).length;
               return JSON.stringify({
-                text:chosen?chosen.txt:'',
+                text:chosen ? chosen.text : '',
                 streaming:stop,
-                assistantCount:candidates.filter(x=>x.role==='assistant').length,
-                roleCount:candidates.filter(x=>!!x.role).length,
-                turnCount:candidates.filter(x=>x.el.getAttribute('data-testid')&&x.el.getAttribute('data-testid').startsWith('conversation-turn-')).length,
-                articleCount:candidates.filter(x=>x.kind==='article').length,
-                rootCount:roots.length, shadowHostCount:shadowHosts, iframeCount:iframeInfo.length, iframeInfo:iframeInfo,
-                elementCount:all.length, bodyLength:bodyText.length, bodyPreview:bodyText.slice(-1800), rootBodies:rootBodies.map(x=>({index:x.index,length:x.length,preview:x.preview})),
-                method:method, title:document.title, url:location.href, ready:document.readyState
+                assistantCount:assistantNodes.length,
+                turnCount:turns.length,
+                rootCount:roots.length,
+                shadowHostCount:shadowHostCount,
+                iframeCount:iframeInfo.length,
+                iframeInfo:iframeInfo,
+                elementCount:all.length,
+                bodyLength:bodyLength,
+                bodyPreview:rootBodies.map(x=>x.preview).join(' | ').slice(-1600),
+                rootBodies:rootBodies,
+                method:method,
+                title:document.title,
+                url:location.href,
+                ready:document.readyState
               });
             })();
         """.trimIndent()
@@ -234,30 +286,50 @@ class ChatGPTWebActivity : Activity() {
             val text = data.optString("text").trim()
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
-            val roleCount = data.optInt("roleCount", 0)
-            val turnCount = data.optInt("turnCount", 0)
-            val articleCount = data.optInt("articleCount", 0)
+            val turns = data.optInt("turnCount", 0)
             val roots = data.optInt("rootCount", 0)
             val shadowHosts = data.optInt("shadowHostCount", 0)
             val frames = data.optInt("iframeCount", 0)
             val elements = data.optInt("elementCount", 0)
             val bodyLength = data.optInt("bodyLength", 0)
             val method = data.optString("method", "none")
-            if (text.isNotBlank()) {
+            val isNewAnswer = count > baselineAssistantCount || (text.isNotBlank() && text != baseline)
+
+            if (text.isNotBlank() && (force || isNewAnswer)) {
                 result.text = text
                 if (text == lastText) stableCount++ else stableCount = 0
                 lastText = text
-                if (force) status.text = "读取成功：" + text.length + " 字符；方式=" + method + "；DOM根=" + roots
-                if (!force && text != baseline && !streaming && stableCount >= 2) {
-                    status.text = "回答读取完成：" + text.length + " 字符"
+                if (force) {
+                    status.text = "读取成功：" + text.length + " 字符；方式=" + method +
+                        "；assistant节点=" + count + "；DOM根=" + roots + "；Shadow=" + shadowHosts
+                } else if (!streaming && stableCount >= 2) {
+                    status.text = "本轮回答读取完成：" + text.length + " 字符；方式=" + method
                     polling = false
                     handler.removeCallbacks(pollTask)
-                } else if (!force && text != baseline) {
-                    status.text = if (streaming) "正在读取生成中的回答……" else "回答内容已更新，等待内容稳定……"
+                } else {
+                    status.text = if (streaming) {
+                        "GPT 正在生成，本轮已读取 " + text.length + " 字符……"
+                    } else {
+                        "检测到本轮新回答，等待文本稳定（" + (stableCount + 1) + "/3）……"
+                    }
                 }
             } else if (force) {
-                val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(140)
-                status.text = "未找到回答：元素=" + elements + "，DOM根=" + roots + "，Shadow=" + shadowHosts + "，iframe=" + frames + "，body字符=" + bodyLength + "；页面=" + data.optString("url") + "；预览=" + preview + "；框架=" + data.optJSONArray("iframeInfo")
+                val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(180)
+                status.text = "未找到助手回答：assistant节点=" + count +
+                    "，turn=" + turns + "，DOM根=" + roots + "，Shadow=" + shadowHosts +
+                    "，iframe=" + frames + "，页面字符=" + bodyLength +
+                    "，元素=" + elements + "；方式=" + method +
+                    "；页面=" + data.optString("url") + "；预览=" + preview +
+                    "；框架=" + data.optJSONArray("iframeInfo")
+            } else if (!force && System.currentTimeMillis() - pollStartedAt > maxPollDurationMs) {
+                polling = false
+                handler.removeCallbacks(pollTask)
+                status.text = "等待超时（3分钟）：没有检测到本轮新回答。请检查网页是否仍在生成、网络是否正常，然后点击“读取最新回答”查看诊断。"
+            } else if (!force && text.isNotBlank() && !isNewAnswer) {
+                status.text = "已读取到旧回答，继续等待本轮新回答……"
+            } else if (!force && text.isBlank()) {
+                status.text = "正在扫描 ChatGPT 回答节点…… assistant节点=" + count +
+                    "；DOM根=" + roots + "；Shadow=" + shadowHosts + "；iframe=" + frames
             }
         }
     }
