@@ -150,24 +150,10 @@ class ChatGPTWebActivity : Activity() {
               if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
                 const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value')?.set;
                 if (setter) setter.call(box, text); else box.value = text;
-                box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               } else {
-                // Use the editor's native insertion command so React/ProseMirror state is updated.
-                // Assigning textContent alone can change the visible preview without committing
-                // the text into ChatGPT's actual composer state.
-                try {
-                  const selection = window.getSelection();
-                  const range = document.createRange();
-                  range.selectNodeContents(box);
-                  selection.removeAllRanges();
-                  selection.addRange(range);
-                  document.execCommand('delete', false);
-                  document.execCommand('insertText', false, text);
-                } catch (_) {
-                  box.textContent = text;
-                }
-                box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
+                box.textContent = text;
               }
+              box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               box.dispatchEvent(new Event('change', {bubbles:true}));
               // ChatGPT mobile UI may update the send button asynchronously after input.
               // Wait for the real enabled send control instead of clicking after a fixed 250ms.
@@ -196,37 +182,6 @@ class ChatGPTWebActivity : Activity() {
                   clearInterval(sendTimer);
                   send.click();
                   window.__runeterraSendStatus = 'clicked';
-                  // Confirm that ChatGPT accepted the message into the conversation,
-                  // not merely that the composer looked filled or the button was clicked.
-                  let verifyAttempts = 0;
-                  const verifyTimer = setInterval(() => {
-                    verifyAttempts++;
-                    const userNodes = Array.from(document.querySelectorAll('[data-message-author-role="user"]'));
-                    const accepted = userNodes.some(node =>
-                      ((node.innerText || node.textContent || '').trim()).includes(text)
-                    );
-                    if (accepted) {
-                      clearInterval(verifyTimer);
-                      window.__runeterraSendStatus = 'confirmed';
-                    } else if (verifyAttempts >= 12) {
-                      clearInterval(verifyTimer);
-                      const currentBox =
-                        document.querySelector('[data-testid="prompt-textarea"]') ||
-                        document.querySelector('#prompt-textarea') ||
-                        document.querySelector('[contenteditable="true"][role="textbox"]') ||
-                        document.querySelector('[contenteditable="true"]');
-                      if (currentBox) {
-                        currentBox.focus();
-                        currentBox.dispatchEvent(new KeyboardEvent('keydown', {
-                          key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
-                        }));
-                        currentBox.dispatchEvent(new KeyboardEvent('keyup', {
-                          key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
-                        }));
-                      }
-                      window.__runeterraSendStatus = 'enter-retry';
-                    }
-                  }, 300);
                   return;
                 }
                 if (attempts >= 40) {
@@ -493,8 +448,17 @@ class ChatGPTWebActivity : Activity() {
                   diagnosticParts.push(body);
                 } catch (_) {}
               }
-              // Keep enough transcript to retain long world-task prompts and their answers.
-              const diagnosticText = (diagnosticParts.filter(t => !prompt || t.includes(prompt)).sort((a,b) => b.length-a.length)[0] || diagnosticParts.sort((a,b) => b.length-a.length)[0] || '').slice(-50000);
+              // Do not take the last 50k characters of the whole conversation:
+              // in a long chat that can cut the newly submitted prompt off entirely.
+              // Find the latest exact prompt in each transcript first, then return
+              // everything from that prompt onward so its complete answer is retained.
+              const matchingTranscripts = diagnosticParts
+                .map(body => ({body, at: prompt ? body.lastIndexOf(prompt) : -1}))
+                .filter(item => item.at >= 0)
+                .sort((a,b) => b.body.length-a.body.length);
+              const diagnosticText = matchingTranscripts.length
+                ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
+                : '';
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
