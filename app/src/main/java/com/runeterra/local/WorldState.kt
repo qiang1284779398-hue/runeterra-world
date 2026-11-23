@@ -2838,12 +2838,12 @@ private fun craftBonus(region:String):Int = when(region) {
 
     fun selectedThinkingPool(context: Context, heroes: Boolean): Set<String> {
         val key = if (heroes) KEY_HERO_THINKING_POOL else KEY_RESIDENT_THINKING_POOL
-        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(key, emptySet())?.toSet() ?: emptySet()
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(key, mutableSetOf<String>())?.toSet() ?: emptySet()
     }
 
     fun setThinkingPool(context: Context, heroes: Boolean, selected: Set<String>) {
         val key = if (heroes) KEY_HERO_THINKING_POOL else KEY_RESIDENT_THINKING_POOL
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(key, selected.toSet()).apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(key, selected.toMutableSet()).apply()
         // Reset the relevant cursor so a changed pool takes effect immediately and fairly.
         val cursorKey = if (heroes) KEY_HERO_AI_CURSOR else KEY_AI_CURSOR
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(cursorKey, 0).apply()
