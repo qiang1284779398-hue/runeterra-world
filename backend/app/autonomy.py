@@ -98,6 +98,15 @@ class MemoryWrite(BaseModel):
     source: str = Field(default="world_engine", pattern="^(world_engine|reflection|user_import)$")
 
 
+class WorldEvent(BaseModel):
+    world_id: str = Field(min_length=1, max_length=100)
+    actor_id: str = Field(min_length=1, max_length=120)
+    day: int = Field(ge=0)
+    action: str = Field(default="", max_length=2000)
+    outcome: str = Field(min_length=1, max_length=12000)
+    authority: str = Field(default="world_engine", pattern="^(world_engine|llm|client)$")
+
+
 class WorldOutcome(BaseModel):
     proposal_id: str = Field(min_length=1, max_length=80)
     world_id: str = Field(min_length=1, max_length=100)
@@ -224,6 +233,51 @@ def recall_memory(world_id: str, actor_id: str, q: str = "", limit: int = 20,
             scored.append((score,dict(row)))
     scored.sort(key=lambda x: x[0], reverse=True)
     return {"actor_key": key, "memories": [item for _,item in scored[:max(1,min(limit,100))]]}
+
+
+
+def private_memory_context(key: str, query: str, limit: int = 12) -> str:
+    terms = {t for t in re.findall(r"[\\w\\u4e00-\\u9fff]{2,}", query.lower())}
+    with _connect() as conn:
+        rows = conn.execute("""
+            SELECT memory_type,content,importance,created_at FROM private_memories
+            WHERE actor_key=? ORDER BY id DESC LIMIT 500
+        """, (key,)).fetchall()
+    scored = []
+    for row in rows:
+        content = row["content"]
+        overlap = sum(1 for term in terms if term in content.lower())
+        if not terms or overlap:
+            scored.append((float(row["importance"]) + overlap * 0.25, row))
+    scored.sort(key=lambda item: item[0], reverse=True)
+    return "\\n".join(
+        f"[{row['memory_type']}｜{row['created_at']}] {row['content']}" for _, row in scored[:limit]
+    )
+
+
+@router.post("/world-event")
+def record_world_event(data: WorldEvent, x_runeterra_token: str | None = Header(default=None)):
+    _auth(x_runeterra_token)
+    if data.authority != "world_engine":
+        raise HTTPException(status_code=403, detail="Only the authoritative world engine may commit lived experience")
+    key = actor_key(data.world_id, data.actor_id)
+    now = _iso(_now())
+    event_id = "world-event:" + uuid.uuid4().hex
+    content = f"第{data.day}日，已由世界引擎确认的经历。行动：{data.action or '未提供'}。真实结果：{data.outcome}"
+    with _router_lock, _connect() as conn:
+        conn.execute("""
+            INSERT INTO verified_outcomes(proposal_id,actor_key,verdict,executed,outcome,reward,source,created_at)
+            VALUES(?,?,?,?,?,?,?,?)
+        """, (event_id,key,"world_engine_confirmed",1,content,0.0,"world_engine",now))
+        conn.execute("""
+            INSERT INTO private_memories(actor_key,memory_type,content,importance,source,created_at)
+            VALUES(?,?,?,?,?,?)
+        """, (key,"episodic",content,0.85,"world_engine",now))
+        conn.execute("""
+            DELETE FROM private_memories WHERE actor_key=? AND id NOT IN
+            (SELECT id FROM private_memories WHERE actor_key=? ORDER BY id DESC LIMIT 5000)
+        """, (key,key))
+    return {"stored": True, "actor_key": key, "event_id": event_id, "source": "verified_world_engine"}
 
 
 @router.get("/pending/{world_id}/{actor_id}")
