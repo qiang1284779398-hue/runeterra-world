@@ -257,7 +257,10 @@ object WorldAIProvider {
    }
    return
   }
-  if(apiKey.isBlank()) {
+  val (apiKey,keyDiagnostic)=loadApiKey(app)
+  val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
+  thread(name="SharedCloudAI") {
+   if(apiKey.isBlank()) {
     callback("【云端决策失败】未生成角色决策。$keyDiagnostic")
     return@thread
    }
@@ -280,6 +283,5 @@ object WorldAIProvider {
    }
    if(cloudFailed) callback("【云端决策失败】本轮没有生成角色决策。"+listOf(keyDiagnostic,output.take(900)).filter{it.isNotBlank()}.joinToString("；"))
    else deliver(output)
-  }
- }
+  } }
 }
