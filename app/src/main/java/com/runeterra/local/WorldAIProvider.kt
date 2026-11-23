@@ -155,9 +155,9 @@ object WorldAIProvider {
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
   val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
   val apiKey=try{decrypt(app)}catch(_:Throwable){""}
-  if(apiKey.isBlank()) {
+  if(apiKey.isBlank() && backendUrl.isBlank()) {
    if(ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
-   else callback("未配置云端API，且本地模型未加载")
+   else callback("未配置云端API、认知后端，且本地模型未加载")
    return
   }
   val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
@@ -174,6 +174,11 @@ object WorldAIProvider {
      // Keep the world playable if the optional cognitive backend is unavailable.
      // The direct Zhipu path below remains the fallback.
     }
+   }
+   if(apiKey.isBlank()) {
+    if(ResidentAI.isLoaded()) ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
+    else callback("认知后端连接失败，且未配置智谱直连或本地模型")
+    return@thread
    }
    var output=""
    var cloudFailed=false
