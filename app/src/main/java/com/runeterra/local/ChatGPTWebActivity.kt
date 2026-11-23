@@ -349,7 +349,7 @@ class ChatGPTWebActivity : Activity() {
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
               // ChatGPT may reflow a long user message into different line breaks.
               // Compare whitespace-normalized text, not byte-for-byte DOM formatting.
-              const normalizeForMatch = value => clean(value).replace(/\\s+/g, ' ').trim();
+              const normalizeForMatch = value => clean(value).replace(/\s+/g, ' ').trim();
               const promptMatch = normalizeForMatch(prompt);
               // Role selectors are diagnostic evidence only; ChatGPT may change its markup.
               const userPromptNodePresent = !!promptMatch && roots.some(root => {
@@ -367,6 +367,78 @@ class ChatGPTWebActivity : Activity() {
                     if (visible(el) && !turns.includes(el)) turns.push(el);
                   }
                 } catch (_) {}
+              }
+              // Locate the exact user turn first, then read the assistant turn that follows it.
+              // This avoids requiring the full page transcript to contain an exact prompt copy.
+              const userRoleSelector = '[data-message-author-role="user"], [data-author="user"], [data-role="user"]';
+              const readAssistantBody = node => {
+                if (!node) return '';
+                let bodies = [];
+                try { bodies = Array.from(node.querySelectorAll('[data-message-content], .markdown, [class~="prose"]')).filter(visible); } catch (_) {}
+                const leaf = bodies.filter(item => !bodies.some(other => other !== item && item.contains(other)));
+                const chosen = leaf.length ? leaf : bodies;
+                if (chosen.length) {
+                  return clean(chosen.map(item => {
+                    const clone = item.cloneNode(true);
+                    clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
+                    return clone.innerText || clone.textContent || '';
+                  }).filter(Boolean).join('\\n\\n'));
+                }
+                const clone = node.cloneNode(true);
+                clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
+                return clean(clone.innerText || clone.textContent || '');
+              };
+              let pairedPromptFound = false, pairedAnswer = '', pairMethod = 'no-prompt-turn';
+              let matchedTurnIndex = -1;
+              if (promptMatch) {
+                for (let i = turns.length - 1; i >= 0; i--) {
+                  let userNode = null;
+                  try { userNode = turns[i].querySelector(userRoleSelector); } catch (_) {}
+                  if (!userNode || !visible(userNode)) continue;
+                  const userText = normalizeForMatch(userNode.innerText || userNode.textContent || '');
+                  if (userText && userText.includes(promptMatch)) {
+                    pairedPromptFound = true;
+                    matchedTurnIndex = i;
+                    pairMethod = 'matched-user-turn';
+                    break;
+                  }
+                }
+              }
+              if (matchedTurnIndex >= 0) {
+                for (let i = matchedTurnIndex + 1; i < turns.length; i++) {
+                  let assistantNode = null;
+                  try { assistantNode = turns[i].querySelector(roleSelector); } catch (_) {}
+                  if (!assistantNode || !visible(assistantNode)) continue;
+                  pairedAnswer = readAssistantBody(assistantNode);
+                  if (pairedAnswer) {
+                    pairMethod += '/next-assistant-turn';
+                    break;
+                  }
+                }
+              }
+              // Fallback for layouts without conversation-turn wrappers: inspect role
+              // messages in DOM order and take the first assistant message after the match.
+              if (promptMatch && !pairedPromptFound) {
+                for (const root of roots) {
+                  try {
+                    const messages = Array.from(root.querySelectorAll(userRoleSelector + ', ' + roleSelector)).filter(visible);
+                    let at = -1;
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                      if (!messages[i].matches(userRoleSelector)) continue;
+                      const userText = normalizeForMatch(messages[i].innerText || messages[i].textContent || '');
+                      if (userText && userText.includes(promptMatch)) { at = i; break; }
+                    }
+                    if (at >= 0) {
+                      pairedPromptFound = true;
+                      const nextAssistant = messages.slice(at + 1).find(node => node.matches(roleSelector));
+                      if (nextAssistant) {
+                        pairedAnswer = readAssistantBody(nextAssistant);
+                        if (pairedAnswer) pairMethod = 'role-message-order';
+                      }
+                      break;
+                    }
+                  } catch (_) {}
+                }
               }
               // Scope extraction to the newest conversation turn first. This prevents
               // adjacent user messages and older answers from entering the result.
@@ -479,10 +551,10 @@ class ChatGPTWebActivity : Activity() {
                 .filter(body => body.length > 0)
                 .sort((a,b) => b.length-a.length);
               // Determine prompt presence from the transcript itself, not a brittle role selector.
-              const promptPresent = matchingTranscripts.length > 0;
-              const diagnosticText = promptPresent
+              const promptPresent = matchingTranscripts.length > 0 || pairedPromptFound || userPromptNodePresent;
+              const diagnosticText = matchingTranscripts.length
                 ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
-                : '';
+                : (pairedPromptFound ? (prompt + '\\n' + pairedAnswer) : (userPromptNodePresent ? prompt : ''));
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
@@ -493,9 +565,12 @@ class ChatGPTWebActivity : Activity() {
               return JSON.stringify({
                 text: answer, submittedPrompt: prompt, promptPresent: promptPresent,
                 userPromptNodePresent: userPromptNodePresent,
+                pairedPromptFound: pairedPromptFound, pairedAnswer: pairedAnswer,
+                pairMethod: pairMethod, matchedTurnIndex: matchedTurnIndex,
                 promptLength: promptMatch.length,
                 matchingTranscriptCount: matchingTranscripts.length,
                 diagnosticTextLength: diagnosticText.length,
+                pairedAnswerLength: pairedAnswer.length,
                 rootDiagnostics: rootDiagnostics,
                 sendStatus: sendStatus, streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
@@ -518,13 +593,16 @@ class ChatGPTWebActivity : Activity() {
                 prompt.text?.toString().orEmpty()
             }.trim()
             val diagnosticText = data.optString("diagnosticText")
-            // The diagnostic transcript is the sole source of truth. Find the latest
-            // standalone occurrence of the exact submitted prompt, then keep only what
-            // follows it; previous page content and the user's prompt are excluded.
-            val promptPresent = data.optBoolean("promptPresent")
-            // Never treat a composer preview, stale assistant text, or page snippet as a reply.
-            // The exact user prompt must first exist as a real user turn in the conversation.
-            var text = if (promptPresent) extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt) else ""
+            // Prefer an answer paired to the exact current user turn in DOM order.
+            // The transcript reader remains a fallback for markup variants.
+            val pairedPromptFound = data.optBoolean("pairedPromptFound")
+            val pairedAnswer = data.optString("pairedAnswer").trim()
+            val promptPresent = data.optBoolean("promptPresent") || pairedPromptFound
+            var text = when {
+                pairedPromptFound && pairedAnswer.isNotBlank() -> pairedAnswer
+                promptPresent -> extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
+                else -> ""
+            }
             val sendStatus = data.optString("sendStatus", "unknown")
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
@@ -573,6 +651,10 @@ class ChatGPTWebActivity : Activity() {
                 val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(180)
                 status.text = "未找到助手回答：提问命中=" + promptPresent +
                     "，提问节点命中=" + data.optBoolean("userPromptNodePresent") +
+                    "，本轮用户消息匹配=" + pairedPromptFound +
+                    "，配对方式=" + data.optString("pairMethod") +
+                    "，匹配轮次=" + data.optInt("matchedTurnIndex") +
+                    "，候选回答字符=" + data.optInt("pairedAnswerLength") +
                     "，提问长度=" + data.optInt("promptLength") +
                     "，匹配记录数=" + data.optInt("matchingTranscriptCount") +
                     "，诊断文本=" + data.optInt("diagnosticTextLength") +
