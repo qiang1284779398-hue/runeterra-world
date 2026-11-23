@@ -35,6 +35,20 @@ object WorldAIProvider {
 
  private fun decrypt(context:Context)=decryptStored(context,"key_data","iv_data")
 
+ /** Keep credential/decryption failures visible instead of silently disguising them as ordinary offline cognition. */
+ private fun loadApiKey(context:Context):Pair<String,String> {
+  val p=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+  if(p.getString("key_data",null).isNullOrBlank()) return "" to "本机没有保存智谱 API Key"
+  return try {
+   val key=decrypt(context)
+   if(key.isBlank()) "" to "智谱 API Key 解密后为空，请在智谱设置页重新保存密钥"
+   else key to ""
+  } catch(e:Throwable) {
+   android.util.Log.e("RuneterraAI","智谱 API Key 解密失败",e)
+   "" to "智谱 API Key 解密失败：${e.message?:e.javaClass.simpleName}；请重新保存 API Key"
+  }
+ }
+
  /** Generic apologies and provider placeholders are not character cognition, even when wrapped in JSON. */
  private fun isNonAnswer(value:String):Boolean {
   val t=value.trim().lowercase()
@@ -237,7 +251,7 @@ object WorldAIProvider {
   val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
   val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
-  val apiKey=try{decrypt(app)}catch(_:Throwable){""}
+  val (apiKey,keyDiagnostic)=loadApiKey(app)
   // Cloud-enabled observation turns must actually reach Zhipu/backend.
   // Learned local policies are a fallback only; they must never silently bypass the configured model.
   if(apiKey.isBlank() && backendUrl.isBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
@@ -248,11 +262,12 @@ object WorldAIProvider {
    }
   }
   if(apiKey.isBlank() && backendUrl.isBlank() && !ResidentAI.isLoaded()) {
-   callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
+   callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,keyDiagnostic))
    return
   }
   val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
   thread(name="SharedCloudAI") {
+   var backendFailure=""
    if(backendUrl.isNotBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
     try {
      // Avoid duplicating the entire character prompt as both context and task.
@@ -263,14 +278,15 @@ object WorldAIProvider {
      if(!hasCharacterJson(backendOutput)) throw IllegalStateException("认知后端返回无效人物JSON/通用拒答")
      callback(backendOutput)
      return@thread
-    } catch(_:Throwable) {
-     // Keep the world playable if the optional cognitive backend is unavailable.
-     // The direct Zhipu path below remains the fallback.
+    } catch(e:Throwable) {
+     backendFailure="认知后端调用失败："+(e.message?:e.javaClass.simpleName)
+     android.util.Log.e("RuneterraAI",backendFailure,e)
+     // Try direct Zhipu only after preserving the actual backend failure for diagnostics.
     }
    }
    if(apiKey.isBlank()) {
     if(ResidentAI.isLoaded()) ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
-    else callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
+    else callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,listOf(keyDiagnostic,backendFailure).filter{it.isNotBlank()}.joinToString("；")))
     return@thread
    }
    var output=""
@@ -290,8 +306,8 @@ object WorldAIProvider {
     cloudFailed=true
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
    }
-   if(cloudFailed&&ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt){callback("【云端失败，回退本地】\n"+it)}
-   else if(cloudFailed)callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
+   if(cloudFailed&&ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt){callback("【云端失败，回退本地】\n"+it+"\n云端诊断："+listOf(keyDiagnostic,backendFailure,output.take(500)).filter{it.isNotBlank()}.joinToString("；"))}
+   else if(cloudFailed)callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,listOf(keyDiagnostic,backendFailure,output.take(500)).filter{it.isNotBlank()}.joinToString("；")))
    else callback(output)
   }
  }
