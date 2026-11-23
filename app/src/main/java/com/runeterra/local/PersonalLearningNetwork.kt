@@ -202,6 +202,6 @@ object PersonalLearningNetwork {
         val m = read(c, actor)
         val replay = runCatching { JSONArray(prefs(c).getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
         val last = runCatching { JSONObject(prefs(c).getString("${key}_last_learning", "{}") ?: "{}") }.getOrDefault(JSONObject())
-        return "策略网络：共享基础先验 + 角色专属可训练MLP\n价值网络：已启用（预测行动长期回报）\n角色参数隔离：是\n独立训练次数：${m.updates}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}\n参数安全检查：有限值与权重范围校验"
+        return "策略网络：共享基础先验 + 角色专属可训练MLP\n价值网络：已启用（预测行动长期回报）\n角色参数隔离：是\n独立训练次数：${m.updates}\n离线自主决策：${if (m.updates >= 24) "达到候选门槛，仍需通过上下文置信度检查" else "继续积累真实行动反馈（至少24次更新）"}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}\n参数安全检查：有限值与权重范围校验"
     }
 }
