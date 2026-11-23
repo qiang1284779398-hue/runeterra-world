@@ -7,6 +7,9 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.view.View
 import android.widget.Toast
 import android.view.Gravity
 import android.view.ViewGroup
@@ -135,17 +138,83 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        // The main screen contains many tools; it must scroll instead of clipping everything below
-        // the first viewport. Keep the world controls immediately below the status for quick access.
-        listOf(title, status, start, pause, step, heavenly, observation, biographies,
+        // Runeterra-inspired dark fantasy UI: midnight blue, hextech teal and Demacian gold.
+        val night = Color.rgb(10, 17, 31)
+        val panel = Color.rgb(19, 31, 49)
+        val gold = Color.rgb(220, 183, 105)
+        val pale = Color.rgb(229, 235, 241)
+        val teal = Color.rgb(74, 190, 180)
+        fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+        fun pill(fill: Int, stroke: Int = Color.TRANSPARENT) = GradientDrawable().apply {
+            setColor(fill); cornerRadius = dp(13).toFloat()
+            if (stroke != Color.TRANSPARENT) setStroke(dp(1), stroke)
+        }
+        root.setPadding(dp(18), dp(24), dp(18), dp(28))
+        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.rgb(14, 28, 48), night, Color.rgb(8, 13, 24)))
+        title.apply {
+            text = "符文之地"; textSize = 30f; setTextColor(gold)
+            gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(4), dp(2))
+            typeface = android.graphics.Typeface.create("serif", android.graphics.Typeface.BOLD)
+        }
+        status.apply {
+            setTextColor(pale); textSize = 14f
+            background = pill(panel, Color.rgb(55, 91, 113))
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        val allButtons = listOf(start, pause, step, heavenly, observation, biographies,
             worldAiProvider, gptWebTest, gptWebLog, localModel, unloadAI, testAI, aiDiagnostics,
             deepSeek, zhipu, timeline, lore, heroes, lineages, ecology, fauna, heroRelations,
-            factions, settlements, organizations, caravans, households, reset, log).forEach {
-            root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            factions, settlements, organizations, caravans, households, reset)
+        allButtons.forEach { button ->
+            button.isAllCaps = false; button.textSize = 14f
+            button.setTextColor(if (button === start) Color.rgb(18, 29, 43) else pale)
+            button.background = pill(if (button === start) gold else panel,
+                if (button === start) Color.rgb(245, 218, 157) else Color.rgb(52, 79, 103))
+            button.minHeight = dp(52); button.setPadding(dp(16), dp(10), dp(16), dp(10))
+            button.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+                bottomMargin = dp(8)
+            }
         }
+        fun section(label: String) {
+            val heading = TextView(this).apply {
+                text = label; textSize = 12f; setTextColor(teal); letterSpacing = 0.12f
+                setPadding(dp(4), dp(22), dp(4), dp(9))
+            }
+            root.addView(heading, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        fun addViews(vararg views: View) {
+            views.forEach { root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
+        }
+        addViews(title)
+        val subtitle = TextView(this).apply {
+            text = "RUNETERRA  ·  LIVING WORLD SIMULATION"
+            textSize = 10f; letterSpacing = 0.18f; setTextColor(Color.rgb(123, 155, 174))
+            setPadding(dp(5), 0, 0, dp(18))
+        }
+        addViews(subtitle, status)
+        section("世界控制  /  WORLD CONTROL")
+        addViews(start, pause, step, heavenly)
+        section("观察与人物  /  OBSERVATORY")
+        addViews(observation, biographies)
+        section("世界之心  /  AI CORE")
+        addViews(worldAiProvider, gptWebTest, gptWebLog, zhipu, deepSeek)
+        section("符文档案  /  LORE & ATLAS")
+        addViews(timeline, lore, heroes, heroRelations, lineages, factions, settlements,
+            organizations, caravans, households, ecology, fauna)
+        section("本地引擎  /  LOCAL ENGINE")
+        addViews(localModel, unloadAI, testAI, aiDiagnostics)
+        section("维护  /  MAINTENANCE")
+        addViews(reset)
+        log.setTextColor(Color.rgb(143, 164, 181)); log.textSize = 12f
+        log.setPadding(dp(4), dp(18), dp(4), dp(20))
+        addViews(log)
+        window.statusBarColor = Color.rgb(9, 17, 30)
+        window.navigationBarColor = Color.rgb(8, 13, 24)
         val mainScroll = ScrollView(this).apply {
-            isFillViewport = true
-            isVerticalScrollBarEnabled = true
+            isFillViewport = true; isVerticalScrollBarEnabled = true
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(root, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(mainScroll)
