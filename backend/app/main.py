@@ -16,7 +16,7 @@ from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 DB_PATH = os.getenv("RUNETERRA_DB", "/data/runeterra.db")
-LETTA_BASE_URL = os.getenv("LETTA_BASE_URL", "http://127.0.0.1:8283").rstrip("/")
+LETTA_BASE_URL = os.getenv("LETTA_BASE_URL", "https://api.letta.com").rstrip("/")
 LETTA_API_KEY = os.getenv("LETTA_API_KEY", "")
 LETTA_MODEL_HANDLE = os.getenv("LETTA_MODEL_HANDLE", "")
 API_TOKEN = os.getenv("RUNETERRA_API_TOKEN", "")
@@ -76,11 +76,11 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
     if row:
         return str(row[0])
     payload: dict[str, Any] = {
-        "name": f"Runeterra-{display_name[:48]}",
+        "name": f"Runeterra-WorldMemory-{display_name[:32]}",
         "agent_type": "letta_v1_agent",
         "memory_blocks": [
-            {"label": "persona", "value": f"你是符文之地世界中的角色：{display_name}。保持独立人格、身份和经历。"},
-            {"label": "world_identity", "value": f"角色唯一标识：{actor_key}。不得与其他角色混淆记忆。"},
+            {"label": "persona", "value": f"你是符文之地世界的长期记忆管理员。你管理多个独立角色的记忆，必须严格按角色唯一标识隔离，不得把甲角色经历写入乙角色档案。"},
+            {"label": "world_identity", "value": f"当前世界记忆空间：{actor_key}。每条记忆必须带有角色ID标签；查询和写入只允许触及请求中指定的角色ID。"},
         ],
     }
     if LETTA_MODEL_HANDLE:
@@ -125,12 +125,7 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
 
 
 def letta_store_experience(actor_key: str, display_name: str, day: int, experience: str) -> None:
-    agent_id = get_or_create_letta_agent(actor_key, display_name)
-    payload = {
-        "messages": [{
-            "role": "user",
-            "content": (
-                f"请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
+    world_key = actor_key.split(":", 1)[0]\n    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")\n    payload = {\n        "messages": [{\n            "role": "user",\n            "content": (\n                f"只允许写入角色ID={actor_key}的独立记忆空间。请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
                 f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\\n"
                 + experience[:10000]
             ),
