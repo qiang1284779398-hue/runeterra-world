@@ -56,7 +56,8 @@ class ChatGPTWebActivity : Activity() {
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    status.text = "网页已加载。登录 ChatGPT 后，在下方输入测试消息并点击发送。"
+                    installPromptCapture()
+                    status.text = "网页已加载。登录 ChatGPT 后，可以在网页或应用输入框中提问。"
                 }
             }
         }
@@ -188,24 +189,52 @@ class ChatGPTWebActivity : Activity() {
         }
     }
 
-    private fun extractLatestAnswerFromMessages(messages: JSONArray?): String {
-        if (messages == null || messages.length() == 0) return ""
-        var lastUserIndex = -1
-        var lastAssistantIndex = -1
-        var lastAssistantText = ""
-        for (i in 0 until messages.length()) {
-            val item = messages.optJSONObject(i) ?: continue
-            val role = item.optString("role").lowercase()
-            val body = item.optString("text").trim()
-            if (role == "user") {
-                lastUserIndex = i
-            } else if (role == "assistant" && body.isNotBlank()) {
-                lastAssistantIndex = i
-                lastAssistantText = body
+    /**
+     * The answer is extracted ONLY from diagnosticText. The prompt is located
+     * by matching the last submitted user text inside that transcript.
+     */
+    private fun extractLatestAnswerFromDiagnostic(raw: String?, submittedPrompt: String?): String {
+        val log = raw.orEmpty().replace("\\r", "")
+        val prompt = submittedPrompt.orEmpty().replace("\\r", "").trim()
+        if (log.isBlank() || prompt.isBlank()) return ""
+
+        fun normalize(value: String): String = value
+            .replace(Regex("[\\\\t ]+"), " ")
+            .replace(Regex("\\n{2,}"), "\\n")
+            .trim()
+
+        var cut = -1
+        var promptEnd = -1
+        // Prefer the final exact occurrence: it corresponds to the newest user turn.
+        val exactAt = log.lastIndexOf(prompt)
+        if (exactAt >= 0) {
+            cut = exactAt
+            promptEnd = exactAt + prompt.length
+        } else {
+            // WebView may alter whitespace/line wrapping. Match a normalized copy,
+            // then map its end back to the original transcript by locating tokens.
+            val normalizedPrompt = normalize(prompt)
+            val tokens = normalizedPrompt.split(" ").filter { it.isNotBlank() }
+            if (tokens.isNotEmpty()) {
+                val lastToken = tokens.last()
+                val lastTokenAt = log.lastIndexOf(lastToken)
+                if (lastTokenAt >= 0) {
+                    var candidateStart = lastTokenAt
+                    val windowStart = maxOf(0, lastTokenAt - prompt.length * 3)
+                    while (candidateStart > windowStart && !normalize(log.substring(candidateStart, lastTokenAt + lastToken.length)).startsWith(normalizedPrompt)) {
+                        candidateStart--
+                    }
+                    val candidate = log.substring(candidateStart, lastTokenAt + lastToken.length)
+                    if (normalize(candidate) == normalizedPrompt) {
+                        cut = candidateStart
+                        promptEnd = lastTokenAt + lastToken.length
+                    }
+                }
             }
         }
-        if (lastAssistantIndex <= lastUserIndex) return ""
-        var answer = lastAssistantText
+        if (cut < 0 || promptEnd <= cut) return ""
+
+        var answer = log.substring(promptEnd)
         val footerMarkers = listOf(
             "ChatGPT 是 AI，可能会犯错", "ChatGPT是AI，可能会犯错",
             "ChatGPT may make mistakes", "ChatGPT can make mistakes",
@@ -215,16 +244,58 @@ class ChatGPTWebActivity : Activity() {
         val footerAt = footerMarkers.map { answer.indexOf(it, ignoreCase = true) }
             .filter { it >= 0 }.minOrNull()
         if (footerAt != null) answer = answer.substring(0, footerAt)
+
+        // Remove common page chrome if it appears after the answer body.
+        val chromeMarkers = listOf(
+            "Regenerate", "重新生成", "复制", "Copy", "点赞", "点踩",
+            "Good response", "Bad response", "Share", "分享"
+        )
+        val chromeAt = chromeMarkers.map { answer.indexOf(it, ignoreCase = true) }
+            .filter { it >= 0 }.minOrNull()
+        if (chromeAt != null) answer = answer.substring(0, chromeAt)
+
         return answer.lineSequence()
             .map { it.trimEnd() }
-            .filterNot { line ->
-                line.trim().equals("与 ChatGPT 聊天", true) ||
-                    line.trim().equals("Message ChatGPT", true) ||
-                    line.trim().equals("发送消息给 ChatGPT", true)
-            }
-            .joinToString("\n")
-            .replace(Regex("\n{3,}"), "\n\n")
+            .filter { it.isNotBlank() }
+            .joinToString("\\n")
+            .replace(Regex("\\n{3,}"), "\\n\\n")
             .trim()
+    }
+
+    private fun installPromptCapture() {
+        val script = """
+            (function() {
+              if (window.__runeterraPromptCaptureInstalled) return true;
+              window.__runeterraPromptCaptureInstalled = true;
+              const readBox = () => {
+                const box = document.querySelector('[data-testid="prompt-textarea"]') ||
+                  document.querySelector('#prompt-textarea') ||
+                  document.querySelector('textarea') ||
+                  document.querySelector('[contenteditable="true"][role="textbox"]') ||
+                  document.querySelector('[contenteditable="true"]');
+                if (!box) return '';
+                return String(box.value || box.innerText || box.textContent || '')
+                  .replace(/\\u00a0/g, ' ').trim();
+              };
+              const save = () => {
+                const value = readBox();
+                if (value) window.__runeterraLastPrompt = value;
+              };
+              document.addEventListener('input', save, true);
+              document.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && !event.shiftKey) save();
+              }, true);
+              document.addEventListener('click', event => {
+                const button = event.target && event.target.closest ? event.target.closest('button') : null;
+                if (!button) return;
+                const label = ((button.getAttribute('aria-label') || '') + ' ' +
+                  (button.getAttribute('data-testid') || '')).toLowerCase();
+                if (label.includes('send') || label.includes('发送')) save();
+              }, true);
+              return true;
+            })();
+        """.trimIndent()
+        web.evaluateJavascript(script, null)
     }
 
     private fun readLatest(force: Boolean) {
@@ -366,7 +437,7 @@ class ChatGPTWebActivity : Activity() {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
               return JSON.stringify({
-                text: answer, submittedPrompt: prompt, diagnosticMessages: diagnosticMessages,
+                submittedPrompt: prompt,
                 streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
@@ -382,11 +453,10 @@ class ChatGPTWebActivity : Activity() {
         web.evaluateJavascript(script) { raw ->
             val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-            // Parse the page diagnostic transcript, not the assistant DOM selector.
-            // It contains the visible conversation in order: user prompt, then assistant answer.
-            // Use message-role metadata. Works for app-sent and page-manually-sent prompts.
-            val diagnosticMessages = data.optJSONArray("diagnosticMessages")
-            var text = extractLatestAnswerFromMessages(diagnosticMessages)
+            // The sole extraction source is the plain-text diagnostic transcript.
+            val diagnosticText = data.optString("diagnosticText")
+            val submittedPrompt = data.optString("submittedPrompt")
+            var text = extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
             val turns = data.optInt("turnCount", 0)
@@ -403,8 +473,8 @@ class ChatGPTWebActivity : Activity() {
                 if (text == lastText) stableCount++ else stableCount = 0
                 lastText = text
                 if (force) {
-                    status.text = "读取成功：" + text.length + " 字符；方式=" + method +
-                        "；assistant节点=" + count + "；DOM根=" + roots + "；Shadow=" + shadowHosts
+                    status.text = "诊断日志提取成功：" + text.length + " 字符；定位方式=最后一次提问文本匹配" +
+                        "；assistant节点=" + count + "；DOM根=" + roots
                 } else if (!streaming && stableCount >= 2) {
                     status.text = "本轮回答读取完成：" + text.length + " 字符；方式=" + method
                     polling = false
@@ -418,8 +488,8 @@ class ChatGPTWebActivity : Activity() {
                 }
             } else if (force) {
                 val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(180)
-                status.text = "未找到助手回答：assistant节点=" + count +
-                    "，turn=" + turns + "，DOM根=" + roots + "，Shadow=" + shadowHosts +
+                status.text = "诊断日志中未定位到最后一次提问或其后没有回答：提问记录=" + submittedPrompt.take(80) +
+                    "；assistant节点=" + count + "，turn=" + turns + "，DOM根=" + roots + "，Shadow=" + shadowHosts +
                     "，iframe=" + frames + "，页面字符=" + bodyLength +
                     "，元素=" + elements + "；方式=" + method +
                     "；页面=" + data.optString("url") + "；预览=" + preview +
@@ -431,7 +501,7 @@ class ChatGPTWebActivity : Activity() {
             } else if (!force && text.isNotBlank() && !isNewAnswer) {
                 status.text = "已读取到旧回答，继续等待本轮新回答……"
             } else if (!force && text.isBlank()) {
-                status.text = "正在扫描 ChatGPT 回答节点…… assistant节点=" + count +
+                status.text = "正在诊断日志中定位最后一次提问…… assistant节点=" + count +
                     "；DOM根=" + roots + "；Shadow=" + shadowHosts + "；iframe=" + frames
             }
         }
