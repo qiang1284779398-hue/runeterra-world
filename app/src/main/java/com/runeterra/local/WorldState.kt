@@ -314,6 +314,7 @@ object WorldEngine {
             "天道系统：已启用（世界级干预与规则记录）",
             "世界日期：第"+p.getLong(KEY_DAY,1L)+"日",
             "已记录干预：${archive.length()}次",
+            "灵魂账本：${soulLedger(p).length()}条（游离、复归、转生与湮灭均有记录）",
             "当前生效法则：${rules.size}条",
             "最近干预："+(latest?.let { "第"+it.optLong("day")+"日｜"+it.optString("mode")+"｜"+it.optString("message") } ?: "尚无"),
             "裁决原则：明确的禁止性法则优先；角色模型只能提出判断，不能覆盖世界引擎的最终校验。",
@@ -879,17 +880,17 @@ object WorldEngine {
     private fun soulLawVerdict(p:android.content.SharedPreferences,action:String="resurrect"):String?{
         val a=runCatching{JSONArray(p.getString(KEY_DIVINE_RULES,"[]")?:"[]")}.getOrDefault(JSONArray())
         val denied=when(action){
-            "reincarnate" -> listOf("禁止转生","不可转生","不得轮回","轮回已断","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
-            else -> listOf("禁止复活","不可复活","死亡不可逆","永久死亡","禁止死者复生","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
+            "reincarnate" -> listOf("禁止转生","不可转生","不得轮回","轮回已断","灵魂湮灭后不可转生","魂飞魄散后不可转生")
+            else -> listOf("禁止复活","不可复活","死亡不可逆","永久死亡","禁止死者复生","禁止复生","灵魂湮灭后不可复活","魂飞魄散后不可复活")
         }
         return (0 until a.length()).map{a.optString(it).trim()}.firstOrNull{r->r.isNotBlank()&&denied.any{r.contains(it)}}
     }
     private fun advanceSoulLedger(p:android.content.SharedPreferences,day:Long,events:MutableList<String>){
         val a=soulLedger(p); var changed=false
         for(i in 0 until a.length()){val e=a.optJSONObject(i)?:continue;if(e.optString("state")!="游离")continue
-            val last=e.optLong("lastUpdatedDay",e.optLong("deathDay",day));val elapsed=(day-last).coerceAtLeast(0L);if(elapsed==0L)continue
-            val integrity=(e.optInt("integrity",100)-elapsed.toInt().coerceAtMost(100)).coerceAtLeast(0);e.put("integrity",integrity).put("lastUpdatedDay",day)
-            if(integrity==0){e.put("state","灵魂湮灭");events.add("【天道·灵魂裁决】第"+day+"日："+e.optString("name")+"的游离灵魂因长期未能归宿而消散，此后不可按普通复活处理。")};changed=true
+            val deathDay=e.optLong("deathDay",day);val elapsed=(day-deathDay).coerceAtLeast(0L)
+            val integrity=(100L-(elapsed/36L)).coerceAtLeast(0L).toInt();e.put("integrity",integrity).put("lastUpdatedDay",day)
+            if(integrity==0){e.put("state","灵魂湮灭");events.add("【天道·灵魂裁决】第"+day+"日："+e.optString("name")+"的游离灵魂经过约十年未能归宿而消散，此后不可按普通复活处理。")};changed=true
         };if(changed)saveSoulLedger(p,a)
     }
     private fun resurrectionProhibition(p:android.content.SharedPreferences):String?=soulLawVerdict(p)
