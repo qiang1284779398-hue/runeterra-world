@@ -2850,7 +2850,10 @@ private fun craftBonus(region:String):Int = when(region) {
             context,
             cognitivePrompt,
             maxTokens=512,
-            systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
+            systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。",
+            actorId=cognitiveKey,
+            actorName=r.name,
+            worldDay=day
         ) rawCallback@{ raw ->
             synchronized(WorldEngine) {
             fun recordResidentInferenceIssue(message:String) {
@@ -3085,9 +3088,12 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
         var inferenceResult="模型未返回有效JSON思考"
         WorldAIProvider.ask(
             context,
-            prompt,
+            cognitivePrompt,
             maxTokens=512,
-            systemPrompt="你是人物的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
+            systemPrompt="你是人物的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。",
+            actorId=cognitiveKey,
+            actorName=hero.name,
+            worldDay=day
         ) rawCallback@{ raw ->
             synchronized(WorldEngine) {
             fun recordInferenceIssue(message:String) {
