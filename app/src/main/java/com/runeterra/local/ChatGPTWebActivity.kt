@@ -341,10 +341,15 @@ class ChatGPTWebActivity : Activity() {
     private fun extractLatestAnswerFromDiagnostic(raw: String, submittedPrompt: String): String {
         if (raw.isBlank() || submittedPrompt.isBlank()) return ""
         // Match the whitespace normalization used by the page-side transcript reader.
-        val normalized = raw.replace('\u00a0', ' ')
+        // Match the WebView-side Unicode normalization before locating the prompt.
+        val normalized = java.text.Normalizer.normalize(raw, java.text.Normalizer.Form.NFKC)
+            .replace('\u00a0', ' ')
+            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
-        val prompt = submittedPrompt.replace('\u00a0', ' ')
+        val prompt = java.text.Normalizer.normalize(submittedPrompt, java.text.Normalizer.Form.NFKC)
+            .replace('\u00a0', ' ')
+            .replace(Regex("[\\u200B-\\u200D\\uFEFF]"), "")
             .replace(Regex("\\s+"), " ")
             .trim()
         if (prompt.isEmpty()) return ""
@@ -699,7 +704,7 @@ class ChatGPTWebActivity : Activity() {
                 return {length: normalizedBody.length, promptOffset: promptMatch ? normalizedBody.lastIndexOf(promptMatch) : -1};
               });
               return JSON.stringify({
-                text: answer, submittedPrompt: prompt, promptPresent: promptPresent,
+                text: answer, submittedPrompt: promptMatch, promptPresent: promptPresent,
                 userPromptNodePresent: userPromptNodePresent,
                 pairedPromptFound: pairedPromptFound, pairedAnswer: pairedAnswer,
                 bodyPromptPresent: bodyPromptPresent, userCandidateCount: userCandidates.length,
