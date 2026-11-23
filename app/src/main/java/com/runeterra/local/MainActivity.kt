@@ -268,14 +268,26 @@ class MainActivity : Activity() {
         var kind="英雄"
         var selectedKey=""
         val handler=Handler(Looper.getMainLooper())
+        val paper = Color.rgb(242, 235, 220)
+        val paperCard = Color.rgb(255, 250, 240)
+        val ink = Color.rgb(28, 42, 56)
+        val mutedInk = Color.rgb(75, 88, 99)
+        val accentGold = Color.rgb(157, 116, 48)
+        fun observationPill(fill: Int, stroke: Int = Color.TRANSPARENT) = GradientDrawable().apply {
+            setColor(fill)
+            cornerRadius = 14f * resources.displayMetrics.density
+            if (stroke != Color.TRANSPARENT) setStroke((1 * resources.displayMetrics.density).toInt(), stroke)
+        }
         val panel=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
-            setPadding(24,12,24,8)
+            setPadding(18,12,18,12)
+            setBackgroundColor(paper)
         }
         val hint=TextView(this).apply {
             text=WorldEngine.localAiStatus(this@MainActivity)+"\n\n切换英雄、居民、世界事件或人物互动。状态每 2 秒刷新；正文不会自动重绘，点击“手动刷新当前记录”查看最新内容。"
             textSize=13f
-            setPadding(0,0,0,12)
+            setTextColor(mutedInk)
+            setPadding(4,4,4,14)
         }
         val switches=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         val heroesButton=Button(this).apply { text="英雄"; isAllCaps=false }
@@ -285,18 +297,34 @@ class MainActivity : Activity() {
         val eventSwitches=LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL }
         val worldEventsButton=Button(this).apply { text="世界事件"; isAllCaps=false }
         val interactionsButton=Button(this).apply { text="人物互动"; isAllCaps=false }
+        listOf(heroesButton,residentsButton,worldEventsButton,interactionsButton).forEach { button ->
+            button.setTextColor(ink)
+            button.textSize=13f
+            button.background=observationPill(Color.rgb(229,222,207),Color.rgb(202,190,166))
+            button.minHeight=(44*resources.displayMetrics.density).toInt()
+            button.isAllCaps=false
+        }
         eventSwitches.addView(worldEventsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         eventSwitches.addView(interactionsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
-        val spinner=Spinner(this)
+        val spinner=Spinner(this).apply {
+            background=observationPill(paperCard,Color.rgb(190,176,149))
+            popupBackground=observationPill(paperCard,Color.rgb(190,176,149))
+        }
         val refreshButton=Button(this).apply {
             text="手动刷新当前记录"
             isAllCaps=false
+            setTextColor(Color.rgb(255,250,240))
+            background=observationPill(Color.rgb(43,67,86),accentGold)
+            minHeight=(46*resources.displayMetrics.density).toInt()
         }
         val output=TextView(this).apply {
             textSize=14f
             setTextIsSelectable(true)
-            setTextColor(Color.rgb(220,228,238))
-            setPadding(12,16,12,24)
+            setTextColor(ink)
+            setTextSize(15f)
+            setLineSpacing((3*resources.displayMetrics.density),1.04f)
+            setPadding((16*resources.displayMetrics.density).toInt(),(18*resources.displayMetrics.density).toInt(),(16*resources.displayMetrics.density).toInt(),(28*resources.displayMetrics.density).toInt())
+            background=observationPill(paperCard,Color.rgb(218,207,184))
         }
         val heroHeader=LinearLayout(this).apply {
             orientation=LinearLayout.VERTICAL
@@ -337,6 +365,8 @@ class MainActivity : Activity() {
         }
         val scroll=ScrollView(this).apply {
             isFillViewport=true
+            setBackgroundColor(paper)
+            clipToPadding=false
             addView(content,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         panel.addView(hint)
@@ -447,8 +477,26 @@ class MainActivity : Activity() {
         fun loadKind(nextKind:String) {
             kind=nextKind
             val names=WorldEngine.observationNames(this,kind)
-            val adapter=ArrayAdapter(this,android.R.layout.simple_spinner_item,names).apply {
-                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            val adapter=object: ArrayAdapter<String>(this,android.R.layout.simple_spinner_item,names) {
+                override fun getView(position:Int, convertView:View?, parent:ViewGroup):View {
+                    val view=super.getView(position,convertView,parent)
+                    (view as? TextView)?.apply {
+                        setTextColor(ink)
+                        textSize=14f
+                        setPadding(12,10,12,10)
+                    }
+                    return view
+                }
+                override fun getDropDownView(position:Int, convertView:View?, parent:ViewGroup):View {
+                    val view=super.getDropDownView(position,convertView,parent)
+                    (view as? TextView)?.apply {
+                        setTextColor(ink)
+                        setBackgroundColor(paperCard)
+                        textSize=14f
+                        setPadding(18,14,18,14)
+                    }
+                    return view
+                }
             }
             spinner.adapter=adapter
             selectedKey=names.firstOrNull().orEmpty()
@@ -492,10 +540,17 @@ class MainActivity : Activity() {
         dialog.setOnShowListener { handler.postDelayed(refreshTask,2000L) }
         dialog.setOnDismissListener { handler.removeCallbacksAndMessages(null) }
         dialog.show()
-        dialog.window?.setLayout(
-            (resources.displayMetrics.widthPixels*0.94f).toInt(),
-            (resources.displayMetrics.heightPixels*0.82f).toInt()
-        )
+        dialog.window?.apply {
+            setLayout(
+                (resources.displayMetrics.widthPixels*0.94f).toInt(),
+                (resources.displayMetrics.heightPixels*0.82f).toInt()
+            )
+            setBackgroundDrawable(observationPill(paper,Color.rgb(185,158,112)))
+        }
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.apply {
+            setTextColor(ink)
+            isAllCaps=false
+        }
     }
 
     private fun showAiDiagnostics() {
