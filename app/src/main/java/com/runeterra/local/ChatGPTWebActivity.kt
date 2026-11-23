@@ -283,6 +283,38 @@ class ChatGPTWebActivity : Activity() {
             .trim()
     }
 
+    /** A stable, parseable character JSON is stronger completion evidence than a stale stop button. */
+    private fun isCompleteCharacterJson(value: String): Boolean {
+        val cleaned = value.trim()
+            .replace(Regex("(?is)^\\u0060{3}\\s*json\\s*"), "")
+            .replace(Regex("(?s)\\u0060{3}\\s*$"), "")
+        val start = cleaned.indexOf('{')
+        if (start < 0) return false
+        var depth = 0
+        var quoted = false
+        var escaped = false
+        for (i in start until cleaned.length) {
+            val ch = cleaned[i]
+            if (quoted) {
+                if (escaped) escaped = false
+                else if (ch == '\\\\') escaped = true
+                else if (ch == '"') quoted = false
+            } else when (ch) {
+                '"' -> quoted = true
+                '{' -> depth++
+                '}' -> {
+                    depth--
+                    if (depth == 0) {
+                        val obj = runCatching { JSONObject(cleaned.substring(start, i + 1)) }.getOrNull()
+                            ?: return false
+                        return obj.optString("thought").isNotBlank()
+                    }
+                }
+            }
+        }
+        return false
+    }
+
     private fun readLatest(force: Boolean) {
         // Traverse the live document, open shadow roots and same-origin iframes.
         // Only accept assistant message containers; never treat the whole page or
@@ -458,17 +490,29 @@ class ChatGPTWebActivity : Activity() {
                 if (force) {
                     status.text = "读取成功：" + text.length + " 字符；方式=" + method +
                         "；assistant节点=" + count + "；DOM根=" + roots + "；Shadow=" + shadowHosts
-                } else if (!streaming && stableCount >= 2) {
-                    status.text = "本轮回答读取完成：" + text.length + " 字符；方式=" + method
-                    polling = false
-                    handler.removeCallbacks(pollTask)
-                    worldRequestCallback?.invoke(text)
-                    worldRequestCallback = null
                 } else {
-                    status.text = if (streaming) {
-                        "GPT 正在生成，本轮已读取 " + text.length + " 字符……"
+                    // Normal path: stop control is gone and text has remained stable for 3 polls.
+                    // Recovery path: if the page leaves a stale stop control mounted, accept only
+                    // a complete, parseable character JSON that stays byte-for-byte stable longer.
+                    val stableJsonComplete = streaming && stableCount >= 4 && isCompleteCharacterJson(text)
+                    val completed = (!streaming && stableCount >= 2) || stableJsonComplete
+                    if (completed) {
+                        status.text = if (stableJsonComplete) {
+                            "检测到停止按钮状态未更新，但人物JSON已完整且稳定：" + text.length + " 字符；队列继续"
+                        } else {
+                            "本轮回答读取完成：" + text.length + " 字符；方式=" + method
+                        }
+                        polling = false
+                        handler.removeCallbacks(pollTask)
+                        val callback = worldRequestCallback
+                        worldRequestCallback = null
+                        callback?.invoke(text)
                     } else {
-                        "检测到本轮新回答，等待文本稳定（" + (stableCount + 1) + "/3）……"
+                        status.text = if (streaming) {
+                            "GPT 正在生成，本轮已读取 " + text.length + " 字符；稳定次数=" + stableCount + "……"
+                        } else {
+                            "检测到本轮新回答，等待文本稳定（" + (stableCount + 1) + "/3）……"
+                        }
                     }
                 }
             } else if (force) {
