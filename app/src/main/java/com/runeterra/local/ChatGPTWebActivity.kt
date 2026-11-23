@@ -306,7 +306,7 @@ class ChatGPTWebActivity : Activity() {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
               return JSON.stringify({
-                text: answer, streaming: stop, assistantCount: assistantCount,
+                text: answer, submittedPrompt: prompt, streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
                 bodyPreview: previews.join(' | ').slice(-1200),
@@ -323,31 +323,31 @@ class ChatGPTWebActivity : Activity() {
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
             var text = data.optString("text").trim()
             val diagnosticText = data.optString("diagnosticText")
-            // User's rule: discard everything through the latest submitted prompt,
-            // then discard the ChatGPT disclaimer and everything after it.
-            // The remaining middle segment is the assistant answer.
-            val submittedPrompt = prompt.text?.toString()?.trim().orEmpty()
-            if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
-                val promptEnd = diagnosticText.lastIndexOf(submittedPrompt)
+            // Use the exact prompt captured by sendPrompt(), not the editable input field.
+            // Normalize whitespace on both sides because ChatGPT may render line breaks differently.
+            val submittedPrompt = data.optString("submittedPrompt").ifBlank {
+                prompt.text?.toString().orEmpty()
+            }
+            fun normalizeForMatch(value: String): String =
+                value.replace('\u00a0', ' ').replace(Regex("\\s+"), " ").trim()
+            val normalizedPage = normalizeForMatch(diagnosticText)
+            val normalizedPrompt = normalizeForMatch(submittedPrompt)
+            if (normalizedPrompt.isNotEmpty()) {
+                val promptEnd = normalizedPage.lastIndexOf(normalizedPrompt)
                 if (promptEnd >= 0) {
-                    var answerRegion = diagnosticText.substring(promptEnd + submittedPrompt.length)
+                    var answerRegion = normalizedPage.substring(promptEnd + normalizedPrompt.length)
                     val disclaimerRegex = Regex(
-                        "(?im)^[\\\\s>*#-]*(?:ChatGPT\\\\s*(?:免责声明|可能会犯错|can make mistakes|may make mistakes)|AI\\\\s*(?:也可能会犯错|may make mistakes)|免责声明)[^\\\\n]*(?:\\\\n|$)"
+                        "(?im)^.*(?:ChatGPT.*(?:免责声明|可能会犯错|can make mistakes|may make mistakes)|AI.*(?:可能会犯错|may make mistakes)|免责声明).*(?:\\n|$)"
                     )
                     val disclaimerStart = disclaimerRegex.find(answerRegion)?.range?.first
-                    if (disclaimerStart != null) {
-                        answerRegion = answerRegion.substring(0, disclaimerStart)
-                    }
-                    val fromDiagnostic = answerRegion
-                        .replace(Regex("(?im)^[\\\\s]*(?:Message ChatGPT|发送消息给 ChatGPT)\\\\s*$"), "")
-                        .replace(Regex("\\\\n{3,}"), "\\\\n\\\\n")
-                        .trim()
-                    if (fromDiagnostic.isNotBlank()) {
-                        text = fromDiagnostic
-                    } else {
-                        text = ""
-                    }
+                    if (disclaimerStart != null) answerRegion = answerRegion.substring(0, disclaimerStart)
+                    text = answerRegion.trim()
+                } else {
+                    // Never fall back to the old DOM answer when the prompt boundary is unknown.
+                    text = ""
                 }
+            } else {
+                text = ""
             }
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
