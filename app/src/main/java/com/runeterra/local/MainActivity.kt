@@ -32,6 +32,14 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermission()
+        // A方案默认使用现有 ChatGPT 网页会话，不要求配置 Python 后端、Letta 或智谱 API Key。
+        val providerDefaults = getSharedPreferences("zhipu_secure", MODE_PRIVATE)
+        if (!providerDefaults.getBoolean("runeterra_a_scheme_autoselected", false)) {
+            providerDefaults.edit()
+                .putString("world_ai_provider", "chatgpt")
+                .putBoolean("runeterra_a_scheme_autoselected", true)
+                .apply()
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 48, 36, 24)
@@ -84,20 +92,20 @@ class MainActivity : Activity() {
         val worldAiProvider = Button(this).apply {
             val providerPrefs = getSharedPreferences("zhipu_secure", MODE_PRIVATE)
             fun refreshProviderLabel() {
-                text = if (providerPrefs.getString("world_ai_provider", "zhipu") == "chatgpt")
+                text = if (providerPrefs.getString("world_ai_provider", "chatgpt") == "chatgpt")
                     "世界人物 AI 方案：ChatGPT 网页会话"
                 else "世界人物 AI 方案：智谱 GLM"
             }
             refreshProviderLabel()
             setOnClickListener {
-                val current = if (providerPrefs.getString("world_ai_provider", "zhipu") == "chatgpt") 1 else 0
+                val current = if (providerPrefs.getString("world_ai_provider", "chatgpt") == "chatgpt") 1 else 0
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("选择世界人物 AI 推理方案")
-                    .setSingleChoiceItems(arrayOf("智谱 GLM（API，后台直连）", "ChatGPT（网页会话，需保持网页桥接可用）"), current) { dialog, which ->
+                    .setSingleChoiceItems(arrayOf("智谱 GLM（API，后台直连）", "ChatGPT（网页会话，开始世界时自动连接）"), current) { dialog, which ->
                         providerPrefs.edit().putString("world_ai_provider", if (which == 1) "chatgpt" else "zhipu").apply()
                         refreshProviderLabel()
                         Toast.makeText(this@MainActivity, if (which == 1)
-                            "已切换 ChatGPT。请打开 ChatGPT 网页 AI 页面并登录。" else "已切换智谱 GLM。", Toast.LENGTH_LONG).show()
+                            "已切换 ChatGPT。开始世界时会自动打开网页桥接；首次需要登录一次。" else "已切换智谱 GLM。", Toast.LENGTH_LONG).show()
                         dialog.dismiss()
                     }
                     .setNegativeButton("取消", null)
@@ -754,6 +762,13 @@ class MainActivity : Activity() {
         val intent = Intent(this, WorldService::class.java)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         refresh()
+        val provider = getSharedPreferences("zhipu_secure", MODE_PRIVATE)
+            .getString("world_ai_provider", "chatgpt")
+        if (provider == "chatgpt" && !ChatGPTWorldBridge.isAttached()) {
+            // The user action is in the foreground, so opening the signed-in WebView is allowed.
+            // Its persisted WebView session is reused; no API key or backend setup is involved.
+            startActivity(Intent(this, ChatGPTWebActivity::class.java))
+        }
     }
 
     private fun stopWorld() {
@@ -763,7 +778,8 @@ class MainActivity : Activity() {
 
     private fun refresh() {
         val s = WorldEngine.load(this)
-        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 1 个世界小时（重大事件期间自动减速）\n本地 AI：${if (ResidentAI.isLoaded()) "本地模型已加载" else if (ResidentAI.isLoading()) "模型加载中" else "尚未加载"}"
+        val localModelState = if (ResidentAI.isLoaded()) "已加载" else if (ResidentAI.isLoading()) "加载中" else "未加载（A方案不依赖本地模型）"
+        status.text = "历史时代：${WorldEngine.timelineStatus(this)}\n世界时间：第 ${s.day} 日\n居民样本：${s.residents} 人\n运行状态：${if (s.running) "运行中" else "已暂停"}\n模拟速度：现实 1 秒约推进 1 个世界小时（重大事件期间自动减速）\n本地模型：$localModelState\n世界人物AI：${WorldEngine.localAiStatus(this)}"
         log.text = "最近世界记录\n" + (s.events.takeLast(12).asReversed().joinToString("\n") { "• $it" }.ifBlank { "尚无事件。启动世界后将逐步产生记录。" })
     }
 
