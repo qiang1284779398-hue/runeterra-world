@@ -149,8 +149,7 @@ class MainActivity : Activity() {
             if (stroke != Color.TRANSPARENT) setStroke(dp(1), stroke)
         }
         root.setPadding(dp(18), dp(24), dp(18), dp(28))
-        root.background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(Color.rgb(14, 28, 48), night, Color.rgb(8, 13, 24)))
+        root.background = RuneterraFlowDrawable()
         title.apply {
             text = "符文之地"; textSize = 30f; setTextColor(gold)
             gravity = Gravity.CENTER_VERTICAL; setPadding(dp(4), dp(8), dp(4), dp(2))
