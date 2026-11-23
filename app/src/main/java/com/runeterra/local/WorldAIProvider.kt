@@ -35,6 +35,20 @@ object WorldAIProvider {
 
  private fun decrypt(context:Context)=decryptStored(context,"key_data","iv_data")
 
+ /** Generic apologies and provider placeholders are not character cognition, even when wrapped in JSON. */
+ private fun isNonAnswer(value:String):Boolean {
+  val t=value.trim().lowercase()
+  if(t.isBlank())return true
+  val markers=listOf(
+   "抱歉，刚才没有正常生成内容","抱歉,刚才没有正常生成内容",
+   "请再告诉我你的问题或想聊的话题","我会用我的方式认真回答",
+   "刚才没有正常生成内容","请重新告诉我你的问题",
+   "sorry, i couldn't generate","sorry, i was unable to generate",
+   "please tell me your question again","i'm sorry, but i couldn't"
+  )
+  return markers.any(t::contains) || t.matches(Regex("^(抱歉|对不起)[，,。！!\\s].{0,100}(请再|请重新|告诉我你的问题).*$"))
+ }
+
  /** Extract a JSON object without assuming that the model omitted harmless fences or think tags. */
  private fun hasCharacterJson(raw:String):Boolean {
   var text=raw.trim().replace(Regex("(?is)<think>.*?</think>"),"")
@@ -63,7 +77,7 @@ object WorldAIProvider {
        val obj=runCatching{JSONObject(text.substring(start,i+1))}.getOrNull()
        if(obj!=null) {
         val thought=obj.opt("thought")
-        if(thought is String && thought.isNotBlank())return true
+        if(thought is String && thought.isNotBlank() && !isNonAnswer(thought))return true
        }
        break
       }
@@ -100,7 +114,6 @@ object WorldAIProvider {
     .put("max_tokens",maxTokens.coerceAtLeast(256))
     .put("temperature",1.0)
     .put("top_p",0.95)
-    .put("reasoning_effort","max")
     .put("stream",false)
     .put("response_format",JSONObject().put("type","json_object"))
     .toString()
@@ -109,7 +122,10 @@ object WorldAIProvider {
    val stream=if(code in 200..299)conn.inputStream else conn.errorStream
    val raw=stream?.bufferedReader(Charsets.UTF_8)?.use{it.readText()}?:"无响应正文"
    if(code !in 200..299)return "云端HTTP $code：$raw"
-   val content=JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")?.opt("content")
+   val choice=JSONObject(raw).optJSONArray("choices")?.optJSONObject(0)
+   val finishReason=choice?.optString("finish_reason").orEmpty()
+   if(finishReason=="length") return "智谱输出达到长度上限，未完成角色回答"
+   val content=choice?.optJSONObject("message")?.opt("content")
    return when(content) {
     is String->content.trim()
     is JSONArray->buildString {
@@ -253,9 +269,12 @@ object WorldAIProvider {
     if(!output.startsWith("云端HTTP") && !output.startsWith("云端请求异常") && !hasCharacterJson(output)) {
      val repaired=runCatching{request(apiKey,model,systemPrompt,prompt,maxTokens,output)}.getOrElse{"格式纠正请求失败：${it.message?:it.javaClass.simpleName}"}
      if(hasCharacterJson(repaired))output=repaired
-     else output="角色JSON格式纠正后仍失败。首次输出：${output.take(1200)}；重试输出：${repaired.take(1200)}"
+     else {
+      output="智谱连续两次未生成有效人物内容，已切换本地自主决策。首次输出：${output.take(500)}；重试输出：${repaired.take(500)}"
+      cloudFailed=true
+     }
     }
-    if(output.startsWith("云端HTTP")||output.startsWith("云端请求异常"))cloudFailed=true
+    if(output.startsWith("云端HTTP")||output.startsWith("云端请求异常")||output.startsWith("智谱输出达到长度上限"))cloudFailed=true
    } catch(e:Throwable) {
     cloudFailed=true
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
