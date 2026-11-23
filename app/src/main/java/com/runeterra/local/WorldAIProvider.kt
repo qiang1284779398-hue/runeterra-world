@@ -21,16 +21,18 @@ object WorldAIProvider {
  fun isAvailable(context:Context)=isConfigured(context)||ResidentAI.isLoaded()
  private fun isConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("key_data",null)?.isNotBlank()==true
 
- private fun decrypt(context:Context):String {
+ private fun decryptStored(context:Context,dataKey:String,ivKey:String):String {
   val p=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-  val data=p.getString("key_data",null)?:return ""
-  val iv=p.getString("iv_data",null)?:return ""
+  val data=p.getString(dataKey,null)?:return ""
+  val iv=p.getString(ivKey,null)?:return ""
   val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)}
   val secret=ks.getKey(ALIAS,null) as? SecretKey ?: return ""
   val cipher=Cipher.getInstance("AES/GCM/NoPadding")
   cipher.init(Cipher.DECRYPT_MODE,secret,GCMParameterSpec(128,Base64.decode(iv,Base64.NO_WRAP)))
   return String(cipher.doFinal(Base64.decode(data,Base64.NO_WRAP)),Charsets.UTF_8)
  }
+
+ private fun decrypt(context:Context)=decryptStored(context,"key_data","iv_data")
 
  /** Extract a JSON object without assuming that the model omitted harmless fences or think tags. */
  private fun hasCharacterJson(raw:String):Boolean {
@@ -151,7 +153,7 @@ object WorldAIProvider {
   val app=context.applicationContext
   val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
-  val backendToken=p.getString("cognitive_backend_token","").orEmpty()
+  val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
   val apiKey=try{decrypt(app)}catch(_:Throwable){""}
   if(apiKey.isBlank()) {
    if(ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
