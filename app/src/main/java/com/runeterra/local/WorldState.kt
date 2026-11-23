@@ -2838,13 +2838,15 @@ private fun craftBonus(region:String):Int = when(region) {
 第${day}日；时代：${eraAnchor.take(70)}；规则：${publicRules.take(90)}。
 只思考眼前最重要的一件具体事情。必须考虑这个人的真实处境；可以害怕、犹豫、拒绝改变或什么也不做。thought必须是第一人称的自然中文，1至2句，约30至70字，不能复述上面资料，也不能空喊口号。
 只输出一个简短JSON对象，字段：thought、belief、intent、goal、action、new_job、target_id。action只能是stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一。不要Markdown。"""
+        val cognitiveKey="resident:${r.id}"
+        val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
         beginLocalInference(p,"居民：${r.name}（编号${r.id}）")
         var inferenceSucceeded=false
         var inferenceResult="模型未返回有效JSON思考"
         WorldAIProvider.ask(
             context,
-            prompt,
+            cognitivePrompt,
             maxTokens=512,
             systemPrompt="你是该居民的最终回答生成器。不要展示思维链，不要复述指令；只输出简短、合法JSON，thought必须是自然第一人称回答。"
         ) rawCallback@{ raw ->
@@ -2856,6 +2858,7 @@ private fun craftBonus(region:String):Int = when(region) {
                 savePeople(p,people(p).map { if(it.id==latest.id) latest else it })
             }
             try {
+                CognitiveArchitecture.capture(context,cognitiveKey,day,raw)
                 val residentRecord=people(p).firstOrNull { it.id==r.id }
                 if(residentRecord!=null) {
                     residentRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\n"+raw)
@@ -3072,6 +3075,8 @@ private fun craftBonus(region:String):Int = when(region) {
 如果没有新情况，可以保持原立场，但应补充一个此前未说过的具体观察、疑问、风险判断或下一步计划；若继续等待或拒绝行动，要说明符合人物身份的具体原因。
 thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
 只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一。不要Markdown。"""
+        val cognitiveKey="hero:${hero.name}"
+        val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
         beginLocalInference(p,"英雄：${hero.name}")
         var inferenceSucceeded=false
@@ -3090,6 +3095,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                 saveHeroes(p,heroAgents(p).map { if(it.name==latest.name) latest else it })
             }
             try {
+                CognitiveArchitecture.capture(context,cognitiveKey,day,raw)
                 val heroRecord=heroAgents(p).firstOrNull { it.name==hero.name }
                 if(heroRecord!=null) {
                     heroRecord.aiResponses.add("第${day}日｜AI原始返回（未过滤、未截断）：\n"+raw)
