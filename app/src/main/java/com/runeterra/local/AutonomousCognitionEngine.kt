@@ -59,12 +59,12 @@ object AutonomousCognitionEngine {
         return buildResponse(actor, actorName, prompt, action, "根据本人已积累的行动经验，选择当前最有把握的策略。", "personal_policy")
     }
 
-    fun offlineFallback(context: Context, actor: String, actorName: String, prompt: String): String {
+    fun offlineFallback(context: Context, actor: String, actorName: String, prompt: String, diagnostic: String = ""): String {
         val hero = actor.startsWith("hero:")
         val action = if (hero) chooseHeroAction(prompt) else chooseResidentAction(prompt)
         val learned = PersonalLearningNetwork.autonomousChoice(context, actor, prompt)
         val selected = learned?.let { normalizeAction(it, hero) } ?: action
-        val reason = if (learned != null) "结合本人过往行动反馈选择已学习的策略。" else "外部模型不可用，依据当前可见处境、基本需求和已知目标作出有限的本地判断。"
+        val reason = if (learned != null) "结合本人过往行动反馈选择已学习的策略。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}" else "外部模型不可用，依据当前可见处境、基本需求和已知目标作出有限的本地判断。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
         return buildResponse(actor, actorName, prompt, selected, reason, if (learned != null) "personal_policy_offline" else "bounded_offline_rules")
     }
 
