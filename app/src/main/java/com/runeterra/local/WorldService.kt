@@ -43,8 +43,8 @@ class WorldService : Service() {
             }
             clockPrefs.edit().putInt(KEY_ACCUMULATED_MINUTES, accumulatedMinutes).apply()
 
-            // One shared local model: dispatch exactly one queued cognition turn whenever
-            // the previous inference has completed. Busy turns do not consume the next slot.
+            // One shared ChatGPT/WebView request channel serves all living heroes and residents.
+            // Only one cognition turn runs at a time; WorldEngine alternates both populations fairly.
             WorldEngine.requestNextLocalThinking(this@WorldService)
             ticks++
 
