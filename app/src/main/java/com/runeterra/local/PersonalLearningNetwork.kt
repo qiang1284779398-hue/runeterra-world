@@ -93,9 +93,17 @@ object PersonalLearningNetwork {
         val sum = ex.sum().coerceAtLeast(0.0001f)
         return h to FloatArray(ACTIONS) { ex[it] / sum }
     }
-    private fun actionIndex(action: String): Int {
-        val a = action.trim().lowercase()
-        return (actionNames + heroActions).indexOfFirst { it == a }.let { if (it < 0) 0 else it % ACTIONS }
+    private fun actionIndex(action: String): Int = when (action.trim().lowercase()) {
+        "stay", "wait", "decline_event" -> 0
+        "seek_food" -> 1
+        "seek_work" -> 2
+        "change_job" -> 3
+        "ask_help", "aid" -> 4
+        "practice_skill", "train" -> 5
+        "socialize" -> 6
+        "investigate_world", "investigate", "investigate_event" -> 7
+        "discuss_world", "negotiate", "join_event" -> 8
+        else -> 0
     }
     private fun sharedPrior(x: FloatArray): FloatArray {
         // Frozen shared base policy: same prior for every actor; personal residuals learn independently.
@@ -109,7 +117,8 @@ object PersonalLearningNetwork {
         val scores = FloatArray(ACTIONS) { probs[it] + prior[it] }
         val top = scores.indices.sortedByDescending { scores[it] }.take(3)
         prefs(c).edit().putString("${safeKey(actor)}_last_state", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }.toString()).apply()
-        return "【角色专属策略网络】共享基础策略已提供通用先验；本角色独立网络已训练${m.updates}次。候选行动倾向：${top.joinToString("、") { actionNames[it] }}。这些只是供本人权衡的建议，不是强制命令；必须结合角色目标、事实和天道规则自行决定。"
+        val labels = if (actor.startsWith("hero:")) heroActions else actionNames
+        return "【角色专属策略网络】共享基础策略已提供通用先验；本角色独立网络已训练${m.updates}次。候选行动倾向：${top.joinToString("、") { labels[it] }}。这些只是供本人权衡的建议，不是强制命令；必须结合角色目标、事实和天道规则自行决定。"
     }
     fun prepare(c: Context, actor: String, prompt: String): String = guidance(c, actor, prompt)
     fun recordOutcome(c: Context, actor: String, day: Long, action: String, outcome: String): String {
