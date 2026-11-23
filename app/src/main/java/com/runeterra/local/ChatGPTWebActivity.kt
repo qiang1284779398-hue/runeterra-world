@@ -355,11 +355,11 @@ class ChatGPTWebActivity : Activity() {
         var offset = 0
         var promptEnd = -1
         for (line in lines) {
-            if (line.trim() == prompt) promptEnd = offset + line.length
+            if (line.trim().equals(prompt, ignoreCase = true)) promptEnd = offset + line.length
             offset += line.length + 1
         }
         if (promptEnd < 0) {
-            val at = normalized.lastIndexOf(prompt)
+            val at = normalized.lastIndexOf(prompt, ignoreCase = true)
             if (at < 0) return ""
             promptEnd = at + prompt.length
         }
@@ -452,21 +452,26 @@ class ChatGPTWebActivity : Activity() {
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
               // ChatGPT may reflow text, insert zero-width characters, or change Unicode width.
               // Normalize those differences, then also compare a whitespace-free representation.
+              // Keep transcript casing intact: this string is also used for answer extraction.
+              // Case folding belongs only in comparisons, never in the text returned to Kotlin.
               const normalizeForMatch = value => clean(String(value || '')).normalize('NFKC')
-                .replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+                .replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim();
               const compactForMatch = value => normalizeForMatch(value).replace(/\s+/g, '');
               const promptMatch = normalizeForMatch(prompt);
               const promptCompact = compactForMatch(prompt);
               const isPromptMatch = value => {
                 const normalized = normalizeForMatch(value);
                 if (!promptMatch || !normalized) return false;
-                if (normalized.includes(promptMatch)) return true;
-                const compact = normalized.replace(/\s+/g, '');
-                if (promptCompact && compact.includes(promptCompact)) return true;
+                const folded = normalized.toLowerCase();
+                const promptFolded = promptMatch.toLowerCase();
+                if (folded.includes(promptFolded)) return true;
+                const compact = folded.replace(/\s+/g, '');
+                const promptCompactFolded = promptCompact.toLowerCase();
+                if (promptCompactFolded && compact.includes(promptCompactFolded)) return true;
                 // Long prompts can be visually clipped in a virtualized DOM node.
-                return promptCompact.length >= 96 &&
-                  compact.includes(promptCompact.slice(0, 64)) &&
-                  compact.includes(promptCompact.slice(-64));
+                return promptCompactFolded.length >= 96 &&
+                  compact.includes(promptCompactFolded.slice(0, 64)) &&
+                  compact.includes(promptCompactFolded.slice(-64));
               };
               const userRoleSelector = '[data-message-author-role="user"], [data-author="user"], [data-role="user"]';
               const userCandidateSelector = userRoleSelector + ', [data-testid*="user-message"], [data-testid*="user"]';
@@ -660,8 +665,14 @@ class ChatGPTWebActivity : Activity() {
               // everything from that prompt onward so its complete answer is retained.
               const matchingTranscripts = diagnosticParts
                 .map(body => {
+                  // Preserve original casing in the transcript. Use a folded copy only
+                  // to locate the prompt; the offset is used against the same-length
+                  // normalized body and the returned answer remains case-preserving.
                   const normalizedBody = normalizeForMatch(body);
-                  return {body: normalizedBody, at: promptMatch ? normalizedBody.lastIndexOf(promptMatch) : -1};
+                  const exactAt = promptMatch ? normalizedBody.lastIndexOf(promptMatch) : -1;
+                  const foldedAt = exactAt >= 0 ? exactAt :
+                    (promptMatch ? normalizedBody.toLowerCase().lastIndexOf(promptMatch.toLowerCase()) : -1);
+                  return {body: normalizedBody, at: foldedAt};
                 })
                 .filter(item => item.at >= 0)
                 .sort((a,b) => b.body.length-a.body.length);
