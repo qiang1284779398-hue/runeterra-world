@@ -101,9 +101,25 @@ class ChatGPTWebActivity : Activity() {
         val script = """
             (function() {
               const text = $quoted;
-              const beforeNodes = Array.from(document.querySelectorAll('[data-message-author-role="assistant"]'));
+              const baselineRoots = [], baselineSeen = new Set();
+              const addBaselineRoot = root => {
+                if (!root || baselineSeen.has(root)) return;
+                baselineSeen.add(root); baselineRoots.push(root);
+                let els=[]; try { els=Array.from(root.querySelectorAll('*')); } catch (_) {}
+                for (const el of els) { try { if (el.shadowRoot) addBaselineRoot(el.shadowRoot); } catch (_) {} }
+                if (root === document) {
+                  for (const frame of Array.from(document.querySelectorAll('iframe'))) {
+                    try { if (frame.contentDocument) addBaselineRoot(frame.contentDocument); } catch (_) {}
+                  }
+                }
+              };
+              addBaselineRoot(document);
+              const beforeNodes = [];
+              for (const root of baselineRoots) {
+                try { beforeNodes.push(...Array.from(root.querySelectorAll('[data-message-author-role="assistant"]'))); } catch (_) {}
+              }
               const baselineCount = beforeNodes.length;
-              const baselineText = beforeNodes.length ? ((beforeNodes[beforeNodes.length-1].innerText || beforeNodes[beforeNodes.length-1].textContent || '').trim()) : '';
+              const baselineText = baselineCount ? ((beforeNodes[baselineCount-1].innerText || beforeNodes[baselineCount-1].textContent || '').trim()) : '';
               const box =
                 document.querySelector('[data-testid="prompt-textarea"]') ||
                 document.querySelector('#prompt-textarea') ||
