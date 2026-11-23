@@ -109,7 +109,7 @@ object WorldAIProvider {
    val body=JSONObject()
     .put("model",model)
     .put("messages",messages)
-    .put("max_tokens",maxTokens.coerceAtLeast(256))
+    .put("max_tokens",maxTokens.coerceIn(900,1800))
     .put("temperature",1.0)
     .put("top_p",0.95)
     .put("stream",false)
@@ -244,10 +244,12 @@ object WorldAIProvider {
   thread(name="SharedCloudAI") {
    if(backendUrl.isNotBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
     try {
+     // Avoid duplicating the entire character prompt as both context and task.
      val backendOutput=requestCognitiveBackend(
       backendUrl,backendToken,"runeterra-world",actorId,actorName,worldDay,
-      prompt,prompt,systemPrompt
+      "",prompt,systemPrompt
      )
+     if(!hasCharacterJson(backendOutput)) throw IllegalStateException("认知后端返回无效人物JSON/通用拒答")
      callback(backendOutput)
      return@thread
     } catch(_:Throwable) {
