@@ -18,7 +18,7 @@ object WorldAIProvider {
  private const val ALIAS="runeterra_zhipu_aes"
  private const val ENDPOINT="https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
- fun isAvailable(context:Context)=true // The bounded offline cognition engine is always available.
+ fun isAvailable(context:Context)=isBackendConfigured(context) || isConfigured(context) // Cloud-only: local rules are not an available decision provider.
  private fun isBackendConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("cognitive_backend_url",null)?.isNotBlank()==true
  private fun isConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("key_data",null)?.isNotBlank()==true
 
@@ -252,19 +252,7 @@ object WorldAIProvider {
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
   val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
   val (apiKey,keyDiagnostic)=loadApiKey(app)
-  // Cloud-enabled observation turns must actually reach Zhipu/backend.
-  // Learned local policies are a fallback only; they must never silently bypass the configured model.
-  if(apiKey.isBlank() && backendUrl.isBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
-   val learned=runCatching{AutonomousCognitionEngine.tryDecide(app,actorId,actorName,prompt)}.getOrNull()
-   if(!learned.isNullOrBlank()) {
-    callback(learned)
-    return
-   }
-  }
-  if(apiKey.isBlank() && backendUrl.isBlank() && !ResidentAI.isLoaded()) {
-   callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,keyDiagnostic))
-   return
-  }
+  // Cloud-only mode: never invoke learned local policies, bounded offline rules, or on-device fallback models.
   val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
   thread(name="SharedCloudAI") {
    var backendFailure=""
@@ -285,8 +273,8 @@ object WorldAIProvider {
     }
    }
    if(apiKey.isBlank()) {
-    if(ResidentAI.isLoaded()) ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
-    else callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,listOf(keyDiagnostic,backendFailure).filter{it.isNotBlank()}.joinToString("；")))
+    val details=listOf(keyDiagnostic,backendFailure).filter{it.isNotBlank()}.joinToString("；")
+    callback("【云端决策失败】未生成角色决策。$details")
     return@thread
    }
    var output=""
@@ -297,7 +285,7 @@ object WorldAIProvider {
      val repaired=runCatching{request(apiKey,model,systemPrompt,prompt,maxTokens,output)}.getOrElse{"格式纠正请求失败：${it.message?:it.javaClass.simpleName}"}
      if(hasCharacterJson(repaired))output=repaired
      else {
-      output="智谱连续两次未生成有效人物内容，已切换本地自主决策。首次输出：${output.take(500)}；重试输出：${repaired.take(500)}"
+      output="智谱连续两次未生成有效人物内容。首次输出：${output.take(500)}；重试输出：${repaired.take(500)}"
       cloudFailed=true
      }
     }
@@ -306,8 +294,7 @@ object WorldAIProvider {
     cloudFailed=true
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
    }
-   if(cloudFailed&&ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt){callback("【云端失败，回退本地】\n"+it+"\n云端诊断："+listOf(keyDiagnostic,backendFailure,output.take(500)).filter{it.isNotBlank()}.joinToString("；"))}
-   else if(cloudFailed)callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt,listOf(keyDiagnostic,backendFailure,output.take(500)).filter{it.isNotBlank()}.joinToString("；")))
+   if(cloudFailed) callback("【云端决策失败】本轮没有生成角色决策。"+listOf(keyDiagnostic,backendFailure,output.take(900)).filter{it.isNotBlank()}.joinToString("；"))
    else callback(output)
   }
  }
