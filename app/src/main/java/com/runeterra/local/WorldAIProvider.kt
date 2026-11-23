@@ -101,13 +101,11 @@ object WorldAIProvider {
    }
    val messages=JSONArray()
     .put(JSONObject().put("role","system").put("content",systemPrompt))
-   if(previousBad!=null) {
-    messages.put(JSONObject().put("role","assistant").put("content",previousBad.take(6000)))
-    messages.put(JSONObject().put("role","user").put("content",
-     "上一次输出无法解析。请修正并重新输出完整结果。必须是单个合法JSON对象，不要Markdown、解释或<think>标签；必须包含非空字符串字段thought。保留原本人物设定和语义。"))
-   } else {
-    messages.put(JSONObject().put("role","user").put("content",prompt))
-   }
+   // Retry must retain the full original character task and context.
+   val retryPrompt=if(previousBad!=null) {
+    "【输出校正】上一次输出未通过校验。请重新完成下方原始人物任务；不要道歉、不要要求用户补充问题、不要复述错误输出。只输出合法JSON，保留原任务字段与人物视角。\n\n【原始人物任务】\n"+prompt+"\n\n【上次无效输出（仅用于避免重复）】\n"+previousBad.take(2500)
+   } else prompt
+   messages.put(JSONObject().put("role","user").put("content",retryPrompt))
    val body=JSONObject()
     .put("model",model)
     .put("messages",messages)
