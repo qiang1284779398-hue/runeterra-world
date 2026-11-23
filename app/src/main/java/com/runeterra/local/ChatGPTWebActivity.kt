@@ -150,10 +150,24 @@ class ChatGPTWebActivity : Activity() {
               if (box.tagName === 'TEXTAREA' || box.tagName === 'INPUT') {
                 const setter = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(box), 'value')?.set;
                 if (setter) setter.call(box, text); else box.value = text;
+                box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               } else {
-                box.textContent = text;
+                // Use the editor's native insertion command so React/ProseMirror state is updated.
+                // Assigning textContent alone can change the visible preview without committing
+                // the text into ChatGPT's actual composer state.
+                try {
+                  const selection = window.getSelection();
+                  const range = document.createRange();
+                  range.selectNodeContents(box);
+                  selection.removeAllRanges();
+                  selection.addRange(range);
+                  document.execCommand('delete', false);
+                  document.execCommand('insertText', false, text);
+                } catch (_) {
+                  box.textContent = text;
+                }
+                box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               }
-              box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               box.dispatchEvent(new Event('change', {bubbles:true}));
               // ChatGPT mobile UI may update the send button asynchronously after input.
               // Wait for the real enabled send control instead of clicking after a fixed 250ms.
@@ -182,6 +196,37 @@ class ChatGPTWebActivity : Activity() {
                   clearInterval(sendTimer);
                   send.click();
                   window.__runeterraSendStatus = 'clicked';
+                  // Confirm that ChatGPT accepted the message into the conversation,
+                  // not merely that the composer looked filled or the button was clicked.
+                  let verifyAttempts = 0;
+                  const verifyTimer = setInterval(() => {
+                    verifyAttempts++;
+                    const userNodes = Array.from(document.querySelectorAll('[data-message-author-role="user"]'));
+                    const accepted = userNodes.some(node =>
+                      ((node.innerText || node.textContent || '').trim()).includes(text)
+                    );
+                    if (accepted) {
+                      clearInterval(verifyTimer);
+                      window.__runeterraSendStatus = 'confirmed';
+                    } else if (verifyAttempts >= 12) {
+                      clearInterval(verifyTimer);
+                      const currentBox =
+                        document.querySelector('[data-testid="prompt-textarea"]') ||
+                        document.querySelector('#prompt-textarea') ||
+                        document.querySelector('[contenteditable="true"][role="textbox"]') ||
+                        document.querySelector('[contenteditable="true"]');
+                      if (currentBox) {
+                        currentBox.focus();
+                        currentBox.dispatchEvent(new KeyboardEvent('keydown', {
+                          key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
+                        }));
+                        currentBox.dispatchEvent(new KeyboardEvent('keyup', {
+                          key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
+                        }));
+                      }
+                      window.__runeterraSendStatus = 'enter-retry';
+                    }
+                  }, 300);
                   return;
                 }
                 if (attempts >= 40) {
@@ -345,6 +390,13 @@ class ChatGPTWebActivity : Activity() {
                 .replace(/\r/g, '').replace(/[ \t]+\n/g, '\n')
                 .replace(/\n{3,}/g, '\n\n').trim();
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
+              const userPromptPresent = !!prompt && roots.some(root => {
+                try {
+                  return Array.from(root.querySelectorAll('[data-message-author-role="user"]'))
+                    .some(node => clean(node.innerText || node.textContent || '').includes(prompt));
+                } catch (_) { return false; }
+              });
+              const sendStatus = String(window.__runeterraSendStatus || 'unknown');
               const roleSelector = '[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]';
               const turns = [];
               for (const root of roots) {
@@ -447,7 +499,8 @@ class ChatGPTWebActivity : Activity() {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
               return JSON.stringify({
-                text: answer, submittedPrompt: prompt, streaming: stop, assistantCount: assistantCount,
+                text: answer, submittedPrompt: prompt, promptPresent: userPromptPresent,
+                sendStatus: sendStatus, streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
                 bodyPreview: previews.join(' | ').slice(-1200),
@@ -471,7 +524,11 @@ class ChatGPTWebActivity : Activity() {
             // The diagnostic transcript is the sole source of truth. Find the latest
             // standalone occurrence of the exact submitted prompt, then keep only what
             // follows it; previous page content and the user's prompt are excluded.
-            var text = extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
+            val promptPresent = data.optBoolean("promptPresent")
+            // Never treat a composer preview, stale assistant text, or page snippet as a reply.
+            // The exact user prompt must first exist as a real user turn in the conversation.
+            var text = if (promptPresent) extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt) else ""
+            val sendStatus = data.optString("sendStatus", "unknown")
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
             val turns = data.optInt("turnCount", 0)
@@ -531,8 +588,11 @@ class ChatGPTWebActivity : Activity() {
                 worldRequestCallback = null
             } else if (!force && text.isNotBlank() && !isNewAnswer) {
                 status.text = "已读取到旧回答，继续等待本轮新回答……"
+            } else if (!force && !promptPresent) {
+                status.text = "提问尚未出现在 ChatGPT 对话记录中，暂不读取预览内容；发送状态=" + sendStatus +
+                    "；正在确认自动发送是否成功……"
             } else if (!force && text.isBlank()) {
-                status.text = "正在扫描 ChatGPT 回答节点…… assistant节点=" + count +
+                status.text = "已确认提问进入对话，正在等待完整回答…… assistant节点=" + count +
                     "；DOM根=" + roots + "；Shadow=" + shadowHosts + "；iframe=" + frames
             }
         }
