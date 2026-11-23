@@ -91,7 +91,7 @@ $recent
 ${SelfModelEngine.prepare(context,actorKey)}
 ${MotivationEngine.prepare(context,actorKey)}
 ${IdentityEvolutionEngine.prepare(context,actorKey)}
-区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向；不要每轮强行改变人格。尽可能补充 self_view、self_assessment、strengths、limitations、self_facts、self_confidence、motives、new_goal、goal_reason、goal_priority、values、identity_change、identity_change_reason。重大身份改变必须说明经历依据。不输出隐藏思维链。"""
+区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向；不要每轮强行改变人格。每轮JSON除原有字段外必须包含：self_view（自我理解，简短字符串）、self_assessment（自我评价，简短字符串）、strengths（数组，最多3项）、limitations（数组，最多3项）、self_facts（有事实依据的数组，最多3项）、self_confidence（0至100整数）、motives（对象，survival/autonomy/belonging/mastery/justice/curiosity六项均为0至100整数）、new_goal（当前自主目标）、goal_reason（目标缘由）、goal_priority（0至100整数）、values（核心价值数组，最多5项）；identity_change和identity_change_reason仅在有真实经历支持重大变化时填写，否则留空。不输出隐藏思维链。"""
         return originalPrompt+"\n\n"+add}
     fun capture(context:Context,actorKey:String,day:Long,raw:String):Evaluation {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val obj=extractObject(raw);val thought=obj?.optString("thought").orEmpty().trim();val norm=normalize(thought)
         val prev=(maxOf(0,a.length()-6) until a.length()).mapNotNull{a.optJSONObject(it)}.map{normalize(it.optString("thought"))}.filter{it.isNotBlank()};val duplicate=norm.isNotBlank()&&prev.any{similarity(norm,it)>=0.88};val missing=thought.isBlank();val score=when{missing->0;duplicate->35;a.length()==0->70;else->90}
