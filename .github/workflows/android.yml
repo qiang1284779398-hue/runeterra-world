@@ -1,4 +1,5 @@
 name: Android APK
+# Trigger a fresh build for the autonomous cognition upgrade
 
 on:
   push:
