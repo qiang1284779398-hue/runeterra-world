@@ -308,7 +308,7 @@ class MainActivity : Activity() {
         eventSwitches.addView(interactionsButton,LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
         val spinner=Spinner(this).apply {
             background=observationPill(paperCard,Color.rgb(190,176,149))
-            popupBackground=observationPill(paperCard,Color.rgb(190,176,149))
+            setPopupBackgroundDrawable(observationPill(paperCard,Color.rgb(190,176,149)))
         }
         val refreshButton=Button(this).apply {
             text="手动刷新当前记录"
