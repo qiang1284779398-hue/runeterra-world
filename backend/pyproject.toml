@@ -1,3 +1,11 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*", "evals*"]
+exclude = ["vendor*"]
+
 [project]
 name = "runeterra-cognitive-backend"
 version = "0.1.0"
