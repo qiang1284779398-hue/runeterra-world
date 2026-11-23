@@ -253,19 +253,27 @@ object WorldAIProvider {
  ) {
   val app=context.applicationContext
   val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+  val effectivePrompt = if (!actorId.isNullOrBlank()) NativeAgentRuntime.enrich(app, actorId, worldDay, prompt) else prompt
+  fun deliver(raw: String) {
+   if (!actorId.isNullOrBlank() && hasCharacterJson(raw)) {
+    runCatching { NativeAgentRuntime.record(app, actorId, worldDay, raw) }
+     .onFailure { android.util.Log.w("RuneterraAI", "原生智能体记忆写入失败", it) }
+   }
+   callback(raw)
+  }
   if(p.getString("world_ai_provider","zhipu")=="chatgpt") {
    val chatPrompt="【系统角色与输出规范】\n"+systemPrompt+
-    "\n\n【本轮人物任务】\n"+prompt+
+    "\n\n【本轮人物任务】\n"+effectivePrompt+
     "\n\n【硬性要求】只输出一个完整、合法的JSON对象；不得输出Markdown代码围栏、解释、道歉或要求补充问题。必须保留任务要求的字段，thought必须是自然、具体的第一人称人物思考。"
    ChatGPTWorldBridge.ask(chatPrompt) { first ->
     if(hasCharacterJson(first)) {
-     callback(first)
+     deliver(first)
     } else {
      val retry="【输出校正】上一次ChatGPT网页回答未通过人物JSON校验。请重新完成完整任务，不要道歉、不要要求补充问题、不要机械拒绝或机械服从。只输出合法JSON对象。\n\n【系统要求】\n"+systemPrompt+
-      "\n\n【原始人物任务】\n"+prompt+
+      "\n\n【原始人物任务】\n"+effectivePrompt+
       "\n\n【上次无效输出，仅供避免重复】\n"+first.take(2200)
      ChatGPTWorldBridge.ask(retry) { second ->
-      if(hasCharacterJson(second)) callback(second)
+      if(hasCharacterJson(second)) deliver(second)
       else callback("【ChatGPT网页决策失败】连续两次未生成有效人物JSON。首次输出："+first.take(600)+"；重试输出："+second.take(900))
      }
     }
@@ -284,10 +292,10 @@ object WorldAIProvider {
      // Avoid duplicating the entire character prompt as both context and task.
      val backendOutput=requestCognitiveBackend(
       backendUrl,backendToken,"runeterra-world",actorId,actorName,worldDay,
-      "",prompt,systemPrompt
+      "",effectivePrompt,systemPrompt
      )
      if(!hasCharacterJson(backendOutput)) throw IllegalStateException("认知后端返回无效人物JSON/通用拒答")
-     callback(backendOutput)
+     deliver(backendOutput)
      return@thread
     } catch(e:Throwable) {
      backendFailure="认知后端调用失败："+(e.message?:e.javaClass.simpleName)
@@ -303,9 +311,9 @@ object WorldAIProvider {
    var output=""
    var cloudFailed=false
    try {
-    output=request(apiKey,model,systemPrompt,prompt,maxTokens)
+    output=request(apiKey,model,systemPrompt,effectivePrompt,maxTokens)
     if(!output.startsWith("云端HTTP") && !output.startsWith("云端请求异常") && !hasCharacterJson(output)) {
-     val repaired=runCatching{request(apiKey,model,systemPrompt,prompt,maxTokens,output)}.getOrElse{"格式纠正请求失败：${it.message?:it.javaClass.simpleName}"}
+     val repaired=runCatching{request(apiKey,model,systemPrompt,effectivePrompt,maxTokens,output)}.getOrElse{"格式纠正请求失败：${it.message?:it.javaClass.simpleName}"}
      if(hasCharacterJson(repaired))output=repaired
      else {
       output="智谱连续两次未生成有效人物内容。首次输出：${output.take(500)}；重试输出：${repaired.take(500)}"
@@ -318,7 +326,7 @@ object WorldAIProvider {
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
    }
    if(cloudFailed) callback("【云端决策失败】本轮没有生成角色决策。"+listOf(keyDiagnostic,backendFailure,output.take(900)).filter{it.isNotBlank()}.joinToString("；"))
-   else callback(output)
+   else deliver(output)
   }
  }
 }
