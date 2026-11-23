@@ -78,7 +78,9 @@ $recent
         val s = read(c, "${k}_runtime")
         s.put("lastPromptDay", day).put("lastPrompt", clean(prompt, 2500))
         store(c).edit().putString("${k}_runtime", s.toString()).apply()
-        return prompt + "\n\n" + memoryPrompt(c, actor) + "\n\n" + planPrompt(c, actor) + "\n\n" + socialPrompt(c, actor)
+        return prompt + "\n\n" + memoryPrompt(c, actor) + "\n\n" + planPrompt(c, actor) + "\n\n" + socialPrompt(c, actor) + """
+\n\n【原生智能体输出协议】
+在原任务JSON字段之外，补充 next_step（下一项可执行步骤，没有则空字符串）、completed_step（本轮确实完成的步骤）、step_result（success/failed/blocked/none）、collaboration（与其他人物的具体协作、请求、承诺或分工；没有则空字符串）。不得把计划说成已完成；失败必须写明原因。"""
     }
 
     /** DeepEval-like deterministic checks are performed locally on the model's actual JSON output. */
@@ -173,6 +175,19 @@ $recent
         if (completed.isNotBlank()) for (i in 0 until nodes.length()) {
             val n = nodes.optJSONObject(i) ?: continue
             if (n.optString("title") == completed) n.put("status", "completed").put("completedDay", day)
+        }
+        val stepResult = obj?.optString("step_result").orEmpty().lowercase()
+        if (step.isNotBlank() && stepResult in listOf("failed", "blocked")) {
+            for (i in 0 until nodes.length()) {
+                val n = nodes.optJSONObject(i) ?: continue
+                if (n.optString("title") == step && n.optString("status") != "completed") {
+                    val attempts = n.optInt("attempts", 0) + 1
+                    n.put("attempts", attempts)
+                        .put("status", if (attempts >= 3 || stepResult == "blocked") "blocked" else "retry")
+                        .put("lastFailure", clean(obj?.optString("step_failure").orEmpty(), 400))
+                        .put("updatedDay", day)
+                }
+            }
         }
         plan.put("nodes", nodes).put("updatedDay", day)
         store(c).edit().putString("${k}_plan", plan.toString()).apply()
