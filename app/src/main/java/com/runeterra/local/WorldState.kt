@@ -2823,6 +2823,32 @@ private fun craftBonus(region:String):Int = when(region) {
         editor.apply()
     }
 
+    private const val KEY_HERO_THINKING_POOL = "hero_thinking_pool"
+    private const val KEY_RESIDENT_THINKING_POOL = "resident_thinking_pool"
+
+    /** Entries are stable keys paired with labels for the user-managed AI thinking pool. */
+    fun thinkingPoolEntries(context: Context, heroes: Boolean): List<Pair<String, String>> {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return if (heroes) {
+            heroAgents(p).filter { it.alive }.map { it.name to "${it.name}（${it.region} · ${it.role}）" }
+        } else {
+            people(p).filter { it.alive }.map { it.id.toString() to "${it.name}（编号${it.id} · ${it.region} · ${it.job}）" }
+        }
+    }
+
+    fun selectedThinkingPool(context: Context, heroes: Boolean): Set<String> {
+        val key = if (heroes) KEY_HERO_THINKING_POOL else KEY_RESIDENT_THINKING_POOL
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getStringSet(key, emptySet())?.toSet() ?: emptySet()
+    }
+
+    fun setThinkingPool(context: Context, heroes: Boolean, selected: Set<String>) {
+        val key = if (heroes) KEY_HERO_THINKING_POOL else KEY_RESIDENT_THINKING_POOL
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(key, selected.toSet()).apply()
+        // Reset the relevant cursor so a changed pool takes effect immediately and fairly.
+        val cursorKey = if (heroes) KEY_HERO_AI_CURSOR else KEY_AI_CURSOR
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(cursorKey, 0).apply()
+    }
+
     fun localAiStatus(context:Context):String {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val heroes=heroAgents(p).count { it.alive }
