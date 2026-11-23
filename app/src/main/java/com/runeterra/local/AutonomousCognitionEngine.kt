@@ -16,7 +16,7 @@ object AutonomousCognitionEngine {
     fun prepare(context: Context, actor: String): String {
         val p = prefs(context)
         val skills = runCatching { JSONArray(p.getString("\${key(actor)}_skills", "[]") ?: "[]") }.getOrDefault(JSONArray())
-        val learned = (0 until skills.length()).mapNotNull { skills.optJSONObject(it)?.optString("name")?.takeIf(String::isNotBlank) }
+        val learned = (0 until skills.length()).mapNotNull { skills.optJSONObject(it)?.optString("name")?.takeIf { it.isNotBlank() } }
         return "【自主技能库】\n已沉淀技能：\${learned.takeLast(12).joinToString("、").ifBlank { "尚无经多次验证的稳定技能" }}\n技能只在真实行动结果反复支持后形成；技能是建议，不得覆盖当前事实、角色意愿或天道规则。"
     }
 
@@ -34,7 +34,7 @@ object AutonomousCognitionEngine {
             val item = skills.optJSONObject(i) ?: continue
             if (item.optString("action") == action.trim().lowercase()) { found = item; break }
         }
-        val item = found ?: JSONObject().put("action", action.trim().lowercase()).put("name", skillName(action)).put("successes", 0).also(skills::put)
+        val item = found ?: JSONObject().put("action", action.trim().lowercase()).put("name", skillName(action)).put("successes", 0).also { skills.put(it) }
         item.put("successes", item.optInt("successes") + 1).put("lastDay", day).put("lastEvidence", outcome.take(260))
         if (item.optInt("successes") >= 3) item.put("validated", true)
         while (skills.length() > 32) skills.remove(0)
@@ -54,7 +54,8 @@ object AutonomousCognitionEngine {
     }
 
     fun tryDecide(context: Context, actor: String, actorName: String, prompt: String): String? {
-        val action = PersonalLearningNetwork.autonomousChoice(context, actor, prompt) ?: return null
+        val rawAction = PersonalLearningNetwork.autonomousChoice(context, actor, prompt) ?: return null
+        val action = normalizeAction(rawAction, actor.startsWith("hero:"))
         return buildResponse(actor, actorName, prompt, action, "根据本人已积累的行动经验，选择当前最有把握的策略。", "personal_policy")
     }
 
