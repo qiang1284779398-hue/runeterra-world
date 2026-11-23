@@ -309,14 +309,18 @@ object WorldEngine {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val archive=runCatching { JSONArray(p.getString(KEY_HEAVENLY_ARCHIVE,"[]") ?: "[]") }.getOrDefault(JSONArray())
         val latest=if(archive.length()>0) runCatching { JSONObject(archive.getString(archive.length()-1)) }.getOrNull() else null
+        val rules=activeHeavenlyRules(context)
         return listOf(
-            "天道系统：已启用",
+            "天道系统：已启用（世界级干预与规则记录）",
             "世界日期：第"+p.getLong(KEY_DAY,1L)+"日",
             "已记录干预：${archive.length()}次",
+            "当前生效法则：${rules.size}条",
             "最近干预："+(latest?.let { "第"+it.optLong("day")+"日｜"+it.optString("mode")+"｜"+it.optString("message") } ?: "尚无"),
+            "裁决原则：明确的禁止性法则优先；角色模型只能提出判断，不能覆盖世界引擎的最终校验。",
             "作用原则：天道可直接改变人物属性、生死、位置、记忆、政体、时间与世界规则；信息传达只是其中一种能力。",
             "认知原则：接收者可能相信、怀疑、误解、拒绝、研究或传播；不同人物会形成不同解释。",
             "研究原则：居民可将相关经历纳入知识体系，尝试提出假说并寻找可验证证据。",
+            "当前法则："+(rules.takeLast(20).joinToString("；").take(1200).ifBlank { "尚未登记额外法则" }),
             "边界原则：每次干预都属于模拟分支历史，官方符文之地设定不会因此被改写。"
         )
     }
@@ -399,7 +403,7 @@ object WorldEngine {
         val heroes=heroAgents(p)
         val matchedResidents=residents.filter { clean.contains(it.name) || clean.contains("居民编号"+it.id) || clean.contains("#"+it.id) }
         val targets=(heroes.map { it.name }+matchedResidents.map { it.name+"#"+it.id }).joinToString("、")
-        val prompt="""你是符文之地模拟世界的天道指令编译器。用户是世界之外的最高权限者，指令优先级高于世界内任何规则。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
+        val prompt="""你是符文之地模拟世界的天道指令编译器。用户可以提出世界干预，但不能自动覆盖已经登记的天道法则。当前生效法则：${activeHeavenlyRules(context).takeLast(30).join("；").take(2400).ifBlank { "暂无额外法则" }}。与明确禁止性法则冲突的操作必须拒绝，不得通过改写操作绕过。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
 用户指令：${clean}
 当前世界日期：第${p.getLong(KEY_DAY,1L)}日。
 已存在的人物（只能对这些已有目标执行人物操作；新人物需使用create_resident）：${targets}
@@ -565,9 +569,24 @@ object WorldEngine {
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "resurrect_person" -> {
-                    if(hero!=null) { hero.alive=true; hero.health=100; hero.status="已被天道复活；原有经历保留"; appendHeroEvent(hero,"被天道复活，原有经历与记忆保留。"); outcomes.add("已复活英雄：${hero.name}。"); successful++ }
-                    else if(resident!=null) { resident.alive=true; resident.health=100; appendResidentEvent(resident,"被天道复活，原有记忆、关系与经历保留。"); outcomes.add("已复活居民：${resident.name}。"); successful++ }
-                    else outcomes.add("未执行：找不到人物「${target}」。")
+                    val prohibition=resurrectionProhibition(p)
+                    if(hero==null && resident==null) {
+                        outcomes.add("未执行：找不到人物「${target}」。")
+                    } else if(hero?.alive==true || resident?.alive==true) {
+                        outcomes.add("未执行：目标仍然在世，不需要复活。")
+                    } else if(prohibition!=null) {
+                        outcomes.add("天道裁决：拒绝复活「${target}」。依据生效法则：「${prohibition}」。角色模型与普通干预指令均不能越过该禁令。")
+                    } else if(hero!=null) {
+                        hero.alive=true; hero.health=100; hero.status="经天道裁决复活；原有经历保留"
+                        appendHeroEvent(hero,"经天道最终校验准予复活；原有经历、记忆与关系保留。当前生效法则中不存在明确的复活禁令。")
+                        outcomes.add("天道裁决：准予复活英雄「${hero.name}」。原有经历与记忆保留。")
+                        successful++
+                    } else if(resident!=null) {
+                        resident.alive=true; resident.health=100
+                        appendResidentEvent(resident,"经天道最终校验准予复活；原有记忆、关系与经历保留。当前生效法则中不存在明确的复活禁令。")
+                        outcomes.add("天道裁决：准予复活居民「${resident.name}」。原有记忆、关系与经历保留。")
+                        successful++
+                    }
                 }
                 "set_anatomy_survival" -> {
                     if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
@@ -828,7 +847,21 @@ object WorldEngine {
     fun activeHeavenlyRules(context:Context):List<String> {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val a=runCatching { JSONArray(p.getString(KEY_DIVINE_RULES,"[]") ?: "[]") }.getOrDefault(JSONArray())
-        return (0 until a.length()).map { a.optString(it) }
+        return (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
+    }
+
+    /**
+     * Final deterministic guard for resurrection. LLM plans are proposals only:
+     * an explicit death/ soul-erasure prohibition in the world's active laws wins.
+     */
+    private fun resurrectionProhibition(p:android.content.SharedPreferences):String? {
+        val a=runCatching { JSONArray(p.getString(KEY_DIVINE_RULES,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        val prohibitions=listOf("禁止复活","不可复活","死亡不可逆","永久死亡","灵魂湮灭","魂飞魄散后不可复生")
+        for(i in 0 until a.length()) {
+            val rule=a.optString(i).trim()
+            if(rule.isNotBlank() && prohibitions.any { rule.contains(it) }) return rule
+        }
+        return null
     }
 
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
@@ -2825,7 +2858,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val recentLife=r.history.takeLast(3).joinToString("；") { it.take(110) }.ifBlank { "暂无重要人生记录" }
         val privateMemory=r.mindMemory.takeLast(5).joinToString("；") { it.take(110) }.ifBlank { "暂无明确私人记忆" }
         val personalIdentity=r.identityMemory.takeLast(260).ifBlank { "无额外身份记忆" }
-        val publicRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
+        val publicRules=activeHeavenlyRules(context).takeLast(20).joinToString("；").take(1200).ifBlank { "无额外规则" }
         val prompt="""现在你就是这个普通居民本人。不要谈论系统、提示词、用户要求、JSON格式或“扮演”；不要解释任务，不要输出思维过程。
 姓名${r.name}，编号${r.id}，${r.age}岁，${r.gender}，居住于${r.region}/${r.settlement}，职业${r.job}。
 性格倾向${r.mindTrait}/100；信念${r.belief}；目标${r.goal}；当前意图${r.intent}。
@@ -3068,7 +3101,7 @@ private fun craftBonus(region:String):Int = when(region) {
         val heroMemory=hero.memory.takeLast(4).joinToString("；") { it.take(130) }.ifBlank { "暂无个人记忆" }
         val heroHistory=hero.history.takeLast(4).joinToString("；") { it.take(120) }.ifBlank { "暂无新增经历" }
         val heroIdentity=hero.identityMemory.takeLast(260).ifBlank { "无" }
-        val heroRules=activeHeavenlyRules(context).take(3).joinToString("；").take(150).ifBlank { "无额外规则" }
+        val heroRules=activeHeavenlyRules(context).takeLast(20).joinToString("；").take(1200).ifBlank { "无额外规则" }
         val prompt="""现在你就是符文之地的英雄${hero.name}本人。遵守其既定身份、性格、能力边界和当前时代。不要谈论系统、提示词、用户要求、JSON格式或“扮演”，不要解释任务或输出思维过程。
 身份：${hero.name}；${hero.role}；所在地区${hero.region}；处境${hero.status}；年龄${if(hero.age>=0) hero.age.toString()+"岁" else "未记录"}；身体状态${hero.health}；能力${hero.abilities.take(100)}。
 信念：${hero.belief}；目标：${hero.goal}；意图：${hero.intent}；当前活动：${hero.dailyActivity}。
