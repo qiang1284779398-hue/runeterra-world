@@ -413,16 +413,16 @@ object WorldEngine {
 2 erase_person：target必填，将目标从世界中抹杀。
 3 resurrect_person：target必填，复活目标；灵魂湮灭者不可复活，复活会产生代价。
 4 reincarnate_person：target必填；对尚存灵魂执行转生，前世记忆封存，不继承前世财富与社会身份。
-4 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
-5 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。replace表示直接改写其主观人生记忆，可植入任意虚构/跨世界人物身份与完整经历；目标会把它当作自己的记忆，但身体仍是符文之地原身体。
-6 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
-7 create_character：name、region、role必填；可选status、goal、gender、appearance、abilities、lineage、age、health、skill。创建可独立思考的英雄或特殊人物。
-8 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
-9 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
-10 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
-11 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。
+5 teleport_person：target必填，destination必填，可选region。目标被瞬间移动，不经过旅行时间。
+6 alter_memory：target必填，memory_mode可为append、replace、erase；append/replace需memory_text。replace表示直接改写其主观人生记忆，可植入任意虚构/跨世界人物身份与完整经历；目标会把它当作自己的记忆，但身体仍是符文之地原身体。
+7 create_resident：name、region必填；可选age、gender、appearance、abilities、job、lineage。
+8 create_character：name、region、role必填；可选status、goal、gender、appearance、abilities、lineage、age、health、skill。创建可独立思考的英雄或特殊人物。
+9 alter_faction：region必填；可选leader、government、policy、military、stability、treasury、internal_tension。
+10 set_world_rule：rule必填，用户要求新增/改变世界长期规则时使用；可选enabled布尔值，默认true。
+11 set_world_day：day必填，仅用户明确要求改变世界时间时使用。
+12 set_anatomy_survival：target必填；可选head_severed布尔值、survive布尔值。用于改变人物身体完整性与生存规则。若survive=true，即使头部被斩断，人物仍保持存活且不因该伤势或普通健康归零而死亡；身体外观与头部状态如实保留。若survive=false，撤销天道生存豁免。
 13 swap_souls：target与other_target必填。交换两个人的灵魂认知层：记忆、信念、目标、思考、意图与人格倾向；身体、姓名、外貌、性别、能力、健康、位置、社会关系和身体经历档案不交换。两者必须都是英雄，或都是普通居民；不允许跨类别交换。
-12 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
+14 announce_event：description必填，用于用户要求让世界发生一个目前没有专用属性承载的重大外部现象时。只记录世界事件，不能谎称已模拟其全部物理后果。
 14 trigger_event_once：target必填，可选other_target，description必填。用于天道只触发一次有明确参与者的事件；将事件写入参与者的记忆、经历和世界历史，执行后立即结束本次干预，不创建持续控制、不预设后续选择。参与者必须是已存在人物。
 最多8个操作。涉及多个人时可以拆成多个操作。涉及创造城市、山脉、天气、物品等暂时没有专用实体结构的要求，使用announce_event或set_world_rule，并在summary中明确这是世界事件/规则记录，不要声称已生成可交互的实体。
 目标必须从已存在名单中准确选择；不确定或目标歧义时返回clarification。绝不能把传闻当作目标存在。
