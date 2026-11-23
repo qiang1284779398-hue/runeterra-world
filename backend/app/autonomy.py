@@ -280,3 +280,28 @@ def claim_endpoint(limit: int = 20, lease_seconds: int = 180,
                    x_runeterra_token: str | None = Header(default=None)):
     _auth(x_runeterra_token)
     return {"actors": claim_due(limit, lease_seconds)}
+
+
+class SubmitProposal(BaseModel):
+    world_id: str = Field(min_length=1, max_length=100)
+    actor_id: str = Field(min_length=1, max_length=120)
+    lease_token: str = Field(min_length=16, max_length=80)
+    day: int = Field(ge=0)
+    proposal: str = Field(min_length=1, max_length=20000)
+
+
+@router.post("/proposal")
+def submit_proposal(data: SubmitProposal, x_runeterra_token: str | None = Header(default=None)):
+    _auth(x_runeterra_token)
+    key = actor_key(data.world_id, data.actor_id)
+    with _router_lock, _connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM autonomous_actors WHERE actor_key=? AND lease_token=? AND lease_until>?",
+            (key, data.lease_token, _iso(_now())),
+        ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=409, detail="Actor lease is missing, expired, or belongs to another worker")
+        actor = dict(row)
+        actor["lease_token"] = data.lease_token
+        proposal_id = save_proposal(actor, data.day, data.proposal)
+    return {"proposal_id": proposal_id, "status": "pending", "awaiting": "heaven_verdict_and_world_execution"}
