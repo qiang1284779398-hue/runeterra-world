@@ -80,7 +80,7 @@ class ChatGPTWebActivity : Activity() {
         controls.addView(send, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         controls.addView(read, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f))
         result = TextView(this).apply {
-            text = "回答会显示在这里"
+            text = "提取结果\\n点击“直接提取回答”后，答案会显示在这里"
             textSize = 14f
             setTextIsSelectable(true)
             setPadding(4, 8, 4, 8)
@@ -321,23 +321,57 @@ class ChatGPTWebActivity : Activity() {
         web.evaluateJavascript(script) { raw ->
             val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-            var text = data.optString("text").trim()
-            // The selected DOM node is already the newest assistant message.
-            // Do not parse the whole page transcript: it contains prior prompts,
-            // duplicated iframe/shadow-root text, and page chrome.
+            var text = data.optString("text")
+            // Second-pass cleanup: the DOM selector gets the latest assistant node;
+            // this pass strips accidental prompt echoes, site disclaimers and controls.
             val submittedPrompt = data.optString("submittedPrompt").ifBlank {
                 prompt.text?.toString().orEmpty()
             }.trim()
-            if (submittedPrompt.isNotEmpty() && text.contains(submittedPrompt)) {
-                text = text.replace(submittedPrompt, "").trim()
+            text = text.replace("\\r", "").replace('\\u00a0', ' ')
+                .replace(Regex("[ \\t]+"), " ")
+                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
+
+            if (submittedPrompt.isNotEmpty()) {
+                val promptAt = text.lastIndexOf(submittedPrompt, ignoreCase = false)
+                if (promptAt >= 0) {
+                    // If the prompt was echoed inside the extracted node, keep only
+                    // content after the last occurrence; otherwise leave the answer intact.
+                    val afterPrompt = text.substring(promptAt + submittedPrompt.length).trim()
+                    if (afterPrompt.isNotBlank()) text = afterPrompt
+                    else text = text.replace(submittedPrompt, "").trim()
+                }
             }
-            // The disclaimer and composer belong to page chrome, not the answer.
-            val disclaimerRegex = Regex(
-                "(?im)^[^\\n]*(?:ChatGPT\\s*(?:是\\s*)?AI.*可能会犯错|ChatGPT.*(?:may make mistakes|can make mistakes)|免责声明)[^\\n]*(?:\\n|$)"
+
+            // Cut at the earliest known ChatGPT disclaimer/footer marker, even when
+            // the WebView has flattened line breaks or appended controls to the same line.
+            val footerMarkers = listOf(
+                "ChatGPT 是 AI，可能会犯错",
+                "ChatGPT是AI，可能会犯错",
+                "ChatGPT may make mistakes",
+                "ChatGPT can make mistakes",
+                "免责声明",
+                "与 ChatGPT 聊天",
+                "Message ChatGPT",
+                "发送消息给 ChatGPT"
             )
-            disclaimerRegex.find(text)?.let { text = text.substring(0, it.range.first).trim() }
-            text = text
-                .replace(Regex("(?im)^\\s*(?:Message ChatGPT|与 ChatGPT 聊天|发送消息给 ChatGPT)\\s*$"), "")
+            val footerAt = footerMarkers.map { marker -> text.indexOf(marker, ignoreCase = true) }
+                .filter { it >= 0 }.minOrNull()
+            if (footerAt != null) text = text.substring(0, footerAt).trim()
+
+            // Remove repeated prompt-only lines and common page chrome, then normalize.
+            if (submittedPrompt.isNotBlank()) {
+                val promptPattern = Regex(Regex.escape(submittedPrompt), RegexOption.MULTILINE)
+                text = promptPattern.replace(text, "").trim()
+            }
+            text = text.lineSequence()
+                .filterNot { line ->
+                    val s = line.trim()
+                    s.equals("与 ChatGPT 聊天", true) ||
+                    s.equals("Message ChatGPT", true) ||
+                    s.equals("发送消息给 ChatGPT", true) ||
+                    s.equals("ChatGPT", true)
+                }
+                .joinToString("\\n")
                 .replace(Regex("\\n{3,}"), "\\n\\n")
                 .trim()
             val streaming = data.optBoolean("streaming")
