@@ -14,7 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
-from app.autonomy import router as autonomy_router
+from app.autonomy import router as autonomy_router, private_memory_context
 
 DB_PATH = os.getenv("RUNETERRA_DB", "/data/runeterra.db")
 LETTA_BASE_URL = os.getenv("LETTA_BASE_URL", "https://api.letta.com").rstrip("/")
@@ -138,7 +138,9 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
                 content = message.get("content", "")
                 if isinstance(content, str) and content.strip():
                     texts.append(content.strip())
-        return "\n".join(texts)[-12000:] or "Letta 暂无可用记忆摘要。"
+        local_memory = private_memory_context(actor_key, query)
+        combined = "\n".join(texts + (["【世界引擎确认的个人经历】\\n" + local_memory] if local_memory else []))
+        return combined[-12000:] or "暂无可用的个人长期记忆。"
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Letta memory request failed: {exc}") from exc
 
