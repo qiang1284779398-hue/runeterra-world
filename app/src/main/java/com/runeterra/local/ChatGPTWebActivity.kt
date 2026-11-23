@@ -327,9 +327,9 @@ class ChatGPTWebActivity : Activity() {
                 prompt.text?.toString().orEmpty()
             }.trim()
             val diagnosticText = data.optString("diagnosticText")
-                .replace("\\r", "").replace('\u00a0', ' ')
-                .replace(Regex("[ \\t]+"), " ")
-                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
+                .replace("\r", "").replace('\u00a0', ' ')
+                .replace(Regex("[ \t]+"), " ")
+                .replace(Regex("\n{3,}"), "\n\n").trim()
             var text = data.optString("text")
             if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
                 val promptAt = diagnosticText.lastIndexOf(submittedPrompt)
@@ -338,9 +338,9 @@ class ChatGPTWebActivity : Activity() {
                     text = diagnosticText.substring(promptAt + submittedPrompt.length).trim()
                 }
             }
-            text = text.replace("\\r", "").replace('\u00a0', ' ')
-                .replace(Regex("[ \\t]+"), " ")
-                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
+            text = text.replace("\r", "").replace('\u00a0', ' ')
+                .replace(Regex("[ \t]+"), " ")
+                .replace(Regex("\n{3,}"), "\n\n").trim()
 
             // Cut at the earliest known ChatGPT disclaimer/footer marker, even when
             // the WebView has flattened line breaks or appended controls to the same line.
