@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
 
 DB_PATH = os.getenv("RUNETERRA_DB", "/data/runeterra.db")
@@ -27,7 +27,7 @@ ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-5.3-flashx")
 app = FastAPI(title="Runeterra Cognitive Backend", version="0.1.0")
 _db_lock = threading.Lock()
 _actor_locks: dict[str, threading.Lock] = {}
-_checkpointer = MemorySaver()
+_db_bootstrap = db()\n_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))
 
 
 def db() -> sqlite3.Connection:
