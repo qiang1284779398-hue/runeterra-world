@@ -69,8 +69,11 @@ object IdentityEvolutionEngine {
     fun capture(c:Context,a:String,day:Long,o:JSONObject?){if(o==null)return;val p=CognitiveStore.prefs(c);val k=CognitiveStore.key(a);val s=load(c,a);val values=s.optJSONArray("values")?:JSONArray();CognitiveStore.values(o.optJSONArray("values")).forEach{CognitiveStore.add(values,it,20)}
         val h=s.optJSONArray("history")?:JSONArray();val change=CognitiveStore.str(o,"identity_change");val reason=CognitiveStore.str(o,"identity_change_reason",500)
         if(change.isNotBlank()&&reason.isNotBlank()&&h.optJSONObject(h.length()-1)?.optString("change")!=change){h.put(JSONObject().put("day",day).put("change",change).put("reason",reason));s.put("version",s.optInt("version",0)+1)}
-        val belief=CognitiveStore.str(o,"belief");val prev=s.optString("lastBelief");if(belief.isNotBlank()&&belief!=prev){val candidate=s.optString("pendingBelief");val count=if(candidate==belief)s.optInt("pendingCount",0)+1 else 1;s.put("pendingBelief",belief).put("pendingCount",count);if(count>=2&&prev.isNotBlank()){h.put(JSONObject().put("day",day).put("change","信念稳定调整").put("reason","此前：$prev；现在：$belief。连续多轮表达一致。"));s.put("version",s.optInt("version",0)+1).put("pendingCount",0)}}else if(belief.isNotBlank())s.put("pendingCount",0)
-        if(belief.isNotBlank())s.put("lastBelief",belief);while(h.length()>40)h.remove(0);s.put("values",values).put("history",h).put("updatedDay",day);p.edit().putString("${k}_identity",s.toString()).apply()}
+        val belief=CognitiveStore.str(o,"belief");val committed=s.optString("committedBelief")
+        if(belief.isNotBlank()&&committed.isBlank()){s.put("committedBelief",belief).put("pendingCount",0)}
+        else if(belief.isNotBlank()&&belief!=committed){val candidate=s.optString("pendingBelief");val count=if(candidate==belief)s.optInt("pendingCount",0)+1 else 1;s.put("pendingBelief",belief).put("pendingCount",count);if(count>=2){h.put(JSONObject().put("day",day).put("change","信念稳定调整").put("reason","此前：$committed；现在：$belief。连续多轮表达一致。"));s.put("version",s.optInt("version",0)+1).put("committedBelief",belief).put("pendingCount",0)}}
+        else if(belief.isNotBlank())s.put("pendingCount",0)
+        while(h.length()>40)h.remove(0);s.put("values",values).put("history",h).put("updatedDay",day);p.edit().putString("${k}_identity",s.toString()).apply()}
     fun report(c:Context,a:String)=prepare(c,a)
 }
 
