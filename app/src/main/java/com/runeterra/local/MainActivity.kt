@@ -20,6 +20,10 @@ import android.widget.EditText
 import android.widget.ArrayAdapter
 import android.widget.ScrollView
 import android.widget.Spinner
+import android.widget.ImageView
+import android.graphics.BitmapFactory
+import java.net.HttpURLConnection
+import java.net.URL
 import android.os.Handler
 import android.os.Looper
 import android.net.Uri
@@ -291,10 +295,49 @@ class MainActivity : Activity() {
         val output=TextView(this).apply {
             textSize=14f
             setTextIsSelectable(true)
-            setPadding(8,12,8,20)
+            setTextColor(Color.rgb(220,228,238))
+            setPadding(12,16,12,24)
+        }
+        val heroHeader=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            gravity=Gravity.CENTER_HORIZONTAL
+            setPadding(16,18,16,18)
+            visibility=View.GONE
+        }
+        val heroPortrait=ImageView(this).apply {
+            scaleType=ImageView.ScaleType.CENTER_CROP
+            clipToOutline=true
+            background=GradientDrawable().apply {
+                shape=GradientDrawable.OVAL
+                setColor(Color.rgb(18,28,43))
+                setStroke(4,Color.rgb(196,163,91))
+            }
+            val side=(112*resources.displayMetrics.density).toInt()
+            layoutParams=LinearLayout.LayoutParams(side,side).apply { bottomMargin=12 }
+        }
+        val heroName=TextView(this).apply {
+            textSize=24f
+            setTextColor(Color.WHITE)
+            gravity=Gravity.CENTER
+            typeface=android.graphics.Typeface.create("serif",android.graphics.Typeface.BOLD)
+        }
+        val heroRegion=TextView(this).apply {
+            textSize=12f
+            setTextColor(Color.rgb(222,197,139))
+            gravity=Gravity.CENTER
+            setPadding(0,5,0,0)
+        }
+        heroHeader.addView(heroPortrait)
+        heroHeader.addView(heroName)
+        heroHeader.addView(heroRegion)
+        val content=LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            addView(heroHeader,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
+            addView(output,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         val scroll=ScrollView(this).apply {
-            addView(output,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
+            isFillViewport=true
+            addView(content,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         panel.addView(hint)
         panel.addView(switches)
@@ -317,18 +360,82 @@ class MainActivity : Activity() {
             // 内容更新时始终保留用户当前阅读位置；绝不自动跳到顶部或底部。
             val previousY = scroll.scrollY
             output.text = nextText
-            val observer = output.viewTreeObserver
+            if(kind=="英雄" && selectedKey.isNotBlank()) {
+                val record=WorldEngine.heroDirectory(this).firstOrNull { it.startsWith("【"+selectedKey+"】") }.orEmpty()
+                val region=record.lineSequence().firstOrNull { it.startsWith("所在领域：") }?.substringAfter("：") ?: "符文之地"
+                val palette=when(region) {
+                    "德玛西亚" -> intArrayOf(Color.rgb(13,37,66),Color.rgb(30,91,132),Color.rgb(218,190,119))
+                    "诺克萨斯" -> intArrayOf(Color.rgb(35,12,20),Color.rgb(105,25,39),Color.rgb(208,67,68))
+                    "艾欧尼亚" -> intArrayOf(Color.rgb(24,42,43),Color.rgb(47,102,91),Color.rgb(205,133,111))
+                    "比尔吉沃特" -> intArrayOf(Color.rgb(14,38,51),Color.rgb(27,91,105),Color.rgb(215,171,102))
+                    "弗雷尔卓德" -> intArrayOf(Color.rgb(17,43,61),Color.rgb(66,121,147),Color.rgb(174,220,231))
+                    "恕瑞玛" -> intArrayOf(Color.rgb(67,42,17),Color.rgb(151,99,34),Color.rgb(239,197,105))
+                    "巨神峰" -> intArrayOf(Color.rgb(35,31,69),Color.rgb(91,76,139),Color.rgb(222,208,255))
+                    "皮尔特沃夫" -> intArrayOf(Color.rgb(48,40,27),Color.rgb(126,103,57),Color.rgb(239,207,130))
+                    "祖安" -> intArrayOf(Color.rgb(13,43,39),Color.rgb(31,100,76),Color.rgb(130,221,163))
+                    "以绪塔尔" -> intArrayOf(Color.rgb(19,49,42),Color.rgb(55,115,81),Color.rgb(178,216,132))
+                    "暗影岛" -> intArrayOf(Color.rgb(18,25,39),Color.rgb(47,70,82),Color.rgb(110,223,190))
+                    "班德尔城" -> intArrayOf(Color.rgb(45,36,68),Color.rgb(104,81,143),Color.rgb(224,190,255))
+                    "虚空" -> intArrayOf(Color.rgb(28,15,49),Color.rgb(81,36,117),Color.rgb(206,120,255))
+                    else -> intArrayOf(Color.rgb(17,31,49),Color.rgb(38,66,91),Color.rgb(204,177,117))
+                }
+                heroHeader.visibility=View.VISIBLE
+                heroHeader.background=GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,intArrayOf(palette[1],palette[0])).apply {
+                    cornerRadii=floatArrayOf(18f,18f,18f,18f,0f,0f,0f,0f)
+                    setStroke((1*resources.displayMetrics.density).toInt(),palette[2])
+                }
+                heroName.text=selectedKey
+                heroRegion.text="✦  "+region+"  ·  英雄档案  ✦"
+                heroPortrait.background=GradientDrawable().apply {
+                    shape=GradientDrawable.OVAL
+                    setColor(palette[0])
+                    setStroke((4*resources.displayMetrics.density).toInt(),palette[2])
+                }
+                val championIds=mapOf(
+                    "盖伦" to "Garen","拉克丝" to "Lux","嘉文四世" to "JarvanIV","菲奥娜" to "Fiora","薇恩" to "Vayne",
+                    "卡特琳娜" to "Katarina","斯维因" to "Swain","德莱厄斯" to "Darius","乐芙兰" to "Leblanc",
+                    "艾瑞莉娅" to "Irelia","阿卡丽" to "Akali","慎" to "Shen","劫" to "Zed","厄运小姐" to "MissFortune",
+                    "俄洛伊" to "Illaoi","瑟庄妮" to "Sejuani","艾希" to "Ashe","丽桑卓" to "Lissandra","阿兹尔" to "Azir",
+                    "泽拉斯" to "Xerath","塔莉垭" to "Taliyah","黛安娜" to "Diana","蕾欧娜" to "Leona","潘森" to "Pantheon",
+                    "杰斯" to "Jayce","凯特琳" to "Caitlyn","蔚" to "Vi","维克托" to "Viktor","金克丝" to "Jinx",
+                    "艾克" to "Ekko","奇亚娜" to "Qiyana","妮蔻" to "Neeko","凯莎" to "Kaisa","内瑟斯" to "Nasus",
+                    "雷克顿" to "Renekton","亚托克斯" to "Aatrox","佛耶戈" to "Viego","锤石" to "Thresh","瑞兹" to "Ryze",
+                    "奥恩" to "Ornn","沃利贝尔" to "Volibear","艾尼维亚" to "Anivia","卑尔维斯" to "Belveth",
+                    "莫德凯撒" to "Mordekaiser","提莫" to "Teemo","崔丝塔娜" to "Tristana","璐璐" to "Lulu",
+                    "兰博" to "Rumble","库奇" to "Corki","维迦" to "Veigar","黑默丁格" to "Heimerdinger","悠米" to "Yuumi"
+                )
+                val championId=championIds[selectedKey]
+                if(championId!=null) {
+                    val imageUrl="https://ddragon.leagueoflegends.com/cdn/15.24.1/img/champion/"+championId+".png"
+                    heroPortrait.tag=imageUrl
+                    heroPortrait.setImageDrawable(null)
+                    Thread {
+                        val bitmap=runCatching {
+                            val connection=(URL(imageUrl).openConnection() as HttpURLConnection).apply {
+                                connectTimeout=7000
+                                readTimeout=7000
+                                instanceFollowRedirects=true
+                            }
+                            try { connection.inputStream.use { BitmapFactory.decodeStream(it) } } finally { connection.disconnect() }
+                        }.getOrNull()
+                        if(bitmap!=null) runOnUiThread {
+                            if(heroPortrait.tag==imageUrl) heroPortrait.setImageBitmap(bitmap)
+                        }
+                    }.start()
+                } else {
+                    heroPortrait.setImageDrawable(null)
+                }
+            } else {
+                heroHeader.visibility=View.GONE
+                heroPortrait.setImageDrawable(null)
+            }
+            val observer = content.viewTreeObserver
             if(observer.isAlive) {
                 val restorePosition = object : android.view.ViewTreeObserver.OnPreDrawListener {
                     override fun onPreDraw(): Boolean {
-                        if(output.viewTreeObserver.isAlive) {
-                            output.viewTreeObserver.removeOnPreDrawListener(this)
-                        }
-                        val child = scroll.getChildAt(0)
-                        if(child != null) {
-                            val maxY = (child.height - scroll.height).coerceAtLeast(0)
-                            scroll.scrollTo(0, previousY.coerceIn(0,maxY))
-                        }
+                        if(content.viewTreeObserver.isAlive) content.viewTreeObserver.removeOnPreDrawListener(this)
+                        val maxY = (content.height - scroll.height).coerceAtLeast(0)
+                        scroll.scrollTo(0, previousY.coerceIn(0,maxY))
                         return true
                     }
                 }
