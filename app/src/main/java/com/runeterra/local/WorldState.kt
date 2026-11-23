@@ -589,21 +589,24 @@ object WorldEngine {
                     else if(soul?.optString("state")=="灵魂湮灭") outcomes.add("天道裁决：拒绝转生「"+target+"」。灵魂已经湮灭。")
                     else if(hero!=null) {
                         hero.alive=true; hero.age=0; hero.health=100; hero.headSevered=false; hero.survivalOverride=false
-                        hero.status="转生为新生个体；前世记忆封存"
+                        hero.status="转生为新生个体；前世记忆封存"; hero.goal="以新生身份成长并探索世界"; hero.thought=""; hero.intent="成长并逐渐理解眼前世界"
+                        hero.memory.clear(); hero.memory.add("【转生封存记忆】前世记忆未被删除，但当前意识不能直接调用；可能以梦境、直觉或碎片化熟悉感出现。")
+                        val bonds=heroBonds(p); bonds.removeAll { it.a==hero.name || it.b==hero.name }; saveHeroBonds(p,bonds)
                         if(soul!=null){soul.put("state","已转生").put("integrity",soul.optInt("integrity",100)).put("reincarnationCount",soul.optInt("reincarnationCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)}
-                        appendHeroEvent(hero,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存为潜在记忆，不自动获得前世知识；原有因果记录保留。")
-                        outcomes.add("天道裁决：准予英雄「"+hero.name+"」转生。年龄归零，前世记忆封存，因果档案保留。"); successful++
+                        appendHeroEvent(hero,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存，不自动获得前世知识；旧关系链断开，历史因果档案保留。")
+                        outcomes.add("天道裁决：准予英雄「"+hero.name+"」转生。年龄归零，前世记忆封存，旧关系链断开。"); successful++
                     } else if(resident!=null) {
                         resident.alive=true; resident.age=0; resident.health=100; resident.food=3; resident.coins=0
-                        resident.job="儿童"; resident.goal="成长并逐渐形成自己的生活道路"; resident.partnerId=-1
-                        resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""
-                        resident.currentThought="我刚刚开始自己的人生，对前世只有难以理解的梦境与模糊感受。"
-                        resident.intent="成长、学习并逐渐理解周围世界"
+                        resident.job="儿童"; resident.goal="成长并逐渐形成自己的生活道路"; resident.partnerId=-1; resident.householdId=-1
+                        resident.parentIds.clear(); resident.childIds.clear(); resident.friendIds.clear(); resident.mentorId=-1; resident.studentIds.clear()
+                        population.forEach { other -> if(other.id!=resident.id) { if(other.partnerId==resident.id) other.partnerId=-1; other.parentIds.removeAll { it==resident.id }; other.childIds.removeAll { it==resident.id }; other.friendIds.removeAll { it==resident.id }; if(other.mentorId==resident.id) other.mentorId=-1; other.studentIds.removeAll { it==resident.id } } }
+                        resident.travelOrigin=""; resident.travelDestination=""; resident.travelDaysRemaining=0; resident.travelPurpose=""; resident.jobBeforeTravel=""
+                        resident.currentThought="我刚刚开始自己的人生，对前世只有难以理解的梦境与模糊感受。"; resident.intent="成长、学习并逐渐理解周围世界"
+                        resident.mindMemory.clear(); resident.identityMemory="【转生封存】前世经历保留在灵魂因果档案中，当前意识不能直接调用。"
                         resident.mindMemory.add("【转生封存记忆】前世经历没有被抹除，但当前意识不能直接调用；可能以梦境、直觉或碎片化熟悉感出现。")
-                        while(resident.mindMemory.size>120) resident.mindMemory.removeAt(0)
                         if(soul!=null){soul.put("state","已转生").put("integrity",soul.optInt("integrity",100)).put("reincarnationCount",soul.optInt("reincarnationCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)}
-                        appendResidentEvent(resident,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存；不自动继承前世财富、职业与社会身份。")
-                        outcomes.add("天道裁决：准予居民「"+resident.name+"」转生。年龄归零，前世记忆封存，金币与职业重置。"); successful++
+                        appendResidentEvent(resident,"天道裁定转生：以新生个体重新开始，年龄归零，前世记忆封存；不继承前世财富、职业、家庭与社会身份。")
+                        outcomes.add("天道裁决：准予居民「"+resident.name+"」转生。年龄归零，前世记忆封存，旧社会关系与身份重置。"); successful++
                     }
                 }
                 "set_anatomy_survival" -> {
@@ -873,7 +876,7 @@ object WorldEngine {
     private fun soulEntry(a:JSONArray,key:String):JSONObject?=(0 until a.length()).mapNotNull { a.optJSONObject(it) }.lastOrNull { it.optString("entityKey")==key }
     private fun saveSoulLedger(p:android.content.SharedPreferences,a:JSONArray){p.edit().putString(KEY_SOUL_LEDGER,a.toString()).apply()}
     private fun recordSoulDeath(p:android.content.SharedPreferences,key:String,name:String,day:Long,cause:String,erased:Boolean=false){
-        val a=soulLedger(p); val old=soulEntry(a,key); val e=JSONObject().put("entityKey",key).put("name",name).put("deathDay",day).put("cause",cause.take(500)).put("state",if(erased)"灵魂湮灭" else "游离").put("integrity",if(erased)0 else 100).put("resurrectionCount",old?.optInt("resurrectionCount",0)?:0).put("lastUpdatedDay",day)
+        val a=soulLedger(p); val old=soulEntry(a,key); val e=JSONObject().put("entityKey",key).put("name",name).put("deathDay",day).put("cause",cause.take(500)).put("state",if(erased)"灵魂湮灭" else "游离").put("integrity",if(erased)0 else 100).put("resurrectionCount",old?.optInt("resurrectionCount",0)?:0).put("reincarnationCount",old?.optInt("reincarnationCount",0)?:0).put("lastUpdatedDay",day)
         if(old!=null) for(i in a.length()-1 downTo 0) if(a.optJSONObject(i)?.optString("entityKey")==key)a.remove(i)
         a.put(e); while(a.length()>20000)a.remove(0); saveSoulLedger(p,a)
     }
