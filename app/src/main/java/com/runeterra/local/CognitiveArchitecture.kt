@@ -39,23 +39,106 @@ object SelfModelEngine {
 object MotivationEngine {
     private val names=listOf("survival","autonomy","belonging","mastery","justice","curiosity")
     private fun load(c:Context,a:String)=CognitiveStore.read(CognitiveStore.prefs(c),"${CognitiveStore.key(a)}_motives")
-    fun prepare(c:Context,a:String):String { val s=load(c,a);val d=s.optJSONObject("drives")?:JSONObject();val g=s.optJSONArray("goals")?:JSONArray()
-        val drives=names.joinToString("；"){"$it=${d.optInt(it,50)}/100"}
-        val goals=(0 until g.length()).mapNotNull{g.optJSONObject(it)}.filter{it.optString("status","active")=="active"}.sortedByDescending{it.optInt("priority",50)}.take(5).joinToString("\n"){ item -> val gn=item.optString("goal"); val pr=item.optInt("priority",50); val rs=item.optString("reason"); "- $gn（优先级$pr；缘由：$rs）" }.ifBlank{"尚未建立长期自主目标"}
-        return """【内在动机】
+
+    fun prepare(c:Context,a:String):String {
+        val s=load(c,a)
+        val d=s.optJSONObject("drives")?:JSONObject()
+        val g=s.optJSONArray("goals")?:JSONArray()
+        val drives=names.joinToString("；") { "$it=${d.optInt(it,50)}/100" }
+        val goals=(0 until g.length()).mapNotNull { g.optJSONObject(it) }
+            .filter { it.optString("status","active")=="active" }
+            .sortedByDescending { it.optInt("priority",50) }
+            .take(5)
+            .joinToString("\n") { item ->
+                val gn=item.optString("goal")
+                val pr=item.optInt("priority",50)
+                val rs=item.optString("reason")
+                val progress=item.optInt("progress",0)
+                val next=item.optString("next_step","")
+                "- $gn（优先级$pr；进展$progress/100；缘由：$rs；下一步：${next.ifBlank{"待判断"}}）"
+            }.ifBlank { "尚未建立长期自主目标" }
+        return """【长期目标与内在动机】
 驱动力：$drives
-自主目标：
+持续目标：
 $goals
-目标属于角色本人，可以主动产生、调整、搁置或放弃。""" }
-    fun capture(c:Context,a:String,day:Long,o:JSONObject?) { if(o==null)return;val p=CognitiveStore.prefs(c);val k=CognitiveStore.key(a);val s=load(c,a);val d=s.optJSONObject("drives")?:JSONObject()
-        names.forEach{if(!d.has(it))d.put(it,50)};val explicit=o.optJSONObject("motives")
-        if(explicit!=null)names.forEach{n->if(explicit.has(n))d.put(n,explicit.optInt(n,50).coerceIn(0,100))}
-        val goal=CognitiveStore.str(o,"new_goal").ifBlank{CognitiveStore.str(o,"goal")};val reason=CognitiveStore.str(o,"goal_reason").ifBlank{CognitiveStore.str(o,"reason")}
-        val intentValue=CognitiveStore.str(o,"intent")
-        if(explicit==null){val ev="$goal $reason $intentValue";val cues=mapOf("survival" to listOf("生存","饥饿","安全","危险"),"autonomy" to listOf("自由","独立","自主"),"belonging" to listOf("家人","朋友","帮助","关系"),"mastery" to listOf("学习","训练","技艺","变强"),"justice" to listOf("正义","不公","保护","守护"),"curiosity" to listOf("调查","探索","研究","真相"));cues.forEach{(n,ws)->if(ws.any(ev::contains))d.put(n,(d.optInt(n,50)+2).coerceAtMost(100))}}
-        val gs=s.optJSONArray("goals")?:JSONArray();if(goal.isNotBlank()){val current=(0 until gs.length()).mapNotNull{gs.optJSONObject(it)}.firstOrNull{it.optString("status","active")=="active"};if(current==null||current.optString("goal")!=goal){current?.put("status","superseded")?.put("closedDay",day);gs.put(JSONObject().put("goal",goal).put("reason",reason).put("priority",o.optInt("goal_priority",50).coerceIn(0,100)).put("status","active").put("createdDay",day))}else if(reason.isNotBlank())current.put("reason",reason)}
-        while(gs.length()>24)gs.remove(0);s.put("drives",d).put("goals",gs).put("updatedDay",day);p.edit().putString("${k}_motives",s.toString()).apply()
+必须维护目标连续性：短期意图、一次行动、临时需求不得自动取代长期目标。只有出现有事实依据的方向变化时才新增目标；可以同时维护多个目标，按优先级安排，不要每轮换目标。确实完成、搁置或放弃时，明确更新目标状态。"""
     }
+
+    fun capture(c:Context,a:String,day:Long,o:JSONObject?) {
+        if(o==null)return
+        val p=CognitiveStore.prefs(c)
+        val k=CognitiveStore.key(a)
+        val s=load(c,a)
+        val d=s.optJSONObject("drives")?:JSONObject()
+        names.forEach { if(!d.has(it))d.put(it,50) }
+        val explicit=o.optJSONObject("motives")
+        if(explicit!=null) names.forEach { n -> if(explicit.has(n))d.put(n,explicit.optInt(n,50).coerceIn(0,100)) }
+
+        val gs=s.optJSONArray("goals")?:JSONArray()
+        val active=(0 until gs.length()).mapNotNull { gs.optJSONObject(it) }
+            .filter { it.optString("status","active")=="active" }
+        val reportedGoal=CognitiveStore.str(o,"goal")
+        val requestedStatus=CognitiveStore.str(o,"goal_status").lowercase()
+        if(requestedStatus in setOf("completed","paused","abandoned")) {
+            val target=active.firstOrNull { reportedGoal.isNotBlank() && it.optString("goal")==reportedGoal }
+                ?: active.firstOrNull()
+            target?.put("status",requestedStatus)?.put("closedDay",day)
+        }
+
+        val proposal=CognitiveStore.str(o,"new_goal").ifBlank { CognitiveStore.str(o,"long_term_goal") }
+            .ifBlank { if(active.isEmpty()) reportedGoal else "" }
+        val reason=CognitiveStore.str(o,"goal_reason").ifBlank { CognitiveStore.str(o,"reason") }
+        val nextStep=CognitiveStore.str(o,"next_step",240)
+        val progress=if(o.has("goal_progress"))o.optInt("goal_progress",0).coerceIn(0,100) else -1
+        if(proposal.isNotBlank()) {
+            val existing=(0 until gs.length()).mapNotNull { gs.optJSONObject(it) }
+                .firstOrNull { it.optString("status","active")=="active" && it.optString("goal").equals(proposal,true) }
+            if(existing!=null) {
+                if(reason.isNotBlank())existing.put("reason",reason)
+                if(nextStep.isNotBlank())existing.put("next_step",nextStep)
+                if(progress>=0)existing.put("progress",progress)
+                existing.put("lastUpdatedDay",day)
+            } else {
+                val priority=o.optInt("goal_priority",50).coerceIn(0,100)
+                val currentActive=(0 until gs.length()).mapNotNull { gs.optJSONObject(it) }
+                    .filter { it.optString("status","active")=="active" }
+                val newStatus=if(currentActive.size<5) "active" else {
+                    val lowest=currentActive.minByOrNull { it.optInt("priority",50) }
+                    if(lowest!=null && priority>=lowest.optInt("priority",50)+12) {
+                        lowest.put("status","paused").put("pausedDay",day)
+                        "active"
+                    } else "candidate"
+                }
+                gs.put(JSONObject().put("goal",proposal).put("reason",reason)
+                    .put("priority",priority).put("status",newStatus).put("progress",progress.coerceAtLeast(0))
+                    .put("next_step",nextStep).put("createdDay",day).put("lastUpdatedDay",day))
+            }
+        } else if(nextStep.isNotBlank() || progress>=0) {
+            val current=active.maxByOrNull { it.optInt("priority",50) }
+            if(current!=null) {
+                if(nextStep.isNotBlank())current.put("next_step",nextStep)
+                if(progress>=0)current.put("progress",progress)
+                current.put("lastUpdatedDay",day)
+            }
+        }
+
+        if(explicit==null) {
+            val ev="$proposal $reason ${CognitiveStore.str(o,"intent")}"
+            val cues=mapOf(
+                "survival" to listOf("生存","饥饿","安全","危险"),
+                "autonomy" to listOf("自由","独立","自主"),
+                "belonging" to listOf("家人","朋友","帮助","关系"),
+                "mastery" to listOf("学习","训练","技艺","变强"),
+                "justice" to listOf("正义","不公","保护","守护"),
+                "curiosity" to listOf("调查","探索","研究","真相")
+            )
+            cues.forEach { (n,ws) -> if(ws.any(ev::contains))d.put(n,(d.optInt(n,50)+2).coerceAtMost(100)) }
+        }
+        while(gs.length()>24)gs.remove(0)
+        s.put("drives",d).put("goals",gs).put("updatedDay",day)
+        p.edit().putString("${k}_motives",s.toString()).apply()
+    }
+
     fun report(c:Context,a:String)=prepare(c,a)
 }
 
@@ -91,7 +174,7 @@ $recent
 ${SelfModelEngine.prepare(context,actorKey)}
 ${MotivationEngine.prepare(context,actorKey)}
 ${IdentityEvolutionEngine.prepare(context,actorKey)}
-区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向；不要每轮强行改变人格。每轮JSON除原有字段外必须包含：self_view（自我理解，简短字符串）、self_assessment（自我评价，简短字符串）、strengths（数组，最多3项）、limitations（数组，最多3项）、self_facts（有事实依据的数组，最多3项）、self_confidence（0至100整数）、motives（对象，survival/autonomy/belonging/mastery/justice/curiosity六项均为0至100整数）、new_goal（当前自主目标）、goal_reason（目标缘由）、goal_priority（0至100整数）、values（核心价值数组，最多5项）；identity_change和identity_change_reason仅在有真实经历支持重大变化时填写，否则留空。不输出隐藏思维链。"""
+区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向；不要每轮强行改变人格。每轮JSON除原有字段外必须包含：self_view（自我理解，简短字符串）、self_assessment（自我评价，简短字符串）、strengths（数组，最多3项）、limitations（数组，最多3项）、self_facts（有事实依据的数组，最多3项）、self_confidence（0至100整数）、motives（对象，survival/autonomy/belonging/mastery/justice/curiosity六项均为0至100整数）、new_goal（仅在确有新长期方向时填写，不要把短期意图当成长目标）、long_term_goal（可选长期目标）、goal_reason（目标缘由）、goal_priority（0至100整数）、goal_status（active/completed/paused/abandoned）、goal_progress（0至100整数）、next_step（目标下一步），values（核心价值数组，最多5项）；长期目标必须保持连续，不得每轮随意改写或覆盖；identity_change和identity_change_reason仅在有真实经历支持重大变化时填写，否则留空。不输出隐藏思维链。"""
         return originalPrompt+"\n\n"+add+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
     fun capture(context:Context,actorKey:String,day:Long,raw:String):Evaluation {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val obj=extractObject(raw);val thought=obj?.optString("thought").orEmpty().trim();val norm=normalize(thought)
         val prev=(maxOf(0,a.length()-6) until a.length()).mapNotNull{a.optJSONObject(it)}.map{normalize(it.optString("thought"))}.filter{it.isNotBlank()};val duplicate=norm.isNotBlank()&&prev.any{similarity(norm,it)>=0.88};val missing=thought.isBlank();val score=when{missing->0;duplicate->35;a.length()==0->70;else->90}
