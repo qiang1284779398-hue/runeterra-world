@@ -18,7 +18,7 @@ object WorldAIProvider {
  private const val ALIAS="runeterra_zhipu_aes"
  private const val ENDPOINT="https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
- fun isAvailable(context:Context)=isConfigured(context)||isBackendConfigured(context)||ResidentAI.isLoaded()
+ fun isAvailable(context:Context)=true // The bounded offline cognition engine is always available.
  private fun isBackendConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("cognitive_backend_url",null)?.isNotBlank()==true
  private fun isConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("key_data",null)?.isNotBlank()==true
 
@@ -215,9 +215,15 @@ object WorldAIProvider {
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
   val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
   val apiKey=try{decrypt(app)}catch(_:Throwable){""}
-  if(apiKey.isBlank() && backendUrl.isBlank()) {
-   if(ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
-   else callback("未配置云端API、认知后端，且本地模型未加载")
+  if(!actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
+   val learned=runCatching{AutonomousCognitionEngine.tryDecide(app,actorId,actorName,prompt)}.getOrNull()
+   if(!learned.isNullOrBlank()) {
+    callback(learned)
+    return
+   }
+  }
+  if(apiKey.isBlank() && backendUrl.isBlank() && !ResidentAI.isLoaded()) {
+   callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
    return
   }
   val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
@@ -237,7 +243,7 @@ object WorldAIProvider {
    }
    if(apiKey.isBlank()) {
     if(ResidentAI.isLoaded()) ResidentAI.askStructured(prompt,maxTokens,systemPrompt,callback)
-    else callback("认知后端连接失败，且未配置智谱直连或本地模型")
+    else callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
     return@thread
    }
    var output=""
@@ -255,6 +261,7 @@ object WorldAIProvider {
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
    }
    if(cloudFailed&&ResidentAI.isLoaded())ResidentAI.askStructured(prompt,maxTokens,systemPrompt){callback("【云端失败，回退本地】\n"+it)}
+   else if(cloudFailed)callback(AutonomousCognitionEngine.offlineFallback(app,actorId.orEmpty(),actorName.orEmpty(),prompt))
    else callback(output)
   }
  }
