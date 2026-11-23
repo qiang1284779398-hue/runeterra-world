@@ -41,7 +41,7 @@ object MotivationEngine {
     private fun load(c:Context,a:String)=CognitiveStore.read(CognitiveStore.prefs(c),"${CognitiveStore.key(a)}_motives")
     fun prepare(c:Context,a:String):String { val s=load(c,a);val d=s.optJSONObject("drives")?:JSONObject();val g=s.optJSONArray("goals")?:JSONArray()
         val drives=names.joinToString("；"){"$it=${d.optInt(it,50)}/100"}
-        val goals=(0 until g.length()).mapNotNull{g.optJSONObject(it)}.filter{it.optString("status","active")=="active"}.sortedByDescending{it.optInt("priority",50)}.take(5).joinToString("\n"){"- ${it.optString("goal")}（优先级${it.optInt("priority",50)}；缘由：${it.optString("reason")}）"}.ifBlank{"尚未建立长期自主目标"}
+        val goals=(0 until g.length()).mapNotNull{g.optJSONObject(it)}.filter{it.optString("status","active")=="active"}.sortedByDescending{it.optInt("priority",50)}.take(5).joinToString("\n"){ item -> val gn=item.optString("goal"); val pr=item.optInt("priority",50); val rs=item.optString("reason"); "- $gn（优先级$pr；缘由：$rs）" }.ifBlank{"尚未建立长期自主目标"}
         return """【内在动机】
 驱动力：$drives
 自主目标：
@@ -51,7 +51,8 @@ $goals
         names.forEach{if(!d.has(it))d.put(it,50)};val explicit=o.optJSONObject("motives")
         if(explicit!=null)names.forEach{n->if(explicit.has(n))d.put(n,explicit.optInt(n,50).coerceIn(0,100))}
         val goal=CognitiveStore.str(o,"new_goal").ifBlank{CognitiveStore.str(o,"goal")};val reason=CognitiveStore.str(o,"goal_reason").ifBlank{CognitiveStore.str(o,"reason")}
-        if(explicit==null){val ev="$goal $reason ${CognitiveStore.str(o,"intent")}";val cues=mapOf("survival" to listOf("生存","饥饿","安全","危险"),"autonomy" to listOf("自由","独立","自主"),"belonging" to listOf("家人","朋友","帮助","关系"),"mastery" to listOf("学习","训练","技艺","变强"),"justice" to listOf("正义","不公","保护","守护"),"curiosity" to listOf("调查","探索","研究","真相"));cues.forEach{(n,ws)->if(ws.any(ev::contains))d.put(n,(d.optInt(n,50)+2).coerceAtMost(100))}}
+        val intentValue=CognitiveStore.str(o,"intent")
+        if(explicit==null){val ev="$goal $reason $intentValue";val cues=mapOf("survival" to listOf("生存","饥饿","安全","危险"),"autonomy" to listOf("自由","独立","自主"),"belonging" to listOf("家人","朋友","帮助","关系"),"mastery" to listOf("学习","训练","技艺","变强"),"justice" to listOf("正义","不公","保护","守护"),"curiosity" to listOf("调查","探索","研究","真相"));cues.forEach{(n,ws)->if(ws.any(ev::contains))d.put(n,(d.optInt(n,50)+2).coerceAtMost(100))}}
         val gs=s.optJSONArray("goals")?:JSONArray();if(goal.isNotBlank()){val current=(0 until gs.length()).mapNotNull{gs.optJSONObject(it)}.firstOrNull{it.optString("status","active")=="active"};if(current==null||current.optString("goal")!=goal){current?.put("status","superseded")?.put("closedDay",day);gs.put(JSONObject().put("goal",goal).put("reason",reason).put("priority",o.optInt("goal_priority",50).coerceIn(0,100)).put("status","active").put("createdDay",day))}else if(reason.isNotBlank())current.put("reason",reason)}
         while(gs.length()>24)gs.remove(0);s.put("drives",d).put("goals",gs).put("updatedDay",day);p.edit().putString("${k}_motives",s.toString()).apply()
     }
@@ -82,7 +83,7 @@ object CognitiveArchitecture {
     private const val MAX_RAW=16000
     data class Evaluation(val duplicateThought:Boolean,val missingThought:Boolean,val continuityScore:Int,val note:String)
     fun prepare(context:Context,actorKey:String,day:Long,originalPrompt:String):String {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val episodes=readEpisodes(p,k);val reflection=p.getString("${k}_reflection","").orEmpty()
-        val recent=(maxOf(0,episodes.length()-8) until episodes.length()).mapNotNull{episodes.optJSONObject(it)}.joinToString("\n"){e->"第${e.optLong("day")}日：想法=${e.optString("thought").take(150)}；目标=${e.optString("goal").take(90)}；行动=${e.optString("action")}；结果=${e.optString("outcome").take(120)}"}.ifBlank{"尚无已完成的认知轮次。"}
+        val recent=(maxOf(0,episodes.length()-8) until episodes.length()).mapNotNull{episodes.optJSONObject(it)}.joinToString("\n"){e->val ed=e.optLong("day");val th=e.optString("thought").take(150);val go=e.optString("goal").take(90);val ac=e.optString("action");val ou=e.optString("outcome").take(120);"第${ed}日：想法=$th；目标=$go；行动=$ac；结果=$ou"}.ifBlank{"尚无已完成的认知轮次。"}
         val add="""【持续认知｜第$day日】
 长期反思：${reflection.ifBlank{"经历尚少，暂不形成长期结论。"}}
 近期经历：
@@ -100,7 +101,7 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         if(a.length()%5==0)ed.putString("${k}_reflection",buildReflection(a));ed.apply()
         return Evaluation(duplicate,missing,score,when{missing->"缺少人物 thought 字段";duplicate->"与近期想法高度重复";else->"自我模型、内在动机与身份状态已更新"})}
     fun recordOutcome(context:Context,actorKey:String,day:Long,action:String,outcome:String){val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val last=a.optJSONObject(a.length()-1)?:return;if(last.optLong("day",-1L)!=day)return;last.put("action",action.take(100)).put("outcome",outcome.take(500));p.edit().putString("${k}_episodes",a.toString()).apply()}
-    fun report(context:Context,actorKey:String):String{val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val e=CognitiveStore.read(p,"${k}_last_evaluation");return "认知轮次：${a.length()}\\n连续性评分：${e.optInt("continuityScore",-1)}/100\\n重复想法：${e.optBoolean("duplicateThought")}\\n长期反思：${p.getString("${k}_reflection","尚未生成").orEmpty()}\\n\\n"+SelfModelEngine.report(context,actorKey)+"\\n\\n"+MotivationEngine.report(context,actorKey)+"\\n\\n"+IdentityEvolutionEngine.report(context,actorKey)}
+    fun report(context:Context,actorKey:String):String{val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val e=CognitiveStore.read(p,"${k}_last_evaluation");val score=e.optInt("continuityScore",-1);val dup=e.optBoolean("duplicateThought");val reflection=p.getString("${k}_reflection","尚未生成").orEmpty();return "认知轮次：$a.length\n连续性评分：$score/100\n重复想法：$dup\n长期反思：$reflection\n\n"+SelfModelEngine.report(context,actorKey)+"\n\n"+MotivationEngine.report(context,actorKey)+"\n\n"+IdentityEvolutionEngine.report(context,actorKey)}
     private fun buildReflection(a:JSONArray):String{val r=(maxOf(0,a.length()-12) until a.length()).mapNotNull{a.optJSONObject(it)};val b=r.map{it.optString("belief")}.filter{it.isNotBlank()}.distinct().takeLast(4);val g=r.map{it.optString("goal")}.filter{it.isNotBlank()}.distinct().takeLast(4);val o=r.map{it.optString("outcome")}.filter{it.isNotBlank()}.takeLast(5);return buildString{if(b.isNotEmpty())append("信念轨迹：").append(b.joinToString(" → ")).append("。");if(g.isNotEmpty())append("目标轨迹：").append(g.joinToString(" → ")).append("。");if(o.isNotEmpty())append("行动后果：").append(o.joinToString("；")).append("。");if(isEmpty())append("目前经历不足以形成稳定反思。")}.take(1800)}
     private fun readEpisodes(p:android.content.SharedPreferences,k:String)=runCatching{JSONArray(p.getString("${k}_episodes","[]")?:"[]")}.getOrDefault(JSONArray())
     private fun extractObject(raw:String):JSONObject?{val t=raw.replace(Regex("(?is)<think>.*?</think>"),"").trim();for(s in t.indices)if(t[s]=='{'){var d=0;var q=false;var e=false;for(i in s until t.length){val c=t[i];if(q){if(e)e=false else if(c=='\\')e=true else if(c=='"')q=false}else when(c){'"'->q=true;'{'->d++;'}'->{d--;if(d==0)return runCatching{JSONObject(t.substring(s,i+1))}.getOrNull()}}}};return null}
