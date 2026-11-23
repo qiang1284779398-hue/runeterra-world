@@ -276,6 +276,32 @@ class ChatGPTWebActivity : Activity() {
                 return {index:index, length:body.length, preview:body.slice(-1200)};
               });
               const bodyLength = rootBodies.reduce((n,x)=>n+x.length,0);
+              // Last-resort extraction for simplified/login-like layouts where message
+              // containers are absent but the visible document still contains this turn.
+              // Only activate when the exact prompt sent by this app is present in body text.
+              if (!chosen && window.__runeterraLastPrompt) {
+                const promptText = String(window.__runeterraLastPrompt).trim();
+                for (let i = rootBodies.length - 1; i >= 0; i--) {
+                  const raw = rootBodies[i].preview;
+                  const fullRootText = (() => {
+                    try { return textOf(roots[i].body || roots[i].documentElement); }
+                    catch (_) { return raw || ''; }
+                  })();
+                  const promptAt = fullRootText.lastIndexOf(promptText);
+                  if (promptAt < 0) continue;
+                  let answer = fullRootText.slice(promptAt + promptText.length).trim();
+                  answer = answer
+                    .replace(/^[:：\\s|｜-]+/, '')
+                    .replace(/\\s*(ChatGPT\\s*是\\s*AI，可能会犯错。.*|ChatGPT\\s*is\\s*AI.*|与\\s*ChatGPT\\s*聊天.*)$/i, '')
+                    .trim();
+                  if (answer.length >= 2 && answer.length <= 20000 &&
+                      !/^(登录|Log in|Sign up|登录或注册)$/i.test(answer)) {
+                    chosen = {text:answer, el:null};
+                    method = 'document-text-after-exact-prompt';
+                    break;
+                  }
+                }
+              }
               const iframeInfo = Array.from(document.querySelectorAll('iframe')).map((f,index) => {
                 let body='', title='', url='', accessible=false;
                 try {
