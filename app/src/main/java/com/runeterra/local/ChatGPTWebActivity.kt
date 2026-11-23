@@ -1,13 +1,10 @@
 package com.runeterra.local
 
 import android.app.Activity
-import android.content.ClipboardManager
-import android.content.Context
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.ViewGroup
-import android.view.MotionEvent
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebView
@@ -74,16 +71,14 @@ class ChatGPTWebActivity : Activity() {
             setOnClickListener { sendPrompt() }
         }
         val read = Button(this).apply {
-            text = "读取最新回答"
-            setOnClickListener { readLatest(force = true) }
-        }
-        val copyRead = Button(this).apply {
-            text = "点复制读取"
-            setOnClickListener { clickChatGPTCopyButton() }
+            text = "直接提取回答"
+            setOnClickListener {
+                status.text = "已收到点击：正在从网页回答区域直接提取文本（不操作复制按钮、不读取剪贴板）……"
+                readLatest(force = true)
+            }
         }
         controls.addView(send, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        controls.addView(read, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        controls.addView(copyRead, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        controls.addView(read, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 2f))
         result = TextView(this).apply {
             text = "回答会显示在这里"
             textSize = 14f
@@ -99,89 +94,6 @@ class ChatGPTWebActivity : Activity() {
         web.loadUrl("https://chatgpt.com/")
     }
 
-
-    private fun clickChatGPTCopyButton() {
-        status.text = "已收到点击，正在定位网页复制按钮……"
-        Toast.makeText(this, "正在定位 ChatGPT 复制按钮", Toast.LENGTH_SHORT).show()
-        val script = """
-            (function() {
-              const roots=[], seen=new Set();
-              const addRoot=root=>{
-                if(!root||seen.has(root)) return;
-                seen.add(root); roots.push(root);
-                let els=[]; try{els=Array.from(root.querySelectorAll('*'));}catch(_){}
-                for(const el of els){try{if(el.shadowRoot)addRoot(el.shadowRoot);}catch(_){}}
-              };
-              addRoot(document);
-              const messages=[];
-              for(const root of roots){
-                try{messages.push(...Array.from(root.querySelectorAll('[data-message-author-role="assistant"]')));}catch(_){}
-              }
-              const message=messages[messages.length-1];
-              if(!message) return JSON.stringify({ok:false,reason:'没找到助手回答节点；请先让 ChatGPT 显示一条回答'});
-              const isCopy=b=>{
-                const label=[b.getAttribute('aria-label'),b.getAttribute('title'),b.getAttribute('data-testid'),b.innerText].join(' ');
-                return /copy|复制/i.test(label);
-              };
-              let button=null, node=message;
-              for(let depth=0;node&&depth<10&&!button;depth++,node=node.parentElement){
-                try{button=Array.from(node.querySelectorAll('button,[role="button"]')).find(isCopy)||null;}catch(_){}
-              }
-              if(!button){
-                const candidates=[];
-                for(const root of roots){try{candidates.push(...Array.from(root.querySelectorAll('button,[role="button"]')).filter(isCopy));}catch(_){}}
-                button=candidates[candidates.length-1]||null;
-              }
-              if(!button) return JSON.stringify({ok:false,reason:'找到回答，但页面当前没有可识别的复制按钮'});
-              button.scrollIntoView({block:'center',inline:'center',behavior:'instant'});
-              const r=button.getBoundingClientRect();
-              if(!r.width||!r.height) return JSON.stringify({ok:false,reason:'复制按钮存在，但当前不可见'});
-              return JSON.stringify({ok:true,x:r.left+r.width/2,y:r.top+r.height/2,label:button.getAttribute('aria-label')||button.title||button.innerText||'复制'});
-            })();
-        """.trimIndent()
-        try {
-            web.evaluateJavascript(script) { raw ->
-                val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
-                val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-                if (!data.optBoolean("ok")) {
-                    status.text = data.optString("reason", "定位复制按钮失败")
-                    Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
-                    return@evaluateJavascript
-                }
-                val x = (data.optDouble("x") * web.scale).toFloat()
-                val y = (data.optDouble("y") * web.scale).toFloat()
-                status.text = "已定位复制按钮，正在发送 WebView 触摸事件……"
-                web.post {
-                    val downTime = android.os.SystemClock.uptimeMillis()
-                    val down = MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0)
-                    val up = MotionEvent.obtain(downTime, downTime + 90, MotionEvent.ACTION_UP, x, y, 0)
-                    web.dispatchTouchEvent(down)
-                    web.dispatchTouchEvent(up)
-                    down.recycle()
-                    up.recycle()
-                    status.text = "已触发网页触摸，正在检查剪贴板……"
-                    handler.postDelayed({
-                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = clipboard.primaryClip
-                        val copied = if (clip != null && clip.itemCount > 0) {
-                            clip.getItemAt(0).coerceToText(this)?.toString().orEmpty()
-                        } else ""
-                        if (copied.isNotBlank()) {
-                            result.text = copied
-                            lastText = copied
-                            status.text = "读取成功：" + copied.length + " 字符"
-                        } else {
-                            status.text = "触摸事件已发送，但剪贴板仍为空。请改用“读取最新回答”验证网页正文读取。"
-                            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
-                        }
-                    }, 700)
-                }
-            }
-        } catch (e: Exception) {
-            status.text = "复制按钮操作异常：" + (e.message ?: e.javaClass.simpleName)
-            Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
-        }
-    }
 
     private fun sendPrompt() {
         val message = prompt.text?.toString()?.trim().orEmpty()
