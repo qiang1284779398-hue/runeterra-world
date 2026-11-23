@@ -757,6 +757,11 @@ class ChatGPTWebActivity : Activity() {
             val method = data.optString("method", "none")
             val isNewAnswer = count > baselineAssistantCount || (text.isNotBlank() && text != baseline)
             val currentAnswerDetected = promptPresent && text.isNotBlank() && isNewAnswer
+            // If the current prompt is present and the transcript already contains substantial
+            // content after it, the page has likely answered even when role selectors fail.
+            // Keep extracting that response instead of sending a duplicate request.
+            val hasVisibleAnswerCandidate = pairedAnswer.isNotBlank() || domAnswer.isNotBlank() ||
+                (promptPresent && diagnosticText.length > submittedPrompt.length + 20)
 
             if (text.isNotBlank() && (force || currentAnswerDetected)) {
                 result.text = text
@@ -820,10 +825,10 @@ class ChatGPTWebActivity : Activity() {
             } else if (!force && !resendInProgress && resendAttempts < maxResendAttempts &&
                 requestStartedAt > 0L &&
                 System.currentTimeMillis() - requestStartedAt >= currentRetryThresholdMs &&
-                (!promptPresent || !currentAnswerDetected)) {
+                (!promptPresent || (!currentAnswerDetected && !hasVisibleAnswerCandidate))) {
                 status.text = "超过历史平均耗时阈值（" + (currentRetryThresholdMs / 1000) +
                     "秒），提问命中=" + promptPresent + "，答案命中=" + currentAnswerDetected +
-                    "；启动自动重发。"
+                    "，页面已有回答内容=" + hasVisibleAnswerCandidate + "；启动自动重发。"
                 resendCurrentPrompt()
             } else if (!force && requestStartedAt > 0L &&
                 System.currentTimeMillis() - requestStartedAt > maxPollDurationMs) {
