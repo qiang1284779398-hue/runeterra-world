@@ -228,32 +228,78 @@ class MainActivity : Activity() {
     private fun showThinkingPoolManager() {
         fun showCategory(heroes: Boolean) {
             val entries = WorldEngine.thinkingPoolEntries(this, heroes)
+            val categoryTitle = if (heroes) "英雄思考池" else "居民思考池"
             if (entries.isEmpty()) {
-                AlertDialog.Builder(this).setTitle(if (heroes) "英雄思考池" else "居民思考池")
-                    .setMessage("目前没有可加入的在世人物。").setPositiveButton("关闭", null).show()
+                AlertDialog.Builder(this).setTitle(categoryTitle)
+                    .setMessage("目前没有可加入的在世人物。")
+                    .setPositiveButton("关闭", null).show()
                 return
             }
+            val density = resources.displayMetrics.density
+            fun dp(value: Int) = (value * density).toInt()
             val selected = WorldEngine.selectedThinkingPool(this, heroes).toMutableSet()
-            val labels = entries.map { it.second }.toTypedArray()
-            val checked = BooleanArray(entries.size) { entries[it].first in selected }
-            AlertDialog.Builder(this)
-                .setTitle(if (heroes) "选择参与自主思考的英雄" else "选择参与自主思考的居民")
-                .setMessage("只勾选你希望主动进行 AI 思考的人物。未勾选者仍正常生活、经历世界事件，但不会进入主动思考轮询。")
-                .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
-                    val key = entries[which].first
-                    if (isChecked) selected.add(key) else selected.remove(key)
+            val list = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(8), dp(16), dp(8))
+            }
+            list.addView(TextView(this).apply {
+                text = "勾选需要主动参与 AI 思考的人物。未勾选者仍会正常生活并经历世界事件。"
+                textSize = 14f
+                setTextColor(Color.rgb(190, 205, 219))
+                setPadding(dp(4), dp(8), dp(4), dp(12))
+            })
+            entries.forEach { entry ->
+                val check = android.widget.CheckBox(this).apply {
+                    text = entry.second
+                    textSize = 15f
+                    setTextColor(Color.rgb(239, 243, 248))
+                    isChecked = entry.first in selected
+                    minHeight = dp(52)
+                    setPadding(dp(8), dp(8), dp(8), dp(8))
+                    buttonTintList = android.content.content.res.ColorStateList.valueOf(Color.rgb(221, 187, 114))
+                    background = GradientDrawable().apply {
+                        setColor(Color.rgb(25, 43, 64))
+                        cornerRadius = dp(10).toFloat()
+                        setStroke(dp(1), Color.rgb(61, 86, 111))
+                    }
+                    setOnCheckedChangeListener { _, isChecked ->
+                        if (isChecked) selected.add(entry.first) else selected.remove(entry.first)
+                    }
                 }
-                .setNeutralButton("全不选") { _, _ ->
-                    WorldEngine.setThinkingPool(this, heroes, emptySet())
-                    Toast.makeText(this, "已清空该类人物的主动思考池", Toast.LENGTH_SHORT).show()
-                }
+                list.addView(check, LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(7) })
+            }
+            val scroll = ScrollView(this).apply {
+                isVerticalScrollBarEnabled = true
+                addView(list, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            val maxHeight = (resources.displayMetrics.heightPixels * 0.62f).toInt()
+            val dialog = AlertDialog.Builder(this)
+                .setTitle("选择参与自主思考的" + if (heroes) "英雄" else "居民")
+                .setView(scroll)
+                .setNeutralButton("全不选", null)
                 .setNegativeButton("取消", null)
-                .setPositiveButton("保存选择") { _, _ ->
-                    WorldEngine.setThinkingPool(this, heroes, selected)
+                .setPositiveButton("保存选择", null)
+                .create()
+            dialog.setOnShowListener {
+                scroll.layoutParams = scroll.layoutParams.apply {
+                    height = minOf(maxHeight, dp(560))
+                }
+                dialog.getButton(AlertDialog.BUTTON_NEUTRAL)?.setOnClickListener {
+                    selected.clear()
+                    for (index in 0 until list.childCount) {
+                        (list.getChildAt(index) as? android.widget.CheckBox)?.isChecked = false
+                    }
+                }
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE)?.setOnClickListener {
+                    WorldEngine.setThinkingPool(this, heroes, selected.toSet())
                     Toast.makeText(this, "已保存：当前选择 " + selected.size + " 位", Toast.LENGTH_SHORT).show()
+                    dialog.dismiss()
                     refresh()
                 }
-                .show()
+            }
+            dialog.show()
         }
         AlertDialog.Builder(this)
             .setTitle("自主思考池管理")
@@ -264,7 +310,9 @@ class MainActivity : Activity() {
             .setNegativeButton("关闭", null)
             .show()
     }
+
     private fun showObservationConsole() {
+        fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
         var kind="英雄"
         var selectedKey=""
         val handler=Handler(Looper.getMainLooper())
