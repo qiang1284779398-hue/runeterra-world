@@ -2841,17 +2841,12 @@ private fun craftBonus(region:String):Int = when(region) {
         return "AI调度：$state\n可调度人物：英雄${heroes}位／居民${residents}位\n推理统计：成功${success}次／失败${failure}次\n最近对象：${last}；耗时${"%.1f".format(elapsed/1000.0)}秒\n最近结果：${result}"
     }
 
-    /** Fairly alternates heroes and residents. A busy model does not consume or skip a turn. */
+    /** Growth observation mode: only three fixed heroes receive external AI turns. */
+    private val GROWTH_OBSERVATION_HEROES = setOf("盖伦", "拉克丝", "阿卡丽")
+
     fun requestNextLocalThinking(context:Context) {
         if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
-        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-        val hasResidents=people(p).any { it.alive }
-        val hasHeroes=heroAgents(p).any { it.alive }
-        if(!hasResidents && !hasHeroes) return
-        val nextSide=p.getInt(KEY_AI_NEXT_SIDE,0)
-        val heroTurn=when { hasHeroes && hasResidents -> nextSide==0; hasHeroes -> true; else -> false }
-        if(hasHeroes && hasResidents) p.edit().putInt(KEY_AI_NEXT_SIDE,if(heroTurn) 1 else 0).apply()
-        if(heroTurn) requestLocalHeroThinking(context) else requestLocalResidentThinking(context)
+        requestLocalHeroThinking(context)
     }
 
     /**
@@ -3121,14 +3116,13 @@ private fun craftBonus(region:String):Int = when(region) {
         if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
-        // Every living hero remains an individual agent, including recluses, sealed/dormant
-        // figures and characters not publicly active in this era. Their condition constrains
-        // what they can perceive or do; it must not silently remove their inner life.
-        val active=all.filter { it.alive }
+        // Only the fixed observation cohort is sent to Zhipu; all other heroes and residents
+        // remain in the world simulation and their existing records are preserved.
+        val active=all.filter { it.alive && it.name in GROWTH_OBSERVATION_HEROES }
         if(active.isEmpty()) return
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val day=p.getLong(KEY_DAY,1L)
-        // Strict round-robin prevents one invalid/unfinished urgent request from starving every other hero.
+        // Round-robin among the three selected heroes only.
         val hero=active[cursor]
         p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
