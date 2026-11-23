@@ -23,6 +23,8 @@ import kotlin.concurrent.thread
 class ZhipuActivity : Activity() {
     private lateinit var keyInput: EditText
     private lateinit var modelInput: EditText
+    private lateinit var backendUrlInput: EditText
+    private lateinit var backendTokenInput: EditText
     private lateinit var output: TextView
     private val prefs by lazy { getSharedPreferences("zhipu_secure", MODE_PRIVATE) }
     private val alias = "runeterra_zhipu_aes"
@@ -50,6 +52,16 @@ class ZhipuActivity : Activity() {
         modelInput = EditText(this).apply {
             setText(prefs.getString("model", "glm-5.3-flashx"))
             hint = "模型名称，例如 glm-5.3-flashx"
+            setSingleLine(true)
+        }
+        backendUrlInput = EditText(this).apply {
+            setText(prefs.getString("cognitive_backend_url", ""))
+            hint = "认知后端地址，例如 https://你的服务域名"
+            setSingleLine(true)
+        }
+        backendTokenInput = EditText(this).apply {
+            hint = "认知后端访问令牌（可留空）"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             setSingleLine(true)
         }
         output = TextView(this).apply {
@@ -80,9 +92,37 @@ class ZhipuActivity : Activity() {
         root.addView(keyInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         root.addView(modelInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         root.addView(save)
+        root.addView(TextView(this).apply {
+            text = "五大认知框架后端（部署完成后填写）"
+            textSize = 16f
+            setPadding(0, 18, 0, 4)
+        })
+        root.addView(backendUrlInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        root.addView(backendTokenInput, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        root.addView(Button(this).apply {
+            text = "保存五大认知框架后端地址 / 令牌"
+            setOnClickListener { saveBackendSettings() }
+        })
         root.addView(test)
         root.addView(output, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         setContentView(root)
+    }
+
+    private fun saveBackendSettings() {
+        val url = backendUrlInput.text.toString().trim().trimEnd('/')
+        val token = backendTokenInput.text.toString().trim()
+        val editor = prefs.edit().putString("cognitive_backend_url", url)
+        if (token.isNotBlank()) {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey())
+            val encrypted = cipher.doFinal(token.toByteArray(Charsets.UTF_8))
+            editor.putString("cognitive_backend_token_data", Base64.encodeToString(encrypted, Base64.NO_WRAP))
+                .putString("cognitive_backend_token_iv", Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+        }
+        editor.apply()
+        backendTokenInput.setText("")
+        output.text = if (url.isBlank()) "已关闭认知后端。人物推理将直接调用智谱 GLM。" else
+            "已保存认知后端地址。后端必须已部署并配置 Letta、智谱、LangGraph、DeepEval 和 MASEval；连接失败时会自动回退直连智谱。"
     }
 
     private fun secretKey(): SecretKey {
