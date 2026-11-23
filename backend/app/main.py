@@ -103,14 +103,13 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
 
 def letta_recall(actor_key: str, display_name: str, query: str) -> str:
     world_key = actor_key.split(":", 1)[0]
-    with letta_lock(world_key):\n        agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
     payload = {
         "messages": [{
             "role": "user",
             "content": (
                 f"只检索角色ID={actor_key}的记忆，不得引用其他角色经历。"
                 "作为长期记忆管理员，请检索与当前情境有关的经历、人物关系、承诺、目标和教训。"
-                "只返回有依据的记忆；没有就明确说没有。\n当前情境：\n" + query[:10000]
+                "只返回有依据的记忆；没有就明确说没有。\\n当前情境：\\n" + query[:10000]
             ),
         }],
         "streaming": False,
@@ -120,20 +119,20 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
         with letta_lock(world_key):
             agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
             response = httpx.post(
-            f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
-            json=payload,
-            headers=letta_headers(),
-            timeout=120,
-        )
-        response.raise_for_status()
-        messages = response.json().get("messages", [])
+                f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
+                json=payload,
+                headers=letta_headers(),
+                timeout=120,
+            )
+            response.raise_for_status()
+            messages = response.json().get("messages", [])
         texts = []
         for message in messages:
             if message.get("message_type") == "assistant_message":
                 content = message.get("content", "")
                 if isinstance(content, str) and content.strip():
                     texts.append(content.strip())
-        return "\n".join(texts)[-12000:] or "Letta 暂无可用记忆摘要。"
+        return "\\n".join(texts)[-12000:] or "Letta 暂无可用记忆摘要。"
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Letta memory request failed: {exc}") from exc
 
@@ -146,7 +145,7 @@ def letta_store_experience(actor_key: str, display_name: str, day: int, experien
             "content": (
                 f"只允许写入角色ID={actor_key}的独立记忆空间。"
                 "请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
-                f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\n"
+                f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\\n"
                 + experience[:10000]
             ),
         }],
@@ -157,14 +156,15 @@ def letta_store_experience(actor_key: str, display_name: str, day: int, experien
         with letta_lock(world_key):
             agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
             response = httpx.post(
-            f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
-            json=payload,
-            headers=letta_headers(),
-            timeout=120,
-        )
-        response.raise_for_status()
+                f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
+                json=payload,
+                headers=letta_headers(),
+                timeout=120,
+            )
+            response.raise_for_status()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Letta memory write failed: {exc}") from exc
+
 
 class ThinkRequest(BaseModel):
     world_id: str = Field(min_length=1, max_length=100)
