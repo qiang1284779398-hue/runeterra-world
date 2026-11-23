@@ -114,6 +114,11 @@ class ChatGPTWebActivity : Activity() {
 
 
     private fun sendPrompt() {
+        if (polling) {
+            status.text = "上一条网页任务仍在运行，暂不覆盖当前请求。"
+            Toast.makeText(this, "请等待当前任务完成", Toast.LENGTH_SHORT).show()
+            return
+        }
         val message = prompt.text?.toString()?.trim().orEmpty()
         if (message.isEmpty()) {
             worldRequestCallback?.invoke("【ChatGPT网页桥接失败】提问内容为空。")
@@ -121,6 +126,29 @@ class ChatGPTWebActivity : Activity() {
             Toast.makeText(this, "先输入要发送的内容", Toast.LENGTH_SHORT).show()
             return
         }
+        activePromptText = message
+        requestStartedAt = System.currentTimeMillis()
+        currentRetryThresholdMs = averageSuccessfulDurationMs() + 10_000L
+        resendAttempts = 0
+        resendInProgress = false
+        baseline = ""
+        lastText = ""
+        stableCount = 0
+        submitPromptMessage(message, isRetry = false)
+    }
+
+    private fun resendCurrentPrompt() {
+        if (!polling || activePromptText.isBlank() || resendInProgress ||
+            resendAttempts >= maxResendAttempts) return
+        resendAttempts++
+        resendInProgress = true
+        status.text = "已超过历史平均耗时 + 10 秒（" +
+            (currentRetryThresholdMs / 1000) + " 秒），本轮提问或回答仍未可靠定位；正在自动重发（" +
+            resendAttempts + "/" + maxResendAttempts + "）……"
+        submitPromptMessage(activePromptText, isRetry = true)
+    }
+
+    private fun submitPromptMessage(message: String, isRetry: Boolean) {
         val quoted = JSONObject.quote(message)
         web.evaluateJavascript("window.__runeterraLastPrompt = " + quoted + ";", null)
         val script = """
@@ -161,8 +189,6 @@ class ChatGPTWebActivity : Activity() {
               }
               box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               box.dispatchEvent(new Event('change', {bubbles:true}));
-              // ChatGPT mobile UI may update the send button asynchronously after input.
-              // Wait for the real enabled send control instead of clicking after a fixed 250ms.
               window.__runeterraSendStatus = 'waiting';
               let attempts = 0;
               const sendTimer = setInterval(() => {
@@ -192,7 +218,6 @@ class ChatGPTWebActivity : Activity() {
                 }
                 if (attempts >= 40) {
                   clearInterval(sendTimer);
-                  // Last resort: submit with Enter only after the UI had time to process input.
                   box.focus();
                   box.dispatchEvent(new KeyboardEvent('keydown', {
                     key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
@@ -210,21 +235,63 @@ class ChatGPTWebActivity : Activity() {
             val parsed = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val obj = try { JSONObject(parsed ?: "{}") } catch (_: Exception) { JSONObject() }
             if (obj.optBoolean("ok")) {
-                baseline = obj.optString("baselineText", lastText)
-                baselineAssistantCount = obj.optInt("baselineCount", 0)
-                lastText = ""
-                stableCount = 0
-                pollStartedAt = System.currentTimeMillis()
-                result.text = "已触发发送，正在等待本轮新回答……"
-                status.text = obj.optString("reason") + "；发送前已有回答数=" + baselineAssistantCount
-                startPolling()
+                if (!isRetry) {
+                    baseline = obj.optString("baselineText", lastText)
+                    baselineAssistantCount = obj.optInt("baselineCount", 0)
+                    lastText = ""
+                    stableCount = 0
+                    pollStartedAt = requestStartedAt
+                    result.text = "已触发发送，正在等待本轮新回答……"
+                    status.text = obj.optString("reason") + "；发送前已有回答数=" + baselineAssistantCount +
+                        "；历史平均耗时=" + (averageSuccessfulDurationMs() / 1000) +
+                        "秒；自动重发阈值=" + (currentRetryThresholdMs / 1000) + "秒"
+                    startPolling()
+                } else {
+                    resendInProgress = false
+                    status.text = "自动重发请求已提交；继续检测当前提问与回答，重发次数=" + resendAttempts
+                }
             } else {
-                status.text = obj.optString("reason", "发送失败")
-                worldRequestCallback?.invoke("【ChatGPT网页发送失败】" + status.text)
-                worldRequestCallback = null
+                if (isRetry) {
+                    resendInProgress = false
+                    status.text = "自动重发未能提交：" + obj.optString("reason", "未知原因") +
+                        "；将继续监测，等待最终超时保护。"
+                } else {
+                    status.text = obj.optString("reason", "发送失败")
+                    worldRequestCallback?.invoke("【ChatGPT网页发送失败】" + status.text)
+                    worldRequestCallback = null
+                    activePromptText = ""
+                    requestStartedAt = 0L
+                }
                 Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    private val timingPrefs by lazy {
+        getSharedPreferences("runeterra_chatgpt_timing", MODE_PRIVATE)
+    }
+
+    private fun recentSuccessfulDurations(): List<Long> {
+        val stored = timingPrefs.getString("recent_response_durations_ms", "[]") ?: "[]"
+        return runCatching {
+            val array = org.json.JSONArray(stored)
+            (0 until array.length()).mapNotNull { index ->
+                array.optLong(index, -1L).takeIf { it in 1_000L..maxPollDurationMs }
+            }.takeLast(10)
+        }.getOrDefault(emptyList())
+    }
+
+    private fun averageSuccessfulDurationMs(): Long {
+        val values = recentSuccessfulDurations()
+        return if (values.isEmpty()) 60_000L else values.average().toLong()
+    }
+
+    private fun recordSuccessfulDuration(durationMs: Long) {
+        if (durationMs !in 1_000L..maxPollDurationMs) return
+        val values = (recentSuccessfulDurations() + durationMs).takeLast(10)
+        val array = org.json.JSONArray()
+        values.forEach { array.put(it) }
+        timingPrefs.edit().putString("recent_response_durations_ms", array.toString()).apply()
     }
 
     private fun startPolling() {
