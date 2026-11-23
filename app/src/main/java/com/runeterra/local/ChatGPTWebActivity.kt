@@ -14,6 +14,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 
@@ -187,31 +188,24 @@ class ChatGPTWebActivity : Activity() {
         }
     }
 
-    private fun extractLatestAnswerFromDiagnostic(raw: String, submittedPrompt: String): String {
-        if (raw.isBlank() || submittedPrompt.isBlank()) return ""
-        val normalized = raw.replace("\r", "").replace('\u00a0', ' ')
-            .replace(Regex("[ \t]+"), " ")
-            .replace(Regex("\n{3,}"), "\n\n")
-            .trim()
-        val prompt = submittedPrompt.replace("\r", "").trim()
-        if (prompt.isEmpty()) return ""
-
-        // Prefer an exact whole-line prompt match so earlier conversation history
-        // cannot leak into the extracted answer.
-        val lines = normalized.split('\n')
-        var offset = 0
-        var promptEnd = -1
-        for (line in lines) {
-            if (line.trim() == prompt) promptEnd = offset + line.length
-            offset += line.length + 1
+    private fun extractLatestAnswerFromMessages(messages: JSONArray?): String {
+        if (messages == null || messages.length() == 0) return ""
+        var lastUserIndex = -1
+        var lastAssistantIndex = -1
+        var lastAssistantText = ""
+        for (i in 0 until messages.length()) {
+            val item = messages.optJSONObject(i) ?: continue
+            val role = item.optString("role").lowercase()
+            val body = item.optString("text").trim()
+            if (role == "user") {
+                lastUserIndex = i
+            } else if (role == "assistant" && body.isNotBlank()) {
+                lastAssistantIndex = i
+                lastAssistantText = body
+            }
         }
-        if (promptEnd < 0) {
-            val at = normalized.lastIndexOf(prompt)
-            if (at < 0) return ""
-            promptEnd = at + prompt.length
-        }
-
-        var answer = normalized.substring(promptEnd).trim()
+        if (lastAssistantIndex <= lastUserIndex) return ""
+        var answer = lastAssistantText
         val footerMarkers = listOf(
             "ChatGPT 是 AI，可能会犯错", "ChatGPT是AI，可能会犯错",
             "ChatGPT may make mistakes", "ChatGPT can make mistakes",
@@ -221,14 +215,12 @@ class ChatGPTWebActivity : Activity() {
         val footerAt = footerMarkers.map { answer.indexOf(it, ignoreCase = true) }
             .filter { it >= 0 }.minOrNull()
         if (footerAt != null) answer = answer.substring(0, footerAt)
-
         return answer.lineSequence()
-            .map { it.trim() }
+            .map { it.trimEnd() }
             .filterNot { line ->
-                line.isBlank() || line.equals("与 ChatGPT 聊天", true) ||
-                    line.equals("Message ChatGPT", true) ||
-                    line.equals("发送消息给 ChatGPT", true) ||
-                    line.equals("ChatGPT", true)
+                line.trim().equals("与 ChatGPT 聊天", true) ||
+                    line.trim().equals("Message ChatGPT", true) ||
+                    line.trim().equals("发送消息给 ChatGPT", true)
             }
             .joinToString("\n")
             .replace(Regex("\n{3,}"), "\n\n")
@@ -266,6 +258,26 @@ class ChatGPTWebActivity : Activity() {
                 .replace(/\n{3,}/g, '\n\n').trim();
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
               const roleSelector = '[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]';
+              const messageSelector = '[data-message-author-role="user"], [data-message-author-role="assistant"], [data-author="user"], [data-author="assistant"], [data-role="user"], [data-role="assistant"]';
+              const diagnosticMessages = [];
+              const seenMessages = new Set();
+              for (const root of roots) {
+                try {
+                  for (const node of root.querySelectorAll(messageSelector)) {
+                    if (!visible(node) || seenMessages.has(node)) continue;
+                    seenMessages.add(node);
+                    const role = (node.getAttribute('data-message-author-role') ||
+                      node.getAttribute('data-author') || node.getAttribute('data-role') || '').toLowerCase();
+                    const clone = node.cloneNode(true);
+                    clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"], [data-testid*="feedback"], [data-testid*="toolbar"]').forEach(n => n.remove());
+                    const body = clean(clone.innerText || clone.textContent || '');
+                    if ((role === 'user' || role === 'assistant') && body) {
+                      diagnosticMessages.push({role: role, text: body});
+                    }
+                  }
+                } catch (_) {}
+              }
+
               const turns = [];
               for (const root of roots) {
                 try {
@@ -354,7 +366,8 @@ class ChatGPTWebActivity : Activity() {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
               return JSON.stringify({
-                text: answer, submittedPrompt: prompt, streaming: stop, assistantCount: assistantCount,
+                text: answer, submittedPrompt: prompt, diagnosticMessages: diagnosticMessages,
+                streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
                 bodyPreview: previews.join(' | ').slice(-1200),
@@ -371,14 +384,9 @@ class ChatGPTWebActivity : Activity() {
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
             // Parse the page diagnostic transcript, not the assistant DOM selector.
             // It contains the visible conversation in order: user prompt, then assistant answer.
-            val submittedPrompt = data.optString("submittedPrompt").ifBlank {
-                prompt.text?.toString().orEmpty()
-            }.trim()
-            val diagnosticText = data.optString("diagnosticText")
-            // The diagnostic transcript is the sole source of truth. Find the latest
-            // standalone occurrence of the exact submitted prompt, then keep only what
-            // follows it; previous page content and the user's prompt are excluded.
-            var text = extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
+            // Use message-role metadata. Works for app-sent and page-manually-sent prompts.
+            val diagnosticMessages = data.optJSONArray("diagnosticMessages")
+            var text = extractLatestAnswerFromMessages(diagnosticMessages)
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
             val turns = data.optInt("turnCount", 0)
