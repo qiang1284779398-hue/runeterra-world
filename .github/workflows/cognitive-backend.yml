@@ -1,0 +1,41 @@
+name: Cognitive Backend
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'backend/**'
+      - '.gitmodules'
+      - '.github/workflows/cognitive-backend.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout including Generative Agents upstream source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: Install cognitive backend and all framework dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      - name: Verify pinned Stanford Generative Agents source
+        run: test -f backend/vendor/generative_agents/README.md && test -f backend/vendor/generative_agents/LICENSE
+      - name: Run backend integration smoke tests
+        working-directory: backend
+        env:
+          RUNETERRA_DB: /tmp/runeterra-ci.db
+          LANGGRAPH_STRICT_MSGPACK: 'true'
+        run: pytest -q
