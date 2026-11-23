@@ -81,8 +81,31 @@ class MainActivity : Activity() {
             text = "智谱 GLM 云端 AI / API 设置与连接测试"
             setOnClickListener { startActivity(Intent(this@MainActivity, ZhipuActivity::class.java)) }
         }
+        val worldAiProvider = Button(this).apply {
+            val providerPrefs = getSharedPreferences("zhipu_secure", MODE_PRIVATE)
+            fun refreshProviderLabel() {
+                text = if (providerPrefs.getString("world_ai_provider", "zhipu") == "chatgpt")
+                    "世界人物 AI 方案：ChatGPT 网页会话"
+                else "世界人物 AI 方案：智谱 GLM"
+            }
+            refreshProviderLabel()
+            setOnClickListener {
+                val current = if (providerPrefs.getString("world_ai_provider", "zhipu") == "chatgpt") 1 else 0
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("选择世界人物 AI 推理方案")
+                    .setSingleChoiceItems(arrayOf("智谱 GLM（API，后台直连）", "ChatGPT（网页会话，需保持网页桥接可用）"), current) { dialog, which ->
+                        providerPrefs.edit().putString("world_ai_provider", if (which == 1) "chatgpt" else "zhipu").apply()
+                        refreshProviderLabel()
+                        Toast.makeText(this@MainActivity, if (which == 1)
+                            "已切换 ChatGPT。请打开 ChatGPT 网页 AI 页面并登录。" else "已切换智谱 GLM。", Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                    }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+        }
         val gptWebTest = Button(this).apply {
-            text = "GPT 网页爬虫 / 自动收发测试"
+            text = "ChatGPT 网页 AI 登录 / 世界推理桥接"
             setOnClickListener {
                 startActivity(Intent(this@MainActivity, ChatGPTWebActivity::class.java))
             }
@@ -109,7 +132,7 @@ class MainActivity : Activity() {
             setOnClickListener { showResidentDirectory() }
         }
         log = TextView(this).apply { textSize = 14f; setPadding(0, 20, 0, 0) }
-        listOf(title, status, localModel, unloadAI, testAI, aiDiagnostics, deepSeek, zhipu, gptWebTest, gptWebLog, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
+        listOf(title, status, localModel, unloadAI, testAI, aiDiagnostics, deepSeek, zhipu, worldAiProvider, gptWebTest, gptWebLog, observation, biographies, start, pause, step, heavenly, timeline, lore, heroes, lineages, ecology, fauna, heroRelations, factions, settlements, organizations, caravans, households, reset, log).forEach {
             root.addView(it, ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         setContentView(root)
