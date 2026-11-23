@@ -47,6 +47,9 @@ object ChatGPTWorldBridge {
 
     fun queuedCount(): Int = synchronized(lock) { queue.size + if (activeRequest == null) 0 else 1 }
 
+    /** Whether the signed-in ChatGPT WebView currently owns the request sender. */
+    fun isAttached(): Boolean = synchronized(lock) { sender != null }
+
     private fun dispatchNext() {
         val pair = synchronized(lock) {
             val handler = sender ?: return
