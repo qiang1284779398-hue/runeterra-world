@@ -238,7 +238,9 @@ object WorldAIProvider {
   val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
   val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
   val apiKey=try{decrypt(app)}catch(_:Throwable){""}
-  if(!actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
+  // Cloud-enabled observation turns must actually reach Zhipu/backend.
+  // Learned local policies are a fallback only; they must never silently bypass the configured model.
+  if(apiKey.isBlank() && backendUrl.isBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
    val learned=runCatching{AutonomousCognitionEngine.tryDecide(app,actorId,actorName,prompt)}.getOrNull()
    if(!learned.isNullOrBlank()) {
     callback(learned)
