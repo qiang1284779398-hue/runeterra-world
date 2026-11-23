@@ -188,6 +188,24 @@ $recent
         store(c).edit().putString("${k}_evaluation", evaluation.toString()).apply()
     }
 
+    fun recordWorldEvent(c: Context, actor: String, day: Long, action: String, outcome: String) {
+        val k = actorKey(actor)
+        val memory = read(c, "${k}_memory")
+        val episodes = array(memory, "episodes")
+        appendBounded(episodes, JSONObject().put("day", day)
+            .put("summary", clean("已验证行动：$action；世界结果：$outcome", 900)), MAX_MEMORY)
+        memory.put("episodes", episodes).put("updatedDay", day)
+        val social = read(c, "${k}_social")
+        val events = array(social, "events")
+        appendBounded(events, JSONObject().put("day", day)
+            .put("summary", clean("世界引擎确认：$action；结果：$outcome", 700)), 40)
+        social.put("events", events)
+        store(c).edit()
+            .putString("${k}_memory", memory.toString())
+            .putString("${k}_social", social.toString())
+            .apply()
+    }
+
     fun report(c: Context, actor: String): String {
         val k = actorKey(actor)
         val memory = read(c, "${k}_memory")
