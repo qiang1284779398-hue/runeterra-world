@@ -11,6 +11,8 @@
         <item name="android:textColor">#EBF0F6</item>
         <item name="android:editTextColor">#EBF0F6</item>
         <item name="android:textColorHint">#AFC0D1</item>
+        <item name="android:colorButtonNormal">#243B55</item>
+        <item name="android:colorControlHighlight">#55DDBB72</item>
         <item name="android:alertDialogTheme">@style/Theme.Runeterra.Dialog</item>
         <item name="android:dialogTheme">@style/Theme.Runeterra.Dialog</item>
     </style>
