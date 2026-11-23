@@ -93,17 +93,32 @@ object PersonalLearningNetwork {
         val sum = ex.sum().coerceAtLeast(0.0001f)
         return h to FloatArray(ACTIONS) { ex[it] / sum }
     }
-    private fun actionIndex(action: String): Int = when (action.trim().lowercase()) {
-        "stay", "wait", "decline_event" -> 0
-        "seek_food" -> 1
-        "seek_work" -> 2
-        "change_job" -> 3
-        "ask_help", "aid" -> 4
-        "practice_skill", "train" -> 5
-        "socialize" -> 6
-        "investigate_world", "investigate", "investigate_event" -> 7
-        "discuss_world", "negotiate", "join_event" -> 8
-        else -> 0
+    private fun actionIndex(action: String, actor: String): Int {
+        val normalized = action.trim().lowercase()
+        if (actor.startsWith("hero:")) return when (normalized) {
+            "stay" -> 0
+            "train", "practice_skill" -> 1
+            "investigate", "investigate_world" -> 2
+            "negotiate", "discuss_world" -> 3
+            "aid", "ask_help" -> 4
+            "join_event" -> 5
+            "decline_event" -> 6
+            "investigate_event" -> 7
+            "wait" -> 8
+            else -> 0
+        }
+        return when (normalized) {
+            "stay", "wait", "decline_event" -> 0
+            "seek_food" -> 1
+            "seek_work" -> 2
+            "change_job" -> 3
+            "ask_help", "aid" -> 4
+            "practice_skill", "train" -> 5
+            "socialize", "negotiate" -> 6
+            "investigate_world", "investigate", "investigate_event" -> 7
+            "discuss_world", "join_event" -> 8
+            else -> 0
+        }
     }
     private fun sharedPrior(x: FloatArray): FloatArray {
         // Frozen shared base policy: same prior for every actor; personal residuals learn independently.
@@ -136,7 +151,7 @@ object PersonalLearningNetwork {
             positive.any { text.contains(it) } -> 0.65f
             else -> 0.08f
         }
-        val idx = actionIndex(action)
+        val idx = actionIndex(action, actor)
         val replay = runCatching { JSONArray(p.getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
         replay.put(JSONObject().put("day", day).put("x", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }).put("action", idx).put("reward", reward.toDouble()))
         while (replay.length() > MAX_REPLAY) replay.remove(0)
