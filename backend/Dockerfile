@@ -4,5 +4,6 @@ WORKDIR /srv/runeterra
 COPY pyproject.toml .
 RUN pip install --no-cache-dir .
 COPY app ./app
+COPY vendor/generative_agents ./vendor/generative_agents
 EXPOSE 8080
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
