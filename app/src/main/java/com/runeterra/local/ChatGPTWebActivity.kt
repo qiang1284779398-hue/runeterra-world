@@ -351,9 +351,10 @@ class ChatGPTWebActivity : Activity() {
               // Compare whitespace-normalized text, not byte-for-byte DOM formatting.
               const normalizeForMatch = value => clean(value).replace(/\\s+/g, ' ').trim();
               const promptMatch = normalizeForMatch(prompt);
-              const userPromptPresent = !!promptMatch && roots.some(root => {
+              // Role selectors are diagnostic evidence only; ChatGPT may change its markup.
+              const userPromptNodePresent = !!promptMatch && roots.some(root => {
                 try {
-                  return Array.from(root.querySelectorAll('[data-message-author-role="user"]'))
+                  return Array.from(root.querySelectorAll('[data-message-author-role="user"], [data-testid*="user"]'))
                     .some(node => normalizeForMatch(node.innerText || node.textContent || '').includes(promptMatch));
                 } catch (_) { return false; }
               });
@@ -449,9 +450,14 @@ class ChatGPTWebActivity : Activity() {
               const diagnosticParts = [];
               for (const root of roots) {
                 try {
-                  const body = clean((root.body || root.documentElement).innerText || '');
-                  previews.push(body.slice(-700));
-                  diagnosticParts.push(body);
+                  // A ShadowRoot has no body/documentElement. Read its own text instead
+                  // of silently skipping the subtree containing the conversation.
+                  const container = root.body || root.documentElement || root;
+                  const body = clean(container.innerText || container.textContent || '');
+                  if (body) {
+                    previews.push(body.slice(-700));
+                    diagnosticParts.push(body);
+                  }
                 } catch (_) {}
               }
               // Do not take the last 50k characters of the whole conversation:
@@ -472,14 +478,25 @@ class ChatGPTWebActivity : Activity() {
                 .map(body => normalizeForMatch(body))
                 .filter(body => body.length > 0)
                 .sort((a,b) => b.length-a.length);
-              const diagnosticText = matchingTranscripts.length
+              // Determine prompt presence from the transcript itself, not a brittle role selector.
+              const promptPresent = matchingTranscripts.length > 0;
+              const diagnosticText = promptPresent
                 ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
-                : (userPromptPresent && fallbackTranscripts.length ? fallbackTranscripts[0].slice(-150000) : '');
+                : '';
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
+              const rootDiagnostics = diagnosticParts.map(body => {
+                const normalizedBody = normalizeForMatch(body);
+                return {length: normalizedBody.length, promptOffset: promptMatch ? normalizedBody.lastIndexOf(promptMatch) : -1};
+              });
               return JSON.stringify({
-                text: answer, submittedPrompt: prompt, promptPresent: userPromptPresent,
+                text: answer, submittedPrompt: prompt, promptPresent: promptPresent,
+                userPromptNodePresent: userPromptNodePresent,
+                promptLength: promptMatch.length,
+                matchingTranscriptCount: matchingTranscripts.length,
+                diagnosticTextLength: diagnosticText.length,
+                rootDiagnostics: rootDiagnostics,
                 sendStatus: sendStatus, streaming: stop, assistantCount: assistantCount,
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
@@ -554,8 +571,13 @@ class ChatGPTWebActivity : Activity() {
                 }
             } else if (force) {
                 val preview = data.optString("bodyPreview").replace("\n", " ").takeLast(180)
-                status.text = "未找到助手回答：assistant节点=" + count +
-                    "，turn=" + turns + "，DOM根=" + roots + "，Shadow=" + shadowHosts +
+                status.text = "未找到助手回答：提问命中=" + promptPresent +
+                    "，提问节点命中=" + data.optBoolean("userPromptNodePresent") +
+                    "，提问长度=" + data.optInt("promptLength") +
+                    "，匹配记录数=" + data.optInt("matchingTranscriptCount") +
+                    "，诊断文本=" + data.optInt("diagnosticTextLength") +
+                    "，assistant节点=" + count + "，turn=" + turns +
+                    "，DOM根=" + roots + "，Shadow=" + shadowHosts +
                     "，iframe=" + frames + "，页面字符=" + bodyLength +
                     "，元素=" + elements + "；方式=" + method +
                     "；页面=" + data.optString("url") + "；预览=" + preview +
