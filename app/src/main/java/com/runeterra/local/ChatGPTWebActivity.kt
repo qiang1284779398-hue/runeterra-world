@@ -155,17 +155,49 @@ class ChatGPTWebActivity : Activity() {
               }
               box.dispatchEvent(new InputEvent('input', {bubbles:true, inputType:'insertText', data:text}));
               box.dispatchEvent(new Event('change', {bubbles:true}));
-              setTimeout(() => {
+              // ChatGPT mobile UI may update the send button asynchronously after input.
+              // Wait for the real enabled send control instead of clicking after a fixed 250ms.
+              window.__runeterraSendStatus = 'waiting';
+              let attempts = 0;
+              const sendTimer = setInterval(() => {
+                attempts++;
                 const buttons = Array.from(document.querySelectorAll('button'));
                 const send = document.querySelector('[data-testid="send-button"]') ||
-                  buttons.find(b => /send|发送/i.test((b.getAttribute('aria-label') || '') + ' ' + (b.getAttribute('data-testid') || '')));
-                if (send && !send.disabled) {
+                  buttons.find(b => {
+                    const label = [
+                      b.getAttribute('aria-label') || '',
+                      b.getAttribute('data-testid') || '',
+                      b.getAttribute('title') || ''
+                    ].join(' ');
+                    return /(send|发送)/i.test(label);
+                  });
+                const visible = b => {
+                  if (!b) return false;
+                  const r = b.getBoundingClientRect();
+                  const s = getComputedStyle(b);
+                  return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden';
+                };
+                const enabled = send && !send.disabled && send.getAttribute('aria-disabled') !== 'true';
+                if (visible(send) && enabled) {
+                  clearInterval(sendTimer);
                   send.click();
-                } else {
-                  box.dispatchEvent(new KeyboardEvent('keydown', {key:'Enter', code:'Enter', bubbles:true}));
+                  window.__runeterraSendStatus = 'clicked';
+                  return;
                 }
-              }, 250);
-              return JSON.stringify({ok:true, baselineText:baselineText, baselineCount:baselineCount, reason:'已填入输入框，正在触发发送'});
+                if (attempts >= 40) {
+                  clearInterval(sendTimer);
+                  // Last resort: submit with Enter only after the UI had time to process input.
+                  box.focus();
+                  box.dispatchEvent(new KeyboardEvent('keydown', {
+                    key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
+                  }));
+                  box.dispatchEvent(new KeyboardEvent('keyup', {
+                    key:'Enter', code:'Enter', keyCode:13, which:13, bubbles:true
+                  }));
+                  window.__runeterraSendStatus = 'enter-fallback';
+                }
+              }, 200);
+              return JSON.stringify({ok:true, baselineText:baselineText, baselineCount:baselineCount, reason:'请求已填入网页输入框，正在等待发送按钮就绪（最多8秒）'});
             })();
         """.trimIndent()
         web.evaluateJavascript(script) { raw ->
