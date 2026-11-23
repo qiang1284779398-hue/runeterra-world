@@ -29,6 +29,7 @@ object PersonalLearningNetwork {
     private data class Model(
         val w1: Array<FloatArray>, val b1: FloatArray,
         val w2: Array<FloatArray>, val b2: FloatArray,
+        val valueW: FloatArray, var valueB: Float = 0f,
         var updates: Int = 0, var baseline: Float = 0f
     )
 
@@ -39,7 +40,7 @@ object PersonalLearningNetwork {
         var x = seed(actor)
         fun next(): Float { x = x * 6364136223846793005L + 1442695040888963407L; return (((x ushr 33).toInt() / Int.MAX_VALUE.toFloat()) * 0.12f) }
         return Model(Array(HIDDEN) { FloatArray(INPUT) { next() } }, FloatArray(HIDDEN),
-            Array(ACTIONS) { FloatArray(HIDDEN) { next() } }, FloatArray(ACTIONS))
+            Array(ACTIONS) { FloatArray(HIDDEN) { next() } }, FloatArray(ACTIONS), FloatArray(HIDDEN) { next() })
     }
     private fun read(c: Context, actor: String): Model {
         val raw = runCatching { JSONObject(prefs(c).getString("${safeKey(actor)}_model", "{}") ?: "{}") }.getOrDefault(JSONObject())
@@ -55,16 +56,24 @@ object PersonalLearningNetwork {
         val base = initial(actor)
         return Model(matrix("w1", HIDDEN, INPUT, base.w1), vector("b1", HIDDEN, base.b1),
             matrix("w2", ACTIONS, HIDDEN, base.w2), vector("b2", ACTIONS, base.b2),
-            raw.optInt("updates", 0), raw.optDouble("baseline", 0.0).toFloat())
+            vector("valueW", HIDDEN, base.valueW), raw.optDouble("valueB", 0.0).toFloat(), raw.optInt("updates", 0), raw.optDouble("baseline", 0.0).toFloat())
     }
-    private fun save(c: Context, actor: String, m: Model) {
+    private fun encodeModel(m: Model): String {
         fun matrix(v: Array<FloatArray>) = JSONArray().also { a -> v.forEach { row -> a.put(JSONArray().also { r -> row.forEach { r.put(it.toDouble()) } }) } }
         fun vector(v: FloatArray) = JSONArray().also { a -> v.forEach { a.put(it.toDouble()) } }
-        val obj = JSONObject().put("w1", matrix(m.w1)).put("b1", vector(m.b1))
+        return JSONObject().put("w1", matrix(m.w1)).put("b1", vector(m.b1))
             .put("w2", matrix(m.w2)).put("b2", vector(m.b2))
-            .put("updates", m.updates).put("baseline", m.baseline)
-        prefs(c).edit().putString("${safeKey(actor)}_model", obj.toString()).apply()
+            .put("valueW", vector(m.valueW)).put("valueB", m.valueB.toDouble())
+            .put("updates", m.updates).put("baseline", m.baseline).toString()
     }
+    private fun save(c: Context, actor: String, m: Model) {
+        prefs(c).edit().putString("${safeKey(actor)}_model", encodeModel(m)).apply()
+    }
+    private fun finite(m: Model): Boolean =
+        m.w1.all { row -> row.all { it.isFinite() && kotlin.math.abs(it) < 8f } } &&
+        m.w2.all { row -> row.all { it.isFinite() && kotlin.math.abs(it) < 8f } } &&
+        m.valueW.all { it.isFinite() && kotlin.math.abs(it) < 8f } &&
+        m.b1.all { it.isFinite() } && m.b2.all { it.isFinite() } && m.valueB.isFinite()
     private fun encode(text: String): FloatArray {
         val f = FloatArray(INPUT)
         val normalized = text.lowercase()
@@ -123,6 +132,7 @@ object PersonalLearningNetwork {
         replay.put(JSONObject().put("day", day).put("x", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }).put("action", idx).put("reward", reward.toDouble()))
         while (replay.length() > MAX_REPLAY) replay.remove(0)
         val model = read(c, actor)
+        val previous = encodeModel(model)
         train(model, x, idx, reward)
         // Small replay update over recent real outcomes to reduce forgetting.
         if (replay.length() % 4 == 0) {
@@ -134,14 +144,23 @@ object PersonalLearningNetwork {
         }
         model.updates++
         model.baseline = model.baseline * 0.9f + reward * 0.1f
-        save(c, actor, model)
+        if (finite(model)) {
+            p.edit().putString("${key}_previous_model", previous).apply()
+            save(c, actor, model)
+        } else {
+            p.edit().putString("${key}_model", previous).apply()
+        }
         p.edit().putString("${key}_replay", replay.toString())
             .putString("${key}_last_learning", JSONObject().put("day", day).put("action", action).put("reward", reward.toDouble()).put("updates", model.updates).toString()).apply()
         return "专属网络已更新：第${model.updates}次；奖励${"%.2f".format(java.util.Locale.US, reward)}；经验池${replay.length()}条"
     }
     private fun train(m: Model, x: FloatArray, action: Int, reward: Float) {
         val (h, probs) = forward(m, x)
-        val advantage = (reward - m.baseline).coerceIn(-1f, 1f)
+        val predictedValue = m.valueB + (0 until HIDDEN).sumOf { (m.valueW[it] * h[it]).toDouble() }.toFloat()
+        val advantage = (reward - predictedValue).coerceIn(-1f, 1f)
+        val valueError = (reward - predictedValue).coerceIn(-1f, 1f)
+        m.valueB += LR * valueError
+        for (j in 0 until HIDDEN) m.valueW[j] += LR * valueError * h[j]
         val grad = FloatArray(ACTIONS) { a -> ((if (a == action) 1f else 0f) - probs[a]) * advantage }
         val oldW2 = Array(ACTIONS) { m.w2[it].clone() }
         val dh = FloatArray(HIDDEN) { j ->
@@ -161,6 +180,6 @@ object PersonalLearningNetwork {
         val m = read(c, actor)
         val replay = runCatching { JSONArray(prefs(c).getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
         val last = runCatching { JSONObject(prefs(c).getString("${key}_last_learning", "{}") ?: "{}") }.getOrDefault(JSONObject())
-        return "策略网络：共享基础先验 + 角色专属可训练MLP\n角色参数隔离：是\n独立训练次数：${m.updates}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}"
+        return "策略网络：共享基础先验 + 角色专属可训练MLP\n价值网络：已启用（预测行动长期回报）\n角色参数隔离：是\n独立训练次数：${m.updates}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}\n参数安全检查：有限值与权重范围校验"
     }
 }
