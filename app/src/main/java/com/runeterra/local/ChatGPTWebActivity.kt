@@ -285,10 +285,11 @@ class ChatGPTWebActivity : Activity() {
                 return {index:index, length:body.length, preview:body.slice(-1200)};
               });
               const bodyLength = rootBodies.reduce((n,x)=>n+x.length,0);
-              // Last-resort extraction for simplified/login-like layouts where message
-              // containers are absent but the visible document still contains this turn.
-              // Only activate when the exact prompt sent by this app is present in body text.
-              if (!chosen && window.__runeterraLastPrompt) {
+              // Authoritative current-turn extraction: assistant-role containers can
+              // accidentally wrap or expose the whole conversation. When the exact prompt
+              // sent by this app is present in visible document text, prefer the text after
+              // its LAST occurrence, even if a misleading assistant node was found above.
+              if (window.__runeterraLastPrompt) {
                 const promptText = String(window.__runeterraLastPrompt).trim();
                 for (let i = rootBodies.length - 1; i >= 0; i--) {
                   const raw = rootBodies[i].preview;
@@ -311,7 +312,7 @@ class ChatGPTWebActivity : Activity() {
                   if (answer.length >= 2 && answer.length <= 20000 &&
                       !/^(登录|Log in|Sign up|登录或注册)$/i.test(answer)) {
                     chosen = {text:answer, el:null};
-                    method = 'document-text-after-exact-prompt';
+                    method = 'current-turn-after-exact-prompt';
                     break;
                   }
                 }
