@@ -263,6 +263,15 @@ class ChatGPTWebActivity : Activity() {
                   break;
                 }
               }
+              // Final guard: never return the user's own submitted prompt as part
+              // of the assistant answer, regardless of which extraction path selected it.
+              if (chosen && chosen.text && window.__runeterraLastPrompt) {
+                const submittedPrompt = String(window.__runeterraLastPrompt).trim();
+                if (submittedPrompt) {
+                  chosen.text = chosen.text.split(submittedPrompt).join(' ').trim();
+                  chosen.text = chosen.text.replace(/^[:：\\s|｜-]+/, '').trim();
+                }
+              }
               const stop = roots.some(root => {
                 try {
                   return !!root.querySelector(
