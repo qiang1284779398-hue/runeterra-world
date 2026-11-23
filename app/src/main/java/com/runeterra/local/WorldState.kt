@@ -564,29 +564,19 @@ object WorldEngine {
                     else { outcomes.add("已改变${target}：${changes.joinToString("，")}。"); successful++ }
                 }
                 "erase_person" -> {
-                    if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; deathEvents.add(Triple(hero.name,-1,true)); appendHeroEvent(hero,"被天道直接抹杀，生命/存在状态终止。原始指令：${command}"); outcomes.add("已抹杀英雄：${hero.name}。"); successful++ }
-                    else if(resident!=null) { resident.alive=false; resident.health=0; deathEvents.add(Triple(resident.name,resident.id,false)); appendResidentEvent(resident,"被天道直接抹杀，生命终止。原始指令：${command}"); outcomes.add("已抹杀居民：${resident.name}（编号${resident.id}）。"); successful++ }
+                    if(hero!=null) { hero.alive=false; hero.health=0; hero.status="已被天道抹杀"; recordSoulDeath(p,"hero:"+hero.name,hero.name,day,"天道抹杀",true); deathEvents.add(Triple(hero.name,-1,true)); appendHeroEvent(hero,"被天道直接抹杀，生命与灵魂状态终止。"); outcomes.add("已抹杀英雄："+hero.name+"，灵魂已湮灭。"); successful++ }
+                    else if(resident!=null) { resident.alive=false; resident.health=0; recordSoulDeath(p,"resident:"+resident.id,resident.name,day,"天道抹杀",true); deathEvents.add(Triple(resident.name,resident.id,false)); appendResidentEvent(resident,"被天道直接抹杀，生命与灵魂状态终止。"); outcomes.add("已抹杀居民："+resident.name+"（编号"+resident.id+"），灵魂已湮灭。"); successful++ }
                     else outcomes.add("未执行：找不到人物「${target}」。")
                 }
                 "resurrect_person" -> {
-                    val prohibition=resurrectionProhibition(p)
-                    if(hero==null && resident==null) {
-                        outcomes.add("未执行：找不到人物「${target}」。")
-                    } else if(hero?.alive==true || resident?.alive==true) {
-                        outcomes.add("未执行：目标仍然在世，不需要复活。")
-                    } else if(prohibition!=null) {
-                        outcomes.add("天道裁决：拒绝复活「${target}」。依据生效法则：「${prohibition}」。角色模型与普通干预指令均不能越过该禁令。")
-                    } else if(hero!=null) {
-                        hero.alive=true; hero.health=100; hero.status="经天道裁决复活；原有经历保留"
-                        appendHeroEvent(hero,"经天道最终校验准予复活；原有经历、记忆与关系保留。当前生效法则中不存在明确的复活禁令。")
-                        outcomes.add("天道裁决：准予复活英雄「${hero.name}」。原有经历与记忆保留。")
-                        successful++
-                    } else if(resident!=null) {
-                        resident.alive=true; resident.health=100
-                        appendResidentEvent(resident,"经天道最终校验准予复活；原有记忆、关系与经历保留。当前生效法则中不存在明确的复活禁令。")
-                        outcomes.add("天道裁决：准予复活居民「${resident.name}」。原有记忆、关系与经历保留。")
-                        successful++
-                    }
+                    val key=if(hero!=null)"hero:"+hero.name else "resident:"+(resident?.id?:-1)
+                    val ledger=soulLedger(p);val soul=soulEntry(ledger,key);val prohibition=resurrectionProhibition(p)
+                    if(hero==null&&resident==null)outcomes.add("未执行：找不到人物「"+target+"」。")
+                    else if(hero?.alive==true||resident?.alive==true)outcomes.add("未执行：目标仍然在世，不需要复活。")
+                    else if(prohibition!=null)outcomes.add("天道裁决：拒绝复活「"+target+"」。依据最高优先级法则：「"+prohibition+"」。")
+                    else if(soul?.optString("state")=="灵魂湮灭")outcomes.add("天道裁决：拒绝复活「"+target+"」。其灵魂已湮灭，不存在可供召回的灵魂主体。")
+                    else if(hero!=null){hero.alive=true;hero.health=60;hero.status="经天道裁决复活；承受复生代价";if(soul!=null){soul.put("state","已复归").put("resurrectionCount",soul.optInt("resurrectionCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)};appendHeroEvent(hero,"经天道最终裁决准予复活。复生代价：初始健康仅恢复至60；原有记忆与关系保留。");outcomes.add("天道裁决：准予复活英雄「"+hero.name+"」，健康恢复至60。");successful++}
+                    else if(resident!=null){resident.alive=true;resident.health=60;resident.coins=(resident.coins-20).coerceAtLeast(0);if(soul!=null){soul.put("state","已复归").put("resurrectionCount",soul.optInt("resurrectionCount",0)+1).put("lastUpdatedDay",day);saveSoulLedger(p,ledger)};appendResidentEvent(resident,"经天道最终裁决准予复活。复生代价：健康恢复至60并失去20枚金币（不足则扣至0）；原有记忆、关系与经历保留。");outcomes.add("天道裁决：准予复活居民「"+resident.name+"」，健康恢复至60并扣除20枚金币。");successful++}
                 }
                 "set_anatomy_survival" -> {
                     if(hero==null && resident==null) { outcomes.add("未执行：找不到人物「${target}」。"); continue }
@@ -850,19 +840,33 @@ object WorldEngine {
         return (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() }
     }
 
+    private const val KEY_SOUL_LEDGER="heavenly_soul_ledger_v1"
+    private fun soulLedger(p:android.content.SharedPreferences)=runCatching { JSONArray(p.getString(KEY_SOUL_LEDGER,"[]") ?: "[]") }.getOrDefault(JSONArray())
+    private fun soulEntry(a:JSONArray,key:String):JSONObject?=(0 until a.length()).mapNotNull { a.optJSONObject(it) }.lastOrNull { it.optString("entityKey")==key }
+    private fun saveSoulLedger(p:android.content.SharedPreferences,a:JSONArray){p.edit().putString(KEY_SOUL_LEDGER,a.toString()).apply()}
+    private fun recordSoulDeath(p:android.content.SharedPreferences,key:String,name:String,day:Long,cause:String,erased:Boolean=false){
+        val a=soulLedger(p); val old=soulEntry(a,key); val e=JSONObject().put("entityKey",key).put("name",name).put("deathDay",day).put("cause",cause.take(500)).put("state",if(erased)"灵魂湮灭" else "游离").put("integrity",if(erased)0 else 100).put("resurrectionCount",old?.optInt("resurrectionCount",0)?:0).put("lastUpdatedDay",day)
+        if(old!=null) for(i in a.length()-1 downTo 0) if(a.optJSONObject(i)?.optString("entityKey")==key)a.remove(i)
+        a.put(e); while(a.length()>20000)a.remove(0); saveSoulLedger(p,a)
+    }
+    private fun soulLawVerdict(p:android.content.SharedPreferences):String?{
+        val a=runCatching{JSONArray(p.getString(KEY_DIVINE_RULES,"[]")?:"[]")}.getOrDefault(JSONArray())
+        val denied=listOf("禁止复活","不可复活","死亡不可逆","永久死亡","禁止死者复生","禁止转生","不可转生","不得轮回","轮回已断","灵魂湮灭","魂飞魄散","灵魂不可留存","灵魂消散")
+        return (0 until a.length()).map{a.optString(it).trim()}.firstOrNull{r->r.isNotBlank()&&denied.any{r.contains(it)}}
+    }
+    private fun advanceSoulLedger(p:android.content.SharedPreferences,day:Long,events:MutableList<String>){
+        val a=soulLedger(p); var changed=false
+        for(i in 0 until a.length()){val e=a.optJSONObject(i)?:continue;if(e.optString("state")!="游离")continue
+            val last=e.optLong("lastUpdatedDay",e.optLong("deathDay",day));val elapsed=(day-last).coerceAtLeast(0L);if(elapsed==0L)continue
+            val integrity=(e.optInt("integrity",100)-elapsed.toInt().coerceAtMost(100)).coerceAtLeast(0);e.put("integrity",integrity).put("lastUpdatedDay",day)
+            if(integrity==0){e.put("state","灵魂湮灭");events.add("【天道·灵魂裁决】第"+day+"日："+e.optString("name")+"的游离灵魂因长期未能归宿而消散，此后不可按普通复活处理。")};changed=true
+        };if(changed)saveSoulLedger(p,a)
+    }
+    private fun resurrectionProhibition(p:android.content.SharedPreferences):String?=soulLawVerdict(p)
     /**
      * Final deterministic guard for resurrection. LLM plans are proposals only:
      * an explicit death/ soul-erasure prohibition in the world's active laws wins.
      */
-    private fun resurrectionProhibition(p:android.content.SharedPreferences):String? {
-        val a=runCatching { JSONArray(p.getString(KEY_DIVINE_RULES,"[]") ?: "[]") }.getOrDefault(JSONArray())
-        val prohibitions=listOf("禁止复活","不可复活","死亡不可逆","永久死亡","灵魂湮灭","魂飞魄散后不可复生")
-        for(i in 0 until a.length()) {
-            val rule=a.optString(i).trim()
-            if(rule.isNotBlank() && prohibitions.any { rule.contains(it) }) return rule
-        }
-        return null
-    }
 
     fun regionalLoreDirectory():List<String> = regionalLore.map { lore ->
         "【${lore.name}】\n政治与社会：${lore.political}\n魔法与超自然：${lore.magic}\n核心力量：${lore.forces}\n模拟边界：${lore.boundary}\n说明：以上为世界设定锚点；模拟器生成的后续事件属于分支历史，不代表官方正史。"
@@ -3244,6 +3248,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
         repeat(days.coerceAtLeast(1)) {
             day++
             val rng=Random(rngState)
+            advanceSoulLedger(p,day,events)
             tickCaravans(day,p,markets,events,rng)
             applyLorePulse(day,p,pop,markets,events,rng)
             applyLoreChainStage(day,p,pop,markets,events,rng)
@@ -3427,6 +3432,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                 }
                 if(!r.survivalOverride && (r.health<=0 || (r.age>=r.lifespanYears-15 && rng.nextInt(100)<1) || (r.age>=r.lifespanYears && rng.nextInt(100)<12))) {
                     r.alive=false
+                    recordSoulDeath(p,"resident:"+r.id,r.name,day,"自然衰老或健康耗尽")
                     recordLife(r,day,"在${r.region}以${r.age}岁离世，生前职业：${r.job}。")
                     events.add("第 $day 日：${r.name}（${r.region}，${r.age}岁，${r.job}）去世；人生记录留存。")
                     // Personal movable savings pass to close surviving heirs; household reserves remain collective property.
