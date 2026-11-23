@@ -187,6 +187,55 @@ class ChatGPTWebActivity : Activity() {
         }
     }
 
+    private fun extractLatestAnswerFromDiagnostic(raw: String, submittedPrompt: String): String {
+        if (raw.isBlank() || submittedPrompt.isBlank()) return ""
+        val normalized = raw.replace("\\r", "").replace('\\u00a0', ' ')
+            .replace(Regex("[ \\t]+"), " ")
+            .replace(Regex("\\n{3,}"), "\\n\\n")
+            .trim()
+        val prompt = submittedPrompt.replace("\\r", "").trim()
+        if (prompt.isEmpty()) return ""
+
+        // Prefer an exact whole-line prompt match so an earlier occurrence in
+        // conversation history cannot leak into the extracted answer.
+        val lines = normalized.split('\\n')
+        var offset = 0
+        var promptEnd = -1
+        for (line in lines) {
+            if (line.trim() == prompt) promptEnd = offset + line.length
+            offset += line.length + 1
+        }
+        if (promptEnd < 0) {
+            val at = normalized.lastIndexOf(prompt)
+            if (at < 0) return ""
+            promptEnd = at + prompt.length
+        }
+
+        var answer = normalized.substring(promptEnd).trim()
+        val footerMarkers = listOf(
+            "ChatGPT 是 AI，可能会犯错", "ChatGPT是AI，可能会犯错",
+            "ChatGPT may make mistakes", "ChatGPT can make mistakes",
+            "免责声明", "与 ChatGPT 聊天", "Message ChatGPT",
+            "发送消息给 ChatGPT"
+        )
+        val footerAt = footerMarkers.map { answer.indexOf(it, ignoreCase = true) }
+            .filter { it >= 0 }.minOrNull()
+        if (footerAt != null) answer = answer.substring(0, footerAt)
+
+        answer = answer.lineSequence()
+            .map { it.trim() }
+            .filterNot { line ->
+                line.isBlank() || line.equals("与 ChatGPT 聊天", true) ||
+                    line.equals("Message ChatGPT", true) ||
+                    line.equals("发送消息给 ChatGPT", true) ||
+                    line.equals("ChatGPT", true)
+            }
+            .joinToString("\\n")
+            .replace(Regex("\\n{3,}"), "\\n\\n")
+            .trim()
+        return answer
+    }
+
     private fun readLatest(force: Boolean) {
         // Traverse the live document, open shadow roots and same-origin iframes.
         // Only accept assistant message containers; never treat the whole page or
@@ -301,7 +350,7 @@ class ChatGPTWebActivity : Activity() {
                   diagnosticParts.push(body);
                 } catch (_) {}
               }
-              const diagnosticText = diagnosticParts.join('\n').slice(-12000);
+              const diagnosticText = (diagnosticParts.filter(t => !prompt || t.includes(prompt)).sort((a,b) => b.length-a.length)[0] || diagnosticParts.sort((a,b) => b.length-a.length)[0] || '').slice(-12000);
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
@@ -327,53 +376,10 @@ class ChatGPTWebActivity : Activity() {
                 prompt.text?.toString().orEmpty()
             }.trim()
             val diagnosticText = data.optString("diagnosticText")
-                .replace("\r", "").replace('\u00a0', ' ')
-                .replace(Regex("[ \t]+"), " ")
-                .replace(Regex("\n{3,}"), "\n\n").trim()
-            var text = data.optString("text")
-            if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
-                val promptAt = diagnosticText.lastIndexOf(submittedPrompt)
-                if (promptAt >= 0) {
-                    // Everything before the latest submitted prompt is prior conversation.
-                    text = diagnosticText.substring(promptAt + submittedPrompt.length).trim()
-                }
-            }
-            text = text.replace("\r", "").replace('\u00a0', ' ')
-                .replace(Regex("[ \t]+"), " ")
-                .replace(Regex("\n{3,}"), "\n\n").trim()
-
-            // Cut at the earliest known ChatGPT disclaimer/footer marker, even when
-            // the WebView has flattened line breaks or appended controls to the same line.
-            val footerMarkers = listOf(
-                "ChatGPT 是 AI，可能会犯错",
-                "ChatGPT是AI，可能会犯错",
-                "ChatGPT may make mistakes",
-                "ChatGPT can make mistakes",
-                "免责声明",
-                "与 ChatGPT 聊天",
-                "Message ChatGPT",
-                "发送消息给 ChatGPT"
-            )
-            val footerAt = footerMarkers.map { marker -> text.indexOf(marker, ignoreCase = true) }
-                .filter { it >= 0 }.minOrNull()
-            if (footerAt != null) text = text.substring(0, footerAt).trim()
-
-            // Remove repeated prompt-only lines and common page chrome, then normalize.
-            if (submittedPrompt.isNotBlank()) {
-                val promptPattern = Regex(Regex.escape(submittedPrompt), RegexOption.MULTILINE)
-                text = promptPattern.replace(text, "").trim()
-            }
-            text = text.lineSequence()
-                .filterNot { line ->
-                    val s = line.trim()
-                    s.equals("与 ChatGPT 聊天", true) ||
-                    s.equals("Message ChatGPT", true) ||
-                    s.equals("发送消息给 ChatGPT", true) ||
-                    s.equals("ChatGPT", true)
-                }
-                .joinToString("\\n")
-                .replace(Regex("\\n{3,}"), "\\n\\n")
-                .trim()
+            // The diagnostic transcript is the sole source of truth. Find the latest
+            // standalone occurrence of the exact submitted prompt, then keep only what
+            // follows it; previous page content and the user's prompt are excluded.
+            var text = extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
             val turns = data.optInt("turnCount", 0)
