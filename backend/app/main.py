@@ -14,6 +14,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, START, StateGraph
+from app.autonomy import router as autonomy_router
 
 DB_PATH = os.getenv("RUNETERRA_DB", "/data/runeterra.db")
 LETTA_BASE_URL = os.getenv("LETTA_BASE_URL", "https://api.letta.com").rstrip("/")
@@ -24,7 +25,8 @@ ZHIPU_KEY = os.getenv("ZHIPU_API_KEY", "")
 ZHIPU_BASE = os.getenv("ZHIPU_BASE_URL", "https://open.bigmodel.cn/api/paas/v4")
 ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-5.3-flashx")
 
-app = FastAPI(title="Runeterra Cognitive Backend", version="0.1.0")
+app = FastAPI(title="Runeterra Cognitive Backend", version="0.2.0")
+app.include_router(autonomy_router)
 _db_lock = threading.Lock()
 _actor_locks: dict[str, threading.Lock] = {}
 _letta_locks: dict[str, threading.Lock] = {}
@@ -67,9 +69,9 @@ def actor_lock(key: str) -> threading.Lock:
     with _db_lock:
         return _actor_locks.setdefault(key, threading.Lock())
 
-def letta_lock(world_key: str) -> threading.Lock:
+def letta_lock(actor_key: str) -> threading.Lock:
     with _db_lock:
-        return _letta_locks.setdefault(world_key, threading.Lock())
+        return _letta_locks.setdefault(actor_key, threading.Lock())
 
 
 def letta_headers() -> dict[str, str]:
@@ -85,11 +87,11 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
     if row:
         return str(row[0])
     payload: dict[str, Any] = {
-        "name": f"Runeterra-WorldMemory-{display_name[:32]}",
+        "name": f"Runeterra-Memory-{actor_key.replace(':', '-')[:48]}",
         "agent_type": "letta_v1_agent",
         "memory_blocks": [
-            {"label": "persona", "value": f"你是符文之地世界的长期记忆管理员。你管理多个独立角色的记忆，必须严格按角色唯一标识隔离，不得把甲角色经历写入乙角色档案。"},
-            {"label": "world_identity", "value": f"当前世界记忆空间：{actor_key}。每条记忆必须带有角色ID标签；查询和写入只允许触及请求中指定的角色ID。"},
+            {"label": "persona", "value": f"你是角色 {display_name} 的专属长期记忆管理员，只服务此角色。"},
+            {"label": "actor_identity", "value": f"唯一角色记忆空间：{actor_key}。绝不读取、推断或写入其他角色的经历。"},
         ],
     }
     if LETTA_MODEL_HANDLE:
@@ -107,7 +109,6 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
 
 
 def letta_recall(actor_key: str, display_name: str, query: str) -> str:
-    world_key = actor_key.split(":", 1)[0]
     payload = {
         "messages": [{
             "role": "user",
@@ -121,8 +122,8 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
         "max_steps": 3,
     }
     try:
-        with letta_lock(world_key):
-            agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+        with letta_lock(actor_key):
+            agent_id = get_or_create_letta_agent(actor_key, display_name)
             response = httpx.post(
                 f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
                 json=payload,
@@ -143,7 +144,6 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
 
 
 def letta_store_experience(actor_key: str, display_name: str, day: int, experience: str) -> None:
-    world_key = actor_key.split(":", 1)[0]
     payload = {
         "messages": [{
             "role": "user",
@@ -158,8 +158,8 @@ def letta_store_experience(actor_key: str, display_name: str, day: int, experien
         "max_steps": 4,
     }
     try:
-        with letta_lock(world_key):
-            agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+        with letta_lock(actor_key):
+            agent_id = get_or_create_letta_agent(actor_key, display_name)
             response = httpx.post(
                 f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
                 json=payload,
