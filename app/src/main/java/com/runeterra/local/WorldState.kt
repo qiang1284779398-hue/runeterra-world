@@ -1125,6 +1125,7 @@ object WorldEngine {
                 append("当前实际活动（模拟器状态）：${h.dailyActivity}\n当前意图（不代表已经执行）：${h.intent}\n长期目标：${h.goal}\n个人信念：${h.belief}\n")
                 append("最近思考日期：${if(h.lastThoughtDay>0) "第${h.lastThoughtDay}日" else "尚未推理"}\n")
                 append("最近一次模型推理记录：\n${h.thought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该人物，或模型未加载。" }}\n")
+                append("\n【认知架构评估】\n").append(CognitiveArchitecture.report(context,"hero:${h.name}")).append("\n")
                 append("\n【AI每轮原始返回（完整保存）】\n")
                 h.aiResponses.forEachIndexed { index, response -> append("原始返回 ").append(index+1).append("\n").append(response).append("\n\n") }
                 append("\n【个人记忆、决策与行动结果（新到旧）】\n")
@@ -1143,6 +1144,7 @@ object WorldEngine {
             append("当前实际活动（模拟器状态）：${r.dailyActivity}\n当前意图（不代表已经执行）：${r.intent}\n短期目标：${r.goal}\n个人信念：${r.belief}\n")
             append("健康：${r.health}/100｜疲劳：${r.fatigue}/100｜生活状态：${r.morale}/100｜粮食：${r.food}｜财富：${r.coins}\n")
             append("\n【最近一次模型推理记录】\n${r.currentThought.ifBlank { "尚未获得本地模型思考记录；可能尚未轮到该居民，或模型未加载。" }}\n")
+            append("\n【认知架构评估】\n").append(CognitiveArchitecture.report(context,"resident:${r.id}")).append("\n")
             append("\n【AI每轮原始返回（完整保存）】\n")
             r.aiResponses.forEachIndexed { index, response -> append("原始返回 ").append(index+1).append("\n").append(response).append("\n\n") }
             append("\n【个人记忆、决策与行动结果（新到旧）】\n")
