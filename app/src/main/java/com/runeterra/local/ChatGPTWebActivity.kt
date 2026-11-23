@@ -321,26 +321,26 @@ class ChatGPTWebActivity : Activity() {
         web.evaluateJavascript(script) { raw ->
             val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-            var text = data.optString("text")
-            // Second-pass cleanup: the DOM selector gets the latest assistant node;
-            // this pass strips accidental prompt echoes, site disclaimers and controls.
+            // Parse the page diagnostic transcript, not the assistant DOM selector.
+            // It contains the visible conversation in order: user prompt, then assistant answer.
             val submittedPrompt = data.optString("submittedPrompt").ifBlank {
                 prompt.text?.toString().orEmpty()
             }.trim()
-            text = text.replace("\r", "").replace('\u00a0', ' ')
-                .replace(Regex("[ \t]+"), " ")
-                .replace(Regex("\n{3,}"), "\n\n").trim()
-
-            if (submittedPrompt.isNotEmpty()) {
-                val promptAt = text.lastIndexOf(submittedPrompt, ignoreCase = false)
+            val diagnosticText = data.optString("diagnosticText")
+                .replace("\\r", "").replace('\u00a0', ' ')
+                .replace(Regex("[ \\t]+"), " ")
+                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
+            var text = data.optString("text")
+            if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
+                val promptAt = diagnosticText.lastIndexOf(submittedPrompt)
                 if (promptAt >= 0) {
-                    // If the prompt was echoed inside the extracted node, keep only
-                    // content after the last occurrence; otherwise leave the answer intact.
-                    val afterPrompt = text.substring(promptAt + submittedPrompt.length).trim()
-                    if (afterPrompt.isNotBlank()) text = afterPrompt
-                    else text = text.replace(submittedPrompt, "").trim()
+                    // Everything before the latest submitted prompt is prior conversation.
+                    text = diagnosticText.substring(promptAt + submittedPrompt.length).trim()
                 }
             }
+            text = text.replace("\\r", "").replace('\u00a0', ' ')
+                .replace(Regex("[ \\t]+"), " ")
+                .replace(Regex("\\n{3,}"), "\\n\\n").trim()
 
             // Cut at the earliest known ChatGPT disclaimer/footer marker, even when
             // the WebView has flattened line breaks or appended controls to the same line.
