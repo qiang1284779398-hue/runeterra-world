@@ -194,160 +194,123 @@ class ChatGPTWebActivity : Activity() {
         val script = """
             (function() {
               const roots = [], seen = new Set();
-              const addRoot = root => {
+              function addRoot(root) {
                 if (!root || seen.has(root)) return;
-                seen.add(root);
-                roots.push(root);
+                seen.add(root); roots.push(root);
                 let els = [];
                 try { els = Array.from(root.querySelectorAll('*')); } catch (_) {}
-                for (const el of els) {
-                  try { if (el.shadowRoot) addRoot(el.shadowRoot); } catch (_) {}
-                }
+                for (const el of els) { try { if (el.shadowRoot) addRoot(el.shadowRoot); } catch (_) {} }
                 if (root === document) {
                   for (const frame of Array.from(document.querySelectorAll('iframe'))) {
                     try { if (frame.contentDocument) addRoot(frame.contentDocument); } catch (_) {}
                   }
                 }
-              };
-              addRoot(document);
-              const all = [];
-              for (const root of roots) {
-                try { all.push(...Array.from(root.querySelectorAll('*'))); } catch (_) {}
               }
+              addRoot(document);
               const visible = el => {
                 try {
                   const r = el.getBoundingClientRect(), st = getComputedStyle(el);
-                  return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+                  return r.width > 0 && r.height > 0 && st.display !== 'none' && st.visibility !== 'hidden';
                 } catch (_) { return false; }
               };
-              const textOf = el => ((el && (el.innerText || el.textContent)) || '').replace(/\u00a0/g, ' ').trim();
-              // Read only leaf-level content blocks INSIDE one assistant message.
-              // Never choose a broad wrapper whose text may include neighboring turns.
-              const contentOf = el => {
-                const selectors = '[data-message-content], [data-testid*="message-content"], .markdown';
-                let nodes = [];
-                try { nodes = Array.from(el.querySelectorAll(selectors)).filter(visible); } catch (_) {}
-                const leaves = nodes.filter(node => !nodes.some(other => other !== node && node.contains(other)));
-                const picked = leaves.length ? leaves : nodes.filter(node => !nodes.some(other => other !== node && node.contains(other)));
-                const parts = picked.map(textOf).filter(Boolean);
-                if (parts.length) return parts.join('\\n\\n').trim();
-                // Last resort is the message node itself, but reject text that looks
-                // like a multi-turn transcript or contains the submitted user prompt.
-                const own = textOf(el);
-                const prompt = String(window.__runeterraLastPrompt || '').trim();
-                if (prompt && own.includes(prompt)) return '';
-                if (/网页自动收发测试成功[\\s\\S]{0,80}你好[\\s\\S]{0,80}你好！/.test(own)) return '';
-                return own;
-              };
-              const assistantNodes = [], seenNodes = new Set();
+              const clean = value => (value || '').replace(/\u00a0/g, ' ')
+                .replace(/\r/g, '').replace(/[ \t]+\n/g, '\n')
+                .replace(/\n{3,}/g, '\n\n').trim();
+              const prompt = clean(String(window.__runeterraLastPrompt || ''));
+              const roleSelector = '[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]';
               const turns = [];
               for (const root of roots) {
-                let nodes = [];
-                try { nodes = Array.from(root.querySelectorAll('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]')); } catch (_) {}
-                for (const el of nodes) {
-                  if (seenNodes.has(el) || !visible(el)) continue;
-                  seenNodes.add(el);
-                  const txt = contentOf(el);
-                  if (txt) assistantNodes.push({text:txt, el:el});
-                }
-                let turnNodes = [];
-                try { turnNodes = Array.from(root.querySelectorAll('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')); } catch (_) {}
-                for (const el of turnNodes) if (visible(el) && !turns.includes(el)) turns.push(el);
-              }
-              let chosen = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
-              let method = chosen ? 'assistant-role+markdown' : 'none';
-              // First fallback: latest conversation turn, if the role wrapper exists
-              // but the site's internal message-content selector has changed.
-              if (!chosen && turns.length) {
-                for (let i = turns.length - 1; i >= 0; i--) {
-                  const turn = turns[i];
-                  const assistantNode = turn.querySelector('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]');
-                  if (assistantNode) {
-                    const txt = textOf(assistantNode);
-                    const prompt = String(window.__runeterraLastPrompt || '').trim();
-                    if (txt && (!prompt || !txt.includes(prompt))) {
-                      chosen = {text:txt, el:assistantNode};
-                      method = 'latest-turn-role-wrapper';
-                      break;
-                    }
+                try {
+                  for (const el of root.querySelectorAll('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')) {
+                    if (visible(el) && !turns.includes(el)) turns.push(el);
                   }
+                } catch (_) {}
+              }
+              // Scope extraction to the newest conversation turn first. This prevents
+              // adjacent user messages and older answers from entering the result.
+              let selected = null, method = 'no-assistant-turn';
+              for (let i = turns.length - 1; i >= 0 && !selected; i--) {
+                let assistant = null;
+                try { assistant = turns[i].querySelector(roleSelector); } catch (_) {}
+                if (assistant && visible(assistant)) {
+                  selected = assistant;
+                  method = 'latest-conversation-turn/assistant-role';
                 }
               }
-              // Second fallback: ChatGPT sometimes changes/removes role attributes.
-              // Read the last visible markdown/message-content block, not the whole
-              // page. Exclude the exact submitted prompt and input/editor elements.
-              if (!chosen) {
-                const candidates = [];
+              // If the site's turn wrapper is absent, use the last assistant-role
+              // element in DOM order, never a page-wide markdown fallback.
+              if (!selected) {
+                const assistants = [];
                 for (const root of roots) {
                   try {
-                    candidates.push(...Array.from(root.querySelectorAll(
-                      '.markdown, [class*="markdown"], [data-message-content], [data-testid*="message-content"]'
-                    )));
+                    for (const el of root.querySelectorAll(roleSelector)) {
+                      if (visible(el) && !assistants.includes(el)) assistants.push(el);
+                    }
                   } catch (_) {}
                 }
-                const prompt = String(window.__runeterraLastPrompt || '').trim();
-                for (let i = candidates.length - 1; i >= 0; i--) {
-                  const el = candidates[i];
-                  if (!visible(el) || el.closest('textarea, input, [contenteditable="true"]')) continue;
-                  const txt = textOf(el);
-                  if (!txt || txt.length < 2 || (prompt && txt.trim() === prompt)) continue;
-                  if (prompt && txt.includes(prompt)) continue;
-                  if (chosen && chosen.el.contains(el)) continue;
-                  chosen = {text:txt, el:el};
-                  method = 'latest-visible-markdown-fallback';
-                  break;
+                if (assistants.length) {
+                  selected = assistants[assistants.length - 1];
+                  method = 'last-assistant-role';
                 }
               }
-              // Final guard: never return the user's own submitted prompt as part
-              // of the assistant answer, regardless of which extraction path selected it.
-              if (chosen && chosen.text && window.__runeterraLastPrompt) {
-                const submittedPrompt = String(window.__runeterraLastPrompt).trim();
-                if (submittedPrompt) {
-                  chosen.text = chosen.text.split(submittedPrompt).join(' ').trim();
-                  chosen.text = chosen.text.replace(/^[:：\\s|｜-]+/, '').trim();
+              let answer = '';
+              if (selected) {
+                // Prefer the actual rendered markdown body inside the selected
+                // assistant message. Ignore buttons, feedback controls and toolbars.
+                let bodies = [];
+                try {
+                  bodies = Array.from(selected.querySelectorAll(
+                    '[data-message-content], .markdown, [class~="prose"]'
+                  )).filter(visible);
+                } catch (_) {}
+                const leafBodies = bodies.filter(node =>
+                  !bodies.some(other => other !== node && node.contains(other))
+                );
+                const chosenBodies = leafBodies.length ? leafBodies : bodies;
+                if (chosenBodies.length) {
+                  answer = clean(chosenBodies.map(node => {
+                    const clone = node.cloneNode(true);
+                    clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
+                    return clone.innerText || clone.textContent || '';
+                  }).filter(Boolean).join('\n\n'));
+                  method += '/message-body';
                 }
+                if (!answer) {
+                  const clone = selected.cloneNode(true);
+                  clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
+                  answer = clean(clone.innerText || clone.textContent || '');
+                  method += '/role-container';
+                }
+              }
+              // Remove the exact submitted prompt if the DOM unexpectedly nests it
+              // with the assistant content. Do not return any other conversation turn.
+              if (prompt && answer.includes(prompt)) {
+                answer = clean(answer.split(prompt).join(' '));
+                method += '/prompt-removed';
               }
               const stop = roots.some(root => {
-                try {
-                  return !!root.querySelector(
-                    '[data-testid*="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"], button[title*="Stop"]'
-                  );
-                } catch (_) { return false; }
+                try { return !!root.querySelector('[data-testid*="stop-button"], button[aria-label*="Stop"], button[aria-label*="停止"]'); }
+                catch (_) { return false; }
               });
-              const rootBodies = roots.map((root,index) => {
-                let body = '';
-                try { body = textOf(root.body || root.documentElement); } catch (_) {}
-                return {index:index, length:body.length, preview:body.slice(-1200)};
-              });
-              const bodyLength = rootBodies.reduce((n,x)=>n+x.length,0);
-              // Intentionally no document.body/documentElement text fallback:
-              // it mixes user prompts, old turns, test text and assistant replies.
-              const iframeInfo = Array.from(document.querySelectorAll('iframe')).map((f,index) => {
-                let body='', title='', url='', accessible=false;
+              const previews = [];
+              for (const root of roots) {
                 try {
-                  const d=f.contentDocument;
-                  if(d){accessible=true;body=textOf(d.body||d.documentElement);title=d.title||'';url=d.location.href||'';}
+                  const body = clean((root.body || root.documentElement).innerText || '');
+                  previews.push(body.slice(-700));
                 } catch (_) {}
-                return {index:index,src:(f.getAttribute('src')||'').slice(0,140),accessible:accessible,title:title,url:url,bodyLength:body.length,bodyPreview:body.slice(-500)};
-              });
-              const shadowHostCount = all.filter(e => { try { return !!e.shadowRoot; } catch (_) { return false; } }).length;
+              }
+              const assistantCount = roots.reduce((n, root) => {
+                try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
+              }, 0);
               return JSON.stringify({
-                text:chosen ? chosen.text : '',
-                streaming:stop,
-                assistantCount:assistantNodes.length,
-                turnCount:turns.length,
-                rootCount:roots.length,
-                shadowHostCount:shadowHostCount,
-                iframeCount:iframeInfo.length,
-                iframeInfo:iframeInfo,
-                elementCount:all.length,
-                bodyLength:bodyLength,
-                bodyPreview:rootBodies.map(x=>x.preview).join(' | ').slice(-1600),
-                rootBodies:rootBodies,
-                method:method,
-                title:document.title,
-                url:location.href,
-                ready:document.readyState
+                text: answer, streaming: stop, assistantCount: assistantCount,
+                turnCount: turns.length, rootCount: roots.length,
+                bodyLength: previews.reduce((n, p) => n + p.length, 0),
+                bodyPreview: previews.join(' | ').slice(-1200),
+                method: method, title: document.title, url: location.href,
+                ready: document.readyState,
+                selectedTag: selected ? selected.tagName : '',
+                selectedTestId: selected ? (selected.getAttribute('data-testid') || '') : ''
               });
             })();
         """.trimIndent()
