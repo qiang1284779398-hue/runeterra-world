@@ -256,17 +256,45 @@ class ChatGPTWebActivity : Activity() {
               }
               let chosen = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
               let method = chosen ? 'assistant-role+markdown' : 'none';
-              // Fallback only when the newest turn contains a positively identified
-              // assistant message. Never infer an answer from an unlabelled turn.
+              // First fallback: latest conversation turn, if the role wrapper exists
+              // but the site's internal message-content selector has changed.
               if (!chosen && turns.length) {
                 for (let i = turns.length - 1; i >= 0; i--) {
                   const turn = turns[i];
                   const assistantNode = turn.querySelector('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]');
-                  if (!assistantNode) continue;
-                  const txt = contentOf(assistantNode);
-                  if (!txt || txt.length < 2) continue;
-                  chosen = {text:txt, el:assistantNode};
-                  method = 'latest-turn-assistant-content';
+                  if (assistantNode) {
+                    const txt = textOf(assistantNode);
+                    const prompt = String(window.__runeterraLastPrompt || '').trim();
+                    if (txt && (!prompt || !txt.includes(prompt))) {
+                      chosen = {text:txt, el:assistantNode};
+                      method = 'latest-turn-role-wrapper';
+                      break;
+                    }
+                  }
+                }
+              }
+              // Second fallback: ChatGPT sometimes changes/removes role attributes.
+              // Read the last visible markdown/message-content block, not the whole
+              // page. Exclude the exact submitted prompt and input/editor elements.
+              if (!chosen) {
+                const candidates = [];
+                for (const root of roots) {
+                  try {
+                    candidates.push(...Array.from(root.querySelectorAll(
+                      '.markdown, [class*="markdown"], [data-message-content], [data-testid*="message-content"]'
+                    )));
+                  } catch (_) {}
+                }
+                const prompt = String(window.__runeterraLastPrompt || '').trim();
+                for (let i = candidates.length - 1; i >= 0; i--) {
+                  const el = candidates[i];
+                  if (!visible(el) || el.closest('textarea, input, [contenteditable="true"]')) continue;
+                  const txt = textOf(el);
+                  if (!txt || txt.length < 2 || (prompt && txt.trim() === prompt)) continue;
+                  if (prompt && txt.includes(prompt)) continue;
+                  if (chosen && chosen.el.contains(el)) continue;
+                  chosen = {text:txt, el:el};
+                  method = 'latest-visible-markdown-fallback';
                   break;
                 }
               }
