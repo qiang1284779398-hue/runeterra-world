@@ -382,7 +382,7 @@ class ChatGPTWebActivity : Activity() {
                     const clone = item.cloneNode(true);
                     clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
                     return clone.innerText || clone.textContent || '';
-                  }).filter(Boolean).join('\\n\\n'));
+                  }).filter(Boolean).join('\n\n'));
                 }
                 const clone = node.cloneNode(true);
                 clone.querySelectorAll('button, [role="toolbar"], nav, svg, [aria-hidden="true"]').forEach(n => n.remove());
@@ -554,7 +554,7 @@ class ChatGPTWebActivity : Activity() {
               const promptPresent = matchingTranscripts.length > 0 || pairedPromptFound || userPromptNodePresent;
               const diagnosticText = matchingTranscripts.length
                 ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
-                : (pairedPromptFound ? (prompt + '\\n' + pairedAnswer) : (userPromptNodePresent ? prompt : ''));
+                : (pairedPromptFound ? (prompt + '\n' + pairedAnswer) : (userPromptNodePresent ? prompt : ''));
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
