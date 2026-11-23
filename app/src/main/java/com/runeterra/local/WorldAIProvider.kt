@@ -123,10 +123,40 @@ object WorldAIProvider {
   } finally {conn?.disconnect()}
  }
 
+ private fun registerAutonomousActor(
+  baseUrl:String,token:String,worldId:String,actorId:String,actorName:String,
+  characterContext:String,latestObservation:String,systemPrompt:String
+ ) {
+  var conn:HttpURLConnection?=null
+  try {
+   conn=(URL(baseUrl.trimEnd('/')+"/v1/autonomy/register").openConnection() as HttpURLConnection).apply {
+    requestMethod="POST";connectTimeout=8000;readTimeout=8000;doOutput=true
+    setRequestProperty("Content-Type","application/json")
+    if(token.isNotBlank())setRequestProperty("X-Runeterra-Token",token)
+   }
+   val body=JSONObject().put("world_id",worldId).put("actor_id",actorId).put("actor_name",actorName)
+    .put("character_context",characterContext.take(16000))
+    .put("latest_observation",latestObservation.take(20000))
+    .put("system_prompt",systemPrompt.take(12000))
+    .put("interval_seconds",300).put("enabled",true).toString()
+   conn.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
+   val code=conn.responseCode
+   if(code !in 200..299) {
+    val raw=(conn.errorStream?:conn.inputStream).bufferedReader(Charsets.UTF_8).use{it.readText()}
+    throw IllegalStateException("自主角色注册 HTTP $code：$raw")
+   }
+  } finally {conn?.disconnect()}
+ }
+
  private fun requestCognitiveBackend(
   baseUrl:String,token:String,worldId:String,actorId:String,actorName:String,day:Long,
   characterContext:String,prompt:String,systemPrompt:String
  ):String {
+  try {
+   registerAutonomousActor(baseUrl,token,worldId,actorId,actorName,characterContext,prompt,systemPrompt)
+  } catch(_:Throwable) {
+   // Registration is best-effort; ordinary cognition must remain available if the scheduler API is down.
+  }
   var conn:HttpURLConnection?=null
   try {
    conn=(URL(baseUrl.trimEnd('/')+"/v1/think").openConnection() as HttpURLConnection).apply {
