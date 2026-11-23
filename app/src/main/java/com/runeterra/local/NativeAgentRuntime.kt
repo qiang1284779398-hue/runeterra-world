@@ -65,8 +65,11 @@ $plan
     private fun socialPrompt(c: Context, actor: String): String {
         val s = read(c, "${actorKey(actor)}_social")
         val events = array(s, "events")
-        val recent = (maxOf(0, events.length() - 8) until events.length()).mapNotNull { events.optJSONObject(it) }
-            .joinToString("\n") { "- ${it.optString("summary")}" }
+        val worldEvents = array(read(c, "world_social"), "events")
+        val personalRecent = (maxOf(0, events.length() - 5) until events.length()).mapNotNull { events.optJSONObject(it) }
+        val sharedRecent = (maxOf(0, worldEvents.length() - 8) until worldEvents.length()).mapNotNull { worldEvents.optJSONObject(it) }
+        val recent = (personalRecent + sharedRecent).takeLast(12)
+            .joinToString("\n") { "- ${it.optString("actor", actor)}：${it.optString("summary")}" }
             .ifBlank { "暂无已记录的协作事件" }
         return """【原生多智能体协作记录】
 $recent
@@ -195,7 +198,14 @@ $recent
         val social = read(c, "${k}_social")
         val events = array(social, "events")
         val collaboration = clean(obj?.optString("collaboration").orEmpty(), 500)
-        if (collaboration.isNotBlank()) appendBounded(events, JSONObject().put("day", day).put("summary", collaboration), 40)
+        if (collaboration.isNotBlank()) {
+            appendBounded(events, JSONObject().put("day", day).put("actor", actor).put("summary", collaboration), 40)
+            val world = read(c, "world_social")
+            val shared = array(world, "events")
+            appendBounded(shared, JSONObject().put("day", day).put("actor", actor).put("summary", collaboration), 200)
+            world.put("events", shared)
+            store(c).edit().putString("world_social", world.toString()).apply()
+        }
         social.put("events", events)
         store(c).edit().putString("${k}_social", social.toString()).apply()
 
@@ -212,12 +222,17 @@ $recent
         memory.put("episodes", episodes).put("updatedDay", day)
         val social = read(c, "${k}_social")
         val events = array(social, "events")
-        appendBounded(events, JSONObject().put("day", day)
-            .put("summary", clean("世界引擎确认：$action；结果：$outcome", 700)), 40)
+        val worldSummary = clean("世界引擎确认：$action；结果：$outcome", 700)
+        appendBounded(events, JSONObject().put("day", day).put("actor", actor).put("summary", worldSummary), 40)
         social.put("events", events)
+        val world = read(c, "world_social")
+        val shared = array(world, "events")
+        appendBounded(shared, JSONObject().put("day", day).put("actor", actor).put("summary", worldSummary), 200)
+        world.put("events", shared)
         store(c).edit()
             .putString("${k}_memory", memory.toString())
             .putString("${k}_social", social.toString())
+            .putString("world_social", world.toString())
             .apply()
     }
 
