@@ -323,21 +323,30 @@ class ChatGPTWebActivity : Activity() {
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
             var text = data.optString("text").trim()
             val diagnosticText = data.optString("diagnosticText")
-            // Prefer the diagnostic transcript over fragile ChatGPT DOM selectors.
-            // Match the latest occurrence of the exact submitted prompt and capture
-            // only the text after it, which excludes the user's question.
+            // User's rule: discard everything through the latest submitted prompt,
+            // then discard the ChatGPT disclaimer and everything after it.
+            // The remaining middle segment is the assistant answer.
             val submittedPrompt = prompt.text?.toString()?.trim().orEmpty()
             if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
-                val pattern = Regex(
-                    Regex.escape(submittedPrompt) + "\\s*([\\s\\S]{1,8000})$"
-                )
-                val match = pattern.findAll(diagnosticText).lastOrNull()
-                if (match != null) {
-                    val fromDiagnostic = match.groupValues[1]
-                        .replace(Regex("(?im)^\\s*(ChatGPT 可能会犯错.*|AI 也可能会犯错.*|Message ChatGPT.*)$"), "")
-                        .replace(Regex("\\n{3,}"), "\\n\\n")
+                val promptEnd = diagnosticText.lastIndexOf(submittedPrompt)
+                if (promptEnd >= 0) {
+                    var answerRegion = diagnosticText.substring(promptEnd + submittedPrompt.length)
+                    val disclaimerRegex = Regex(
+                        "(?im)^[\\\\s>*#-]*(?:ChatGPT\\\\s*(?:免责声明|可能会犯错|can make mistakes|may make mistakes)|AI\\\\s*(?:也可能会犯错|may make mistakes)|免责声明)[^\\\\n]*(?:\\\\n|$)"
+                    )
+                    val disclaimerStart = disclaimerRegex.find(answerRegion)?.range?.first
+                    if (disclaimerStart != null) {
+                        answerRegion = answerRegion.substring(0, disclaimerStart)
+                    }
+                    val fromDiagnostic = answerRegion
+                        .replace(Regex("(?im)^[\\\\s]*(?:Message ChatGPT|发送消息给 ChatGPT)\\\\s*$"), "")
+                        .replace(Regex("\\\\n{3,}"), "\\\\n\\\\n")
                         .trim()
-                    if (fromDiagnostic.isNotBlank()) text = fromDiagnostic
+                    if (fromDiagnostic.isNotBlank()) {
+                        text = fromDiagnostic
+                    } else {
+                        text = ""
+                    }
                 }
             }
             val streaming = data.optBoolean("streaming")
