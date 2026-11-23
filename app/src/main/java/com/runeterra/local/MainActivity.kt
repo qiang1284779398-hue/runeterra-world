@@ -375,8 +375,22 @@ class MainActivity : Activity() {
         panel.addView(spinner,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         panel.addView(refreshButton,ViewGroup.LayoutParams.MATCH_PARENT,ViewGroup.LayoutParams.WRAP_CONTENT)
         panel.addView(scroll,LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,0,1f))
+        val observationTitle=TextView(this).apply {
+            text="符文之地 · 人物与世界观察台"
+            textSize=19f
+            setTextColor(Color.rgb(255,226,157))
+            typeface=android.graphics.Typeface.create("serif",android.graphics.Typeface.BOLD)
+            gravity=Gravity.CENTER_VERTICAL
+            setPadding(dp(22),dp(18),dp(22),dp(18))
+            background=GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(Color.rgb(24,43,63),Color.rgb(13,27,44))
+            ).apply {
+                setStroke(dp(1),Color.rgb(190,151,77))
+            }
+        }
         val dialog=AlertDialog.Builder(this)
-            .setTitle("符文之地 · 人物与世界观察台")
+            .setCustomTitle(observationTitle)
             .setView(panel)
             .setPositiveButton("关闭",null)
             .create()
