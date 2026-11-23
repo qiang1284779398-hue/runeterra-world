@@ -256,7 +256,7 @@ class MainActivity : Activity() {
                     isChecked = entry.first in selected
                     minHeight = dp(52)
                     setPadding(dp(8), dp(8), dp(8), dp(8))
-                    buttonTintList = android.content.content.res.ColorStateList.valueOf(Color.rgb(221, 187, 114))
+                    buttonTintList = android.content.res.ColorStateList.valueOf(Color.rgb(221, 187, 114))
                     background = GradientDrawable().apply {
                         setColor(Color.rgb(25, 43, 64))
                         cornerRadius = dp(10).toFloat()
