@@ -293,12 +293,15 @@ class ChatGPTWebActivity : Activity() {
                 catch (_) { return false; }
               });
               const previews = [];
+              const diagnosticParts = [];
               for (const root of roots) {
                 try {
                   const body = clean((root.body || root.documentElement).innerText || '');
                   previews.push(body.slice(-700));
+                  diagnosticParts.push(body);
                 } catch (_) {}
               }
+              const diagnosticText = diagnosticParts.join('\n').slice(-12000);
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
@@ -307,6 +310,7 @@ class ChatGPTWebActivity : Activity() {
                 turnCount: turns.length, rootCount: roots.length,
                 bodyLength: previews.reduce((n, p) => n + p.length, 0),
                 bodyPreview: previews.join(' | ').slice(-1200),
+                diagnosticText: diagnosticText,
                 method: method, title: document.title, url: location.href,
                 ready: document.readyState,
                 selectedTag: selected ? selected.tagName : '',
@@ -317,7 +321,26 @@ class ChatGPTWebActivity : Activity() {
         web.evaluateJavascript(script) { raw ->
             val encoded = try { JSONTokener(raw ?: "null").nextValue() as? String } catch (_: Exception) { null }
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
-            val text = data.optString("text").trim()
+            var text = data.optString("text").trim()
+            val diagnosticText = data.optString("diagnosticText")
+            // Fallback: parse the visible diagnostic transcript with the exact
+            // submitted prompt as an anchor. The captured group begins AFTER the
+            // prompt, so the user's question is never returned as part of the answer.
+            if (text.isBlank()) {
+                val submittedPrompt = prompt.text?.toString()?.trim().orEmpty()
+                if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
+                    val pattern = Regex(
+                        Regex.escape(submittedPrompt) + "\\s*([\\s\\S]{1,8000})$"
+                    )
+                    val match = pattern.findAll(diagnosticText).lastOrNull()
+                    if (match != null) {
+                        text = match.groupValues[1]
+                            .replace(Regex("(?im)^\\s*(ChatGPT 可能会犯错.*|AI 也可能会犯错.*|Message ChatGPT.*)$"), "")
+                            .replace(Regex("\\n{3,}"), "\\n\\n")
+                            .trim()
+                    }
+                }
+            }
             val streaming = data.optBoolean("streaming")
             val count = data.optInt("assistantCount", 0)
             val turns = data.optInt("turnCount", 0)
