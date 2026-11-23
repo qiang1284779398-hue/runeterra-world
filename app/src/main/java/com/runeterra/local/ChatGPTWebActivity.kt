@@ -34,6 +34,7 @@ class ChatGPTWebActivity : Activity() {
     private var baselineAssistantCount = 0
     private var pollStartedAt = 0L
     private val maxPollDurationMs = 180_000L
+    private var worldRequestCallback: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -55,7 +56,18 @@ class ChatGPTWebActivity : Activity() {
             webChromeClient = WebChromeClient()
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView?, url: String?) {
-                    status.text = "网页已加载。登录 ChatGPT 后，在下方输入测试消息并点击发送。"
+                    status.text = "网页已加载。登录 ChatGPT 后，可将此网页会话作为符文之地世界的 AI 推理方案。"
+                    ChatGPTWorldBridge.attach { message, callback ->
+                        runOnUiThread {
+                            if (polling) {
+                                callback("【ChatGPT网页繁忙】当前网页仍在处理上一条任务，请稍后重试。")
+                            } else {
+                                worldRequestCallback = callback
+                                prompt.setText(message)
+                                sendPrompt()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -98,6 +110,8 @@ class ChatGPTWebActivity : Activity() {
     private fun sendPrompt() {
         val message = prompt.text?.toString()?.trim().orEmpty()
         if (message.isEmpty()) {
+            worldRequestCallback?.invoke("【ChatGPT网页桥接失败】提问内容为空。")
+            worldRequestCallback = null
             Toast.makeText(this, "先输入要发送的内容", Toast.LENGTH_SHORT).show()
             return
         }
@@ -168,6 +182,8 @@ class ChatGPTWebActivity : Activity() {
                 startPolling()
             } else {
                 status.text = obj.optString("reason", "发送失败")
+                worldRequestCallback?.invoke("【ChatGPT网页发送失败】" + status.text)
+                worldRequestCallback = null
                 Toast.makeText(this, status.text, Toast.LENGTH_LONG).show()
             }
         }
@@ -401,6 +417,8 @@ class ChatGPTWebActivity : Activity() {
                     status.text = "本轮回答读取完成：" + text.length + " 字符；方式=" + method
                     polling = false
                     handler.removeCallbacks(pollTask)
+                    worldRequestCallback?.invoke(text)
+                    worldRequestCallback = null
                 } else {
                     status.text = if (streaming) {
                         "GPT 正在生成，本轮已读取 " + text.length + " 字符……"
@@ -420,6 +438,8 @@ class ChatGPTWebActivity : Activity() {
                 polling = false
                 handler.removeCallbacks(pollTask)
                 status.text = "等待超时（3分钟）：没有检测到本轮新回答。请检查网页是否仍在生成、网络是否正常，然后点击“读取最新回答”查看诊断。"
+                worldRequestCallback?.invoke("【ChatGPT网页等待超时】3分钟内没有检测到本轮完整回答。")
+                worldRequestCallback = null
             } else if (!force && text.isNotBlank() && !isNewAnswer) {
                 status.text = "已读取到旧回答，继续等待本轮新回答……"
             } else if (!force && text.isBlank()) {
@@ -431,6 +451,8 @@ class ChatGPTWebActivity : Activity() {
 
     override fun onDestroy() {
         polling = false
+        ChatGPTWorldBridge.detach()
+        worldRequestCallback = null
         handler.removeCallbacksAndMessages(null)
         web.stopLoading()
         web.destroy()
