@@ -323,30 +323,30 @@ class ChatGPTWebActivity : Activity() {
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
             var text = data.optString("text").trim()
             val diagnosticText = data.optString("diagnosticText")
-            // Use the exact prompt captured by sendPrompt(), not the editable input field.
-            // Normalize whitespace on both sides because ChatGPT may render line breaks differently.
+            // Match the exact prompt while allowing HTML-rendered whitespace differences.
+            // Keep the original newlines so the disclaimer can be cut at its line boundary.
             val submittedPrompt = data.optString("submittedPrompt").ifBlank {
                 prompt.text?.toString().orEmpty()
-            }
-            fun normalizeForMatch(value: String): String =
-                value.replace('\u00a0', ' ').replace(Regex("\\s+"), " ").trim()
-            val normalizedPage = normalizeForMatch(diagnosticText)
-            val normalizedPrompt = normalizeForMatch(submittedPrompt)
-            if (normalizedPrompt.isNotEmpty()) {
-                val promptEnd = normalizedPage.lastIndexOf(normalizedPrompt)
-                if (promptEnd >= 0) {
-                    var answerRegion = normalizedPage.substring(promptEnd + normalizedPrompt.length)
-                    val disclaimerRegex = Regex(
-                        "(?im)^.*(?:ChatGPT.*(?:免责声明|可能会犯错|can make mistakes|may make mistakes)|AI.*(?:可能会犯错|may make mistakes)|免责声明).*(?:\\n|$)"
-                    )
-                    val disclaimerStart = disclaimerRegex.find(answerRegion)?.range?.first
-                    if (disclaimerStart != null) answerRegion = answerRegion.substring(0, disclaimerStart)
-                    text = answerRegion.trim()
-                } else {
-                    // Never fall back to the old DOM answer when the prompt boundary is unknown.
-                    text = ""
+            }.trim()
+            val escapedPrompt = Regex.escape(submittedPrompt).replace(Regex("\\s+"), "\\\\s+")
+            val promptMatch = if (submittedPrompt.isNotEmpty()) {
+                Regex(escapedPrompt).findAll(diagnosticText).lastOrNull()
+            } else null
+            if (promptMatch != null) {
+                var answerRegion = diagnosticText.substring(promptMatch.range.last + 1)
+                val disclaimerRegex = Regex(
+                    "(?im)^.*(?:ChatGPT.*(?:免责声明|可能会犯错|can make mistakes|may make mistakes)|AI.*(?:可能会犯错|may make mistakes)|免责声明).*(?:\\n|$)"
+                )
+                val disclaimerStart = disclaimerRegex.find(answerRegion)?.range?.first
+                if (disclaimerStart != null) {
+                    answerRegion = answerRegion.substring(0, disclaimerStart)
                 }
+                text = answerRegion
+                    .replace(Regex("(?im)^\\s*(?:Message ChatGPT|发送消息给 ChatGPT)\\s*$"), "")
+                    .replace(Regex("\\n{3,}"), "\\n\\n")
+                    .trim()
             } else {
+                // Do not fall back to DOM extraction if the prompt boundary is unknown.
                 text = ""
             }
             val streaming = data.optBoolean("streaming")
