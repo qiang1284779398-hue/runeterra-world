@@ -403,7 +403,7 @@ object WorldEngine {
         val heroes=heroAgents(p)
         val matchedResidents=residents.filter { clean.contains(it.name) || clean.contains("居民编号"+it.id) || clean.contains("#"+it.id) }
         val targets=(heroes.map { it.name }+matchedResidents.map { it.name+"#"+it.id }).joinToString("、")
-        val prompt="""你是符文之地模拟世界的天道指令编译器。用户可以提出世界干预，但不能自动覆盖已经登记的天道法则。当前生效法则：${activeHeavenlyRules(context).takeLast(30).join("；").take(2400).ifBlank { "暂无额外法则" }}。与明确禁止性法则冲突的操作必须拒绝，不得通过改写操作绕过。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
+        val prompt="""你是符文之地模拟世界的天道指令编译器。用户可以提出世界干预，但不能自动覆盖已经登记的天道法则。当前生效法则：${activeHeavenlyRules(context).takeLast(30).joinToString("；").take(2400).ifBlank { "暂无额外法则" }}。与明确禁止性法则冲突的操作必须拒绝，不得通过改写操作绕过。把用户自然语言转换为可执行JSON操作，不要自行改写用户意图，不要虚构执行结果。
 用户指令：${clean}
 当前世界日期：第${p.getLong(KEY_DAY,1L)}日。
 已存在的人物（只能对这些已有目标执行人物操作；新人物需使用create_resident）：${targets}
