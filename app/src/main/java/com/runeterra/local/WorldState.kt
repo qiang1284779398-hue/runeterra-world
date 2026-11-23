@@ -180,7 +180,7 @@ object WorldEngine {
         if(day%30L!=0L)return
         pop.filter{it.alive}.forEach { r ->
             // Preserve the resident's latest private LLM cognition instead of replacing it with fallback heuristics.
-            if(r.currentThought.contains("本地模型推理")) return@forEach
+            if(r.currentThought.contains("AI人物推理") || r.currentThought.contains("本地模型推理")) return@forEach
             val market=markets[r.region]
             val foodPressure=r.food<=1 || (market!=null && market.food<pop.count{it.alive&&it.region==r.region}*2)
             val healthPressure=r.health<45
@@ -2958,7 +2958,7 @@ private fun craftBonus(region:String):Int = when(region) {
                         val thought=result.optString("thought").trim().take(420)
                         val perspectiveFailure=characterPerspectiveFailure(thought,r.currentThought,r.name)
                         if(perspectiveFailure==null) {
-                            latest.currentThought="第${day}日（本地模型推理）：${thought}"
+                            latest.currentThought="第${day}日（AI人物推理）：${thought}"
                             latest.belief=result.optString("belief",latest.belief).take(180)
                             latest.intent=result.optString("intent",latest.intent).take(180)
                             latest.goal=result.optString("goal",latest.goal).take(180)
@@ -3253,7 +3253,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         saveHeroes(p,heroAgents(p).map { if(it.name==heroNow.name) heroNow else it })
                         saveOrganizations(p,groups)
                         val events=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
-                        events.put("【英雄自主思考·本地AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
+                        events.put("【英雄自主思考·AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
                         while(events.length()>300) events.remove(0)
                         p.edit().putString(KEY_EVENTS,events.toString()).apply()
                         inferenceSucceeded=true
