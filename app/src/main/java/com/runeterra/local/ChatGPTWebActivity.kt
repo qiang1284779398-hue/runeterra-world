@@ -221,12 +221,23 @@ class ChatGPTWebActivity : Activity() {
                 } catch (_) { return false; }
               };
               const textOf = el => ((el && (el.innerText || el.textContent)) || '').replace(/\u00a0/g, ' ').trim();
+              // Read only leaf-level content blocks INSIDE one assistant message.
+              // Never choose a broad wrapper whose text may include neighboring turns.
               const contentOf = el => {
-                const selectors = '[data-message-content], [data-testid*="message-content"], .markdown, [class*="markdown"]';
-                let parts = [];
-                try { parts = Array.from(el.querySelectorAll(selectors)).filter(visible).map(textOf).filter(Boolean); } catch (_) {}
-                if (parts.length) return parts.sort((a,b) => b.length - a.length)[0];
-                return textOf(el);
+                const selectors = '[data-message-content], [data-testid*="message-content"], .markdown';
+                let nodes = [];
+                try { nodes = Array.from(el.querySelectorAll(selectors)).filter(visible); } catch (_) {}
+                const leaves = nodes.filter(node => !nodes.some(other => other !== node && node.contains(other)));
+                const picked = leaves.length ? leaves : nodes.filter(node => !nodes.some(other => other !== node && node.contains(other)));
+                const parts = picked.map(textOf).filter(Boolean);
+                if (parts.length) return parts.join('\\n\\n').trim();
+                // Last resort is the message node itself, but reject text that looks
+                // like a multi-turn transcript or contains the submitted user prompt.
+                const own = textOf(el);
+                const prompt = String(window.__runeterraLastPrompt || '').trim();
+                if (prompt && own.includes(prompt)) return '';
+                if (/网页自动收发测试成功[\\s\\S]{0,80}你好[\\s\\S]{0,80}你好！/.test(own)) return '';
+                return own;
               };
               const assistantNodes = [], seenNodes = new Set();
               const turns = [];
@@ -245,21 +256,17 @@ class ChatGPTWebActivity : Activity() {
               }
               let chosen = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
               let method = chosen ? 'assistant-role+markdown' : 'none';
-              // Fallback for ChatGPT layouts where the assistant role attribute is absent.
-              // Inspect newest conversation turns, explicitly reject user-marked turns
-              // and the exact prompt last sent from this app.
+              // Fallback only when the newest turn contains a positively identified
+              // assistant message. Never infer an answer from an unlabelled turn.
               if (!chosen && turns.length) {
                 for (let i = turns.length - 1; i >= 0; i--) {
                   const turn = turns[i];
-                  const userNode = turn.querySelector('[data-message-author-role="user"], [data-author="user"], [data-role="user"]');
                   const assistantNode = turn.querySelector('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]');
-                  if (userNode && !assistantNode) continue;
-                  const txt = contentOf(turn);
+                  if (!assistantNode) continue;
+                  const txt = contentOf(assistantNode);
                   if (!txt || txt.length < 2) continue;
-                  if (window.__runeterraLastPrompt && txt.trim() === window.__runeterraLastPrompt.trim()) continue;
-                  if (window.__runeterraLastPrompt && txt.includes(window.__runeterraLastPrompt.trim()) && txt.length <= window.__runeterraLastPrompt.trim().length + 12) continue;
-                  chosen = {text:txt, el:turn};
-                  method = assistantNode ? 'turn-with-assistant-marker' : 'latest-non-user-conversation-turn';
+                  chosen = {text:txt, el:assistantNode};
+                  method = 'latest-turn-assistant-content';
                   break;
                 }
               }
@@ -285,38 +292,8 @@ class ChatGPTWebActivity : Activity() {
                 return {index:index, length:body.length, preview:body.slice(-1200)};
               });
               const bodyLength = rootBodies.reduce((n,x)=>n+x.length,0);
-              // Authoritative current-turn extraction: assistant-role containers can
-              // accidentally wrap or expose the whole conversation. When the exact prompt
-              // sent by this app is present in visible document text, prefer the text after
-              // its LAST occurrence, even if a misleading assistant node was found above.
-              if (window.__runeterraLastPrompt) {
-                const promptText = String(window.__runeterraLastPrompt).trim();
-                for (let i = rootBodies.length - 1; i >= 0; i--) {
-                  const raw = rootBodies[i].preview;
-                  const fullRootText = (() => {
-                    try { return textOf(roots[i].body || roots[i].documentElement); }
-                    catch (_) { return raw || ''; }
-                  })();
-                  const promptAt = fullRootText.lastIndexOf(promptText);
-                  if (promptAt < 0) continue;
-                  let answer = fullRootText.slice(promptAt + promptText.length).trim();
-                  // The disclaimer is a page footer, not part of the model response.
-                  // Match it across line breaks and remove everything from that footer onward.
-                  const footerPatterns = [
-                    /\s*ChatGPT\s*是\s*AI[，,]\s*可能会犯错。[\s\S]*$/i,
-                    /\s*ChatGPT\s*is\s*AI[\s\S]*$/i,
-                    /\s*与\s*ChatGPT\s*聊天[\s\S]*$/i
-                  ];
-                  for (const pattern of footerPatterns) answer = answer.replace(pattern, '');
-                  answer = answer.replace(/^[:：\s|｜-]+/, '').trim();
-                  if (answer.length >= 2 && answer.length <= 20000 &&
-                      !/^(登录|Log in|Sign up|登录或注册)$/i.test(answer)) {
-                    chosen = {text:answer, el:null};
-                    method = 'current-turn-after-exact-prompt';
-                    break;
-                  }
-                }
-              }
+              // Intentionally no document.body/documentElement text fallback:
+              // it mixes user prompts, old turns, test text and assistant replies.
               const iframeInfo = Array.from(document.querySelectorAll('iframe')).map((f,index) => {
                 let body='', title='', url='', accessible=false;
                 try {
