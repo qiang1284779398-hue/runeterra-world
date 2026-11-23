@@ -237,11 +237,13 @@ class ChatGPTWebActivity : Activity() {
 
     private fun extractLatestAnswerFromDiagnostic(raw: String, submittedPrompt: String): String {
         if (raw.isBlank() || submittedPrompt.isBlank()) return ""
-        val normalized = raw.replace("\r", "").replace('\u00a0', ' ')
-            .replace(Regex("[ \t]+"), " ")
-            .replace(Regex("\n{3,}"), "\n\n")
+        // Match the whitespace normalization used by the page-side transcript reader.
+        val normalized = raw.replace('\u00a0', ' ')
+            .replace(Regex("\\s+"), " ")
             .trim()
-        val prompt = submittedPrompt.replace("\r", "").trim()
+        val prompt = submittedPrompt.replace('\u00a0', ' ')
+            .replace(Regex("\\s+"), " ")
+            .trim()
         if (prompt.isEmpty()) return ""
 
         // Prefer an exact whole-line prompt match so earlier conversation history
@@ -345,10 +347,14 @@ class ChatGPTWebActivity : Activity() {
                 .replace(/\r/g, '').replace(/[ \t]+\n/g, '\n')
                 .replace(/\n{3,}/g, '\n\n').trim();
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
-              const userPromptPresent = !!prompt && roots.some(root => {
+              // ChatGPT may reflow a long user message into different line breaks.
+              // Compare whitespace-normalized text, not byte-for-byte DOM formatting.
+              const normalizeForMatch = value => clean(value).replace(/\\s+/g, ' ').trim();
+              const promptMatch = normalizeForMatch(prompt);
+              const userPromptPresent = !!promptMatch && roots.some(root => {
                 try {
                   return Array.from(root.querySelectorAll('[data-message-author-role="user"]'))
-                    .some(node => clean(node.innerText || node.textContent || '').includes(prompt));
+                    .some(node => normalizeForMatch(node.innerText || node.textContent || '').includes(promptMatch));
                 } catch (_) { return false; }
               });
               const sendStatus = String(window.__runeterraSendStatus || 'unknown');
@@ -453,12 +459,22 @@ class ChatGPTWebActivity : Activity() {
               // Find the latest exact prompt in each transcript first, then return
               // everything from that prompt onward so its complete answer is retained.
               const matchingTranscripts = diagnosticParts
-                .map(body => ({body, at: prompt ? body.lastIndexOf(prompt) : -1}))
+                .map(body => {
+                  const normalizedBody = normalizeForMatch(body);
+                  return {body: normalizedBody, at: promptMatch ? normalizedBody.lastIndexOf(promptMatch) : -1};
+                })
                 .filter(item => item.at >= 0)
                 .sort((a,b) => b.body.length-a.body.length);
+              // The normalized transcript and normalized prompt share whitespace rules.
+              // Keep a conservative fallback for unusual DOM structures; Kotlin still
+              // requires the current prompt to be present before accepting any answer.
+              const fallbackTranscripts = diagnosticParts
+                .map(body => normalizeForMatch(body))
+                .filter(body => body.length > 0)
+                .sort((a,b) => b.length-a.length);
               const diagnosticText = matchingTranscripts.length
                 ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
-                : '';
+                : (userPromptPresent && fallbackTranscripts.length ? fallbackTranscripts[0].slice(-150000) : '');
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
