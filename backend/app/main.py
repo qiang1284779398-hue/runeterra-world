@@ -26,7 +26,7 @@ ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-5.3-flashx")
 
 app = FastAPI(title="Runeterra Cognitive Backend", version="0.1.0")
 _db_lock = threading.Lock()
-_actor_locks: dict[str, threading.Lock] = {}
+_actor_locks: dict[str, threading.Lock] = {}\n_letta_locks: dict[str, threading.Lock] = {}
 _db_bootstrap = db()\n_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))\n_checkpointer.setup()
 
 
@@ -61,6 +61,10 @@ def model() -> ChatOpenAI:
 def actor_lock(key: str) -> threading.Lock:
     with _db_lock:
         return _actor_locks.setdefault(key, threading.Lock())
+
+def letta_lock(world_key: str) -> threading.Lock:
+    with _db_lock:
+        return _letta_locks.setdefault(world_key, threading.Lock())
 
 
 def letta_headers() -> dict[str, str]:
@@ -99,7 +103,7 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
 
 def letta_recall(actor_key: str, display_name: str, query: str) -> str:
     world_key = actor_key.split(":", 1)[0]
-    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+    with letta_lock(world_key):\n        agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
     payload = {
         "messages": [{
             "role": "user",
@@ -113,7 +117,9 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
         "max_steps": 3,
     }
     try:
-        response = httpx.post(
+        with letta_lock(world_key):
+            agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+            response = httpx.post(
             f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
             json=payload,
             headers=letta_headers(),
@@ -134,7 +140,6 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
 
 def letta_store_experience(actor_key: str, display_name: str, day: int, experience: str) -> None:
     world_key = actor_key.split(":", 1)[0]
-    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
     payload = {
         "messages": [{
             "role": "user",
@@ -149,7 +154,9 @@ def letta_store_experience(actor_key: str, display_name: str, day: int, experien
         "max_steps": 4,
     }
     try:
-        response = httpx.post(
+        with letta_lock(world_key):
+            agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+            response = httpx.post(
             f"{LETTA_BASE_URL}/v1/agents/{agent_id}/messages",
             json=payload,
             headers=letta_headers(),
