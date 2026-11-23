@@ -84,7 +84,7 @@ object CognitiveArchitecture {
     data class Evaluation(val duplicateThought:Boolean,val missingThought:Boolean,val continuityScore:Int,val note:String)
     fun prepare(context:Context,actorKey:String,day:Long,originalPrompt:String):String {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val episodes=readEpisodes(p,k);val reflection=p.getString("${k}_reflection","").orEmpty()
         val recent=(maxOf(0,episodes.length()-8) until episodes.length()).mapNotNull{episodes.optJSONObject(it)}.joinToString("\n"){e->val ed=e.optLong("day");val th=e.optString("thought").take(150);val go=e.optString("goal").take(90);val ac=e.optString("action");val ou=e.optString("outcome").take(120);"第${ed}日：想法=$th；目标=$go；行动=$ac；结果=$ou"}.ifBlank{"尚无已完成的认知轮次。"}
-        val add="""【持续认知｜第$day日】
+        val add="""【持续认知｜第${day}日】
 长期反思：${reflection.ifBlank{"经历尚少，暂不形成长期结论。"}}
 近期经历：
 $recent
