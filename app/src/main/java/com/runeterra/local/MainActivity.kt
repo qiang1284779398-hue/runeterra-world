@@ -34,6 +34,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestMaximumRefreshRate()
         requestNotificationPermission()
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -867,6 +868,21 @@ class MainActivity : Activity() {
             Toast.makeText(this,"传记已导出为 TXT 文件。",Toast.LENGTH_LONG).show()
         } catch(e:Exception) {
             Toast.makeText(this,"导出失败：${e.message ?: "写入文件时发生错误"}",Toast.LENGTH_LONG).show()
+        }
+    }
+
+
+    @Suppress("DEPRECATION")
+    private fun requestMaximumRefreshRate() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        try {
+            val modes = windowManager.defaultDisplay.supportedModes
+            val maximum = modes.maxByOrNull { it.refreshRate } ?: return
+            window.attributes = window.attributes.apply {
+                preferredDisplayModeId = maximum.modeId
+            }
+        } catch (_: Exception) {
+            // Some devices or system policies do not allow an app to request a display mode.
         }
     }
 
