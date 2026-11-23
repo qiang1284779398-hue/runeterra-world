@@ -27,7 +27,7 @@ ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-5.3-flashx")
 app = FastAPI(title="Runeterra Cognitive Backend", version="0.1.0")
 _db_lock = threading.Lock()
 _actor_locks: dict[str, threading.Lock] = {}
-_db_bootstrap = db()\n_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))
+_db_bootstrap = db()\n_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))\n_checkpointer.setup()
 
 
 def db() -> sqlite3.Connection:
