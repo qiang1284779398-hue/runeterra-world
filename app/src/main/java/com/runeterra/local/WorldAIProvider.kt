@@ -49,6 +49,15 @@ object WorldAIProvider {
   return markers.any(t::contains) || t.matches(Regex("^(抱歉|对不起)[，,。！!\\s].{0,100}(请再|请重新|告诉我你的问题).*$"))
  }
 
+ /** Reject empty boilerplate refusals while preserving reasoned character disagreement. */
+ private fun isGenericRefusal(obj:JSONObject):Boolean {
+  val reason=obj.optString("reason",obj.optString("decision_reason","")).trim()
+  val combined=listOf("thought","reason","decision","intent","action").joinToString(" "){obj.optString(it,"")}
+  val markers=listOf("这件事与我当前的判断或原则不符","不符合我的价值观","不符合我的立场","我决定暂不接受","我选择拒绝执行","与我的原则不符","我不能接受这件事")
+  if(markers.none(combined::contains))return false
+  return reason.length<28 || listOf("原则不符","价值观不符","立场不符","我不接受","不愿意","不符合我的判断").any(reason::contains)
+ }
+
  /** Extract a JSON object without assuming that the model omitted harmless fences or think tags. */
  private fun hasCharacterJson(raw:String):Boolean {
   var text=raw.trim().replace(Regex("(?is)<think>.*?</think>"),"")
@@ -77,7 +86,7 @@ object WorldAIProvider {
        val obj=runCatching{JSONObject(text.substring(start,i+1))}.getOrNull()
        if(obj!=null) {
         val thought=obj.opt("thought")
-        if(thought is String && thought.isNotBlank() && !isNonAnswer(thought))return true
+        if(thought is String && thought.isNotBlank() && !isNonAnswer(thought) && !isGenericRefusal(obj))return true
        }
        break
       }
@@ -103,7 +112,7 @@ object WorldAIProvider {
     .put(JSONObject().put("role","system").put("content",systemPrompt))
    // Retry must retain the full original character task and context.
    val retryPrompt=if(previousBad!=null) {
-    "【输出校正】上一次输出未通过校验。请重新完成下方原始人物任务；不要道歉、不要要求用户补充问题、不要复述错误输出。只输出合法JSON，保留原任务字段与人物视角。\n\n【原始人物任务】\n"+prompt+"\n\n【上次无效输出（仅用于避免重复）】\n"+previousBad.take(2500)
+    "【输出校正】上一次输出未通过校验。请重新完成下方原始人物任务；不要道歉、不要要求用户补充问题、不要复述错误输出。不要机械拒绝，也不要机械服从；不得用“原则不符/价值观不符/暂不接受”代替具体判断。可行时给出人物视角下的实际行动；确实拒绝时必须在reason中写明本轮具体事实、记忆、承诺或风险。只输出合法JSON，保留原任务字段与人物视角。\n\n【原始人物任务】\n"+prompt+"\n\n【上次无效输出（仅用于避免重复）】\n"+previousBad.take(2500)
    } else prompt
    messages.put(JSONObject().put("role","user").put("content",retryPrompt))
    val body=JSONObject()
