@@ -2833,32 +2833,44 @@ private fun craftBonus(region:String):Int = when(region) {
         val last=p.getString(KEY_AI_LAST_TARGET,"尚无").orEmpty()
         val elapsed=p.getLong(KEY_AI_LAST_DURATION,0L)
         val result=p.getString(KEY_AI_LAST_RESULT,"尚无推理结果").orEmpty()
+        val selectedProvider=context.getSharedPreferences("zhipu_secure",Context.MODE_PRIVATE).getString("world_ai_provider","chatgpt")
         val state=when {
-            !ResidentAI.isLoaded() -> "本地模型未加载"
             active.isNotBlank() -> "正在推理：$active"
-            else -> "模型已加载，等待下一轮调度"
+            selectedProvider=="chatgpt" && ChatGPTWorldBridge.isAttached() -> "ChatGPT网页桥接已连接；待处理队列：${ChatGPTWorldBridge.queuedCount()}"
+            selectedProvider=="chatgpt" -> "ChatGPT网页桥接未连接；开始世界时会尝试自动打开"
+            WorldAIProvider.isAvailable(context) -> "智谱云端AI已配置"
+            else -> "没有可用云端AI；请连接ChatGPT网页或配置智谱"
         }
         return "AI调度：$state\n可调度人物：英雄${heroes}位／居民${residents}位\n推理统计：成功${success}次／失败${failure}次\n最近对象：${last}；耗时${"%.1f".format(elapsed/1000.0)}秒\n最近结果：${result}"
     }
 
-    /** Growth observation mode: only three fixed heroes receive external AI turns. */
-    private val GROWTH_OBSERVATION_HEROES = setOf("盖伦", "拉克丝", "阿卡丽")
-
+    /**
+     * One shared ChatGPT bridge serves every living hero and resident.
+     * Alternate the two populations so neither side is starved by the other.
+     */
     fun requestNextLocalThinking(context:Context) {
         if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
-        requestLocalHeroThinking(context)
+        val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
+        val prefer=p.getString(KEY_AI_NEXT_SIDE,"resident")
+        if(prefer=="hero") {
+            if(requestLocalHeroThinking(context)) p.edit().putString(KEY_AI_NEXT_SIDE,"resident").apply()
+            else if(requestLocalResidentThinking(context)) p.edit().putString(KEY_AI_NEXT_SIDE,"hero").apply()
+        } else {
+            if(requestLocalResidentThinking(context)) p.edit().putString(KEY_AI_NEXT_SIDE,"hero").apply()
+            else if(requestLocalHeroThinking(context)) p.edit().putString(KEY_AI_NEXT_SIDE,"resident").apply()
+        }
     }
 
     /**
      * Runs one real local-model decision at a time. Every resident keeps separate
      * memories and context; the shared model is never duplicated per resident.
      */
-    fun requestLocalResidentThinking(context:Context) {
-        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
+    fun requestLocalResidentThinking(context:Context):Boolean {
+        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return false
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val population=people(p)
         val living=population.filter { it.alive }
-        if(living.isEmpty()) return
+        if(living.isEmpty()) return false
         val cursor=p.getInt(KEY_AI_CURSOR,0).let { if(it<0) 0 else it%living.size }
         val r=living[cursor]
         p.edit().putInt(KEY_AI_CURSOR,(cursor+1)%living.size).apply()
@@ -3106,20 +3118,20 @@ private fun craftBonus(region:String):Int = when(region) {
             }
             }
         }
+        return true
     }
 
 
     private const val KEY_HERO_AI_CURSOR="hero_ai_cursor"
 
     /** One canon character receives a private reasoning turn using the shared local model. */
-    fun requestLocalHeroThinking(context:Context) {
-        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return
+    fun requestLocalHeroThinking(context:Context):Boolean {
+        if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return false
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
-        // Only the fixed observation cohort is sent to Zhipu; all other heroes and residents
-        // remain in the world simulation and their existing records are preserved.
-        val active=all.filter { it.alive && it.name in GROWTH_OBSERVATION_HEROES }
-        if(active.isEmpty()) return
+        // Every living hero receives the same private reasoning channel as residents.
+        val active=all.filter { it.alive }
+        if(active.isEmpty()) return false
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val day=p.getLong(KEY_DAY,1L)
         // Round-robin among the three selected heroes only.
@@ -3258,6 +3270,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
             }
             }
         }
+        return true
     }
 
     @Synchronized
