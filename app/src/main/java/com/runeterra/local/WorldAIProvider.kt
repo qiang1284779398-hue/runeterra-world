@@ -21,7 +21,7 @@ object WorldAIProvider {
  fun isAvailable(context:Context):Boolean {
   val p=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
   return if(p.getString("world_ai_provider","zhipu")=="chatgpt") true
-  else isBackendConfigured(context) || isConfigured(context)
+  else isConfigured(context)
  }
  private fun isBackendConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("cognitive_backend_url",null)?.isNotBlank()==true
  private fun isConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("key_data",null)?.isNotBlank()==true
@@ -218,32 +218,9 @@ object WorldAIProvider {
  }
 
  fun recordVerifiedOutcome(context:Context,actorId:String,day:Long,action:String,outcome:String) {
-  val app=context.applicationContext
-  val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-  val baseUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
-  if(baseUrl.isBlank()||actorId.isBlank()||outcome.isBlank())return
-  val token=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
-  thread(name="RuneterraWorldOutcome") {
-   var conn:HttpURLConnection?=null
-   try {
-    conn=(URL(baseUrl.trimEnd('/')+"/v1/autonomy/world-event").openConnection() as HttpURLConnection).apply {
-     requestMethod="POST";connectTimeout=8000;readTimeout=10000;doOutput=true
-     setRequestProperty("Content-Type","application/json")
-     if(token.isNotBlank())setRequestProperty("X-Runeterra-Token",token)
-    }
-    val body=JSONObject().put("world_id","runeterra-world").put("actor_id",actorId)
-     .put("day",day).put("action",action.take(2000)).put("outcome",outcome.take(12000))
-     .put("authority","world_engine").toString()
-    conn.outputStream.use{it.write(body.toByteArray(Charsets.UTF_8))}
-    val code=conn.responseCode
-    if(code !in 200..299) {
-     val raw=(conn.errorStream?:conn.inputStream).bufferedReader(Charsets.UTF_8).use{it.readText()}
-     android.util.Log.w("RuneterraAI","世界经历写入失败 HTTP $code：$raw")
-    }
-   } catch(e:Throwable) {
-    android.util.Log.w("RuneterraAI","世界经历写入异常："+(e.message?:e.javaClass.simpleName))
-   } finally {conn?.disconnect()}
-  }
+  if(actorId.isBlank()||outcome.isBlank())return
+  runCatching { NativeAgentRuntime.recordWorldEvent(context.applicationContext,actorId,day,action,outcome) }
+   .onFailure { android.util.Log.w("RuneterraAI","原生世界经历写入失败",it) }
  }
 
  fun ask(
@@ -280,32 +257,8 @@ object WorldAIProvider {
    }
    return
   }
-  val backendUrl=p.getString("cognitive_backend_url","").orEmpty().trim()
-  val backendToken=try{decryptStored(app,"cognitive_backend_token_data","cognitive_backend_token_iv")}catch(_:Throwable){""}
-  val (apiKey,keyDiagnostic)=loadApiKey(app)
-  // Cloud-only mode: never invoke learned local policies, bounded offline rules, or on-device fallback models.
-  val model=p.getString("model","glm-5.3-flashx")?.trim().orEmpty().ifBlank{"glm-5.3-flashx"}
-  thread(name="SharedCloudAI") {
-   var backendFailure=""
-   if(backendUrl.isNotBlank() && !actorId.isNullOrBlank() && !actorName.isNullOrBlank()) {
-    try {
-     // Avoid duplicating the entire character prompt as both context and task.
-     val backendOutput=requestCognitiveBackend(
-      backendUrl,backendToken,"runeterra-world",actorId,actorName,worldDay,
-      "",effectivePrompt,systemPrompt
-     )
-     if(!hasCharacterJson(backendOutput)) throw IllegalStateException("认知后端返回无效人物JSON/通用拒答")
-     deliver(backendOutput)
-     return@thread
-    } catch(e:Throwable) {
-     backendFailure="认知后端调用失败："+(e.message?:e.javaClass.simpleName)
-     android.util.Log.e("RuneterraAI",backendFailure,e)
-     // Try direct Zhipu only after preserving the actual backend failure for diagnostics.
-    }
-   }
-   if(apiKey.isBlank()) {
-    val details=listOf(keyDiagnostic,backendFailure).filter{it.isNotBlank()}.joinToString("；")
-    callback("【云端决策失败】未生成角色决策。$details")
+  if(apiKey.isBlank()) {
+    callback("【云端决策失败】未生成角色决策。$keyDiagnostic")
     return@thread
    }
    var output=""
@@ -325,7 +278,7 @@ object WorldAIProvider {
     cloudFailed=true
     output="云端请求异常："+(e.message?:e.javaClass.simpleName)
    }
-   if(cloudFailed) callback("【云端决策失败】本轮没有生成角色决策。"+listOf(keyDiagnostic,backendFailure,output.take(900)).filter{it.isNotBlank()}.joinToString("；"))
+   if(cloudFailed) callback("【云端决策失败】本轮没有生成角色决策。"+listOf(keyDiagnostic,output.take(900)).filter{it.isNotBlank()}.joinToString("；"))
    else deliver(output)
   }
  }
