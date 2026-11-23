@@ -131,6 +131,7 @@ class MainActivity : Activity() {
             }
         }
         val observation = Button(this).apply { text = "人物思考 / 行动实时观察窗口"; setOnClickListener { showObservationConsole() } }
+        val thinkingPool = Button(this).apply { text = "自主思考池 / 管理参与人物"; setOnClickListener { showThinkingPoolManager() } }
         val biographies = Button(this).apply {
             text = "居民传记导出 / 查看居民人生（点击进入）"
             setOnClickListener { showResidentDirectory() }
@@ -160,7 +161,7 @@ class MainActivity : Activity() {
             background = pill(panel, Color.rgb(55, 91, 113))
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
-        val allButtons = listOf(start, pause, step, heavenly, observation, biographies,
+        val allButtons = listOf(start, pause, step, heavenly, observation, thinkingPool, biographies,
             worldAiProvider, gptWebTest, gptWebLog, localModel, unloadAI, testAI, aiDiagnostics,
             deepSeek, zhipu, timeline, lore, heroes, lineages, ecology, fauna, heroRelations,
             factions, settlements, organizations, caravans, households, reset)
@@ -195,7 +196,7 @@ class MainActivity : Activity() {
         section("世界控制  /  WORLD CONTROL")
         addViews(start, pause, step, heavenly)
         section("观察与人物  /  OBSERVATORY")
-        addViews(observation, biographies)
+        addViews(observation, thinkingPool, biographies)
         section("世界之心  /  AI CORE")
         addViews(worldAiProvider, gptWebTest, gptWebLog, zhipu, deepSeek)
         section("符文档案  /  LORE & ATLAS")
@@ -220,6 +221,45 @@ class MainActivity : Activity() {
 
     }
 
+    private fun showThinkingPoolManager() {
+        fun showCategory(heroes: Boolean) {
+            val entries = WorldEngine.thinkingPoolEntries(this, heroes)
+            if (entries.isEmpty()) {
+                AlertDialog.Builder(this).setTitle(if (heroes) "英雄思考池" else "居民思考池")
+                    .setMessage("目前没有可加入的在世人物。").setPositiveButton("关闭", null).show()
+                return
+            }
+            val selected = WorldEngine.selectedThinkingPool(this, heroes).toMutableSet()
+            val labels = entries.map { it.second }.toTypedArray()
+            val checked = BooleanArray(entries.size) { entries[it].first in selected }
+            AlertDialog.Builder(this)
+                .setTitle(if (heroes) "选择参与自主思考的英雄" else "选择参与自主思考的居民")
+                .setMessage("只勾选你希望主动进行 AI 思考的人物。未勾选者仍正常生活、经历世界事件，但不会进入主动思考轮询。")
+                .setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+                    val key = entries[which].first
+                    if (isChecked) selected.add(key) else selected.remove(key)
+                }
+                .setNeutralButton("全不选") { _, _ ->
+                    WorldEngine.setThinkingPool(this, heroes, emptySet())
+                    Toast.makeText(this, "已清空该类人物的主动思考池", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("取消", null)
+                .setPositiveButton("保存选择") { _, _ ->
+                    WorldEngine.setThinkingPool(this, heroes, selected)
+                    Toast.makeText(this, "已保存：当前选择 " + selected.size + " 位", Toast.LENGTH_SHORT).show()
+                    refresh()
+                }
+                .show()
+        }
+        AlertDialog.Builder(this)
+            .setTitle("自主思考池管理")
+            .setItems(arrayOf(
+                "英雄思考池（当前 " + WorldEngine.selectedThinkingPool(this, true).size + " 位）",
+                "居民思考池（当前 " + WorldEngine.selectedThinkingPool(this, false).size + " 位）"
+            )) { _, which -> showCategory(which == 0) }
+            .setNegativeButton("关闭", null)
+            .show()
+    }
     private fun showObservationConsole() {
         var kind="英雄"
         var selectedKey=""
