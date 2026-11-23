@@ -34,6 +34,12 @@ class ChatGPTWebActivity : Activity() {
     private var baselineAssistantCount = 0
     private var pollStartedAt = 0L
     private val maxPollDurationMs = 180_000L
+    private val maxResendAttempts = 1
+    private var activePromptText = ""
+    private var requestStartedAt = 0L
+    private var currentRetryThresholdMs = 70_000L
+    private var resendAttempts = 0
+    private var resendInProgress = false
     private var worldRequestCallback: ((String) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -347,17 +353,37 @@ class ChatGPTWebActivity : Activity() {
                 .replace(/\r/g, '').replace(/[ \t]+\n/g, '\n')
                 .replace(/\n{3,}/g, '\n\n').trim();
               const prompt = clean(String(window.__runeterraLastPrompt || ''));
-              // ChatGPT may reflow a long user message into different line breaks.
-              // Compare whitespace-normalized text, not byte-for-byte DOM formatting.
-              const normalizeForMatch = value => clean(value).replace(/\s+/g, ' ').trim();
+              // ChatGPT may reflow text, insert zero-width characters, or change Unicode width.
+              // Normalize those differences, then also compare a whitespace-free representation.
+              const normalizeForMatch = value => clean(String(value || '')).normalize('NFKC')
+                .replace(/[\u200B-\u200D\uFEFF]/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+              const compactForMatch = value => normalizeForMatch(value).replace(/\s+/g, '');
               const promptMatch = normalizeForMatch(prompt);
-              // Role selectors are diagnostic evidence only; ChatGPT may change its markup.
-              const userPromptNodePresent = !!promptMatch && roots.some(root => {
+              const promptCompact = compactForMatch(prompt);
+              const isPromptMatch = value => {
+                const normalized = normalizeForMatch(value);
+                if (!promptMatch || !normalized) return false;
+                if (normalized.includes(promptMatch)) return true;
+                const compact = normalized.replace(/\s+/g, '');
+                if (promptCompact && compact.includes(promptCompact)) return true;
+                // Long prompts can be visually clipped in a virtualized DOM node.
+                return promptCompact.length >= 96 &&
+                  compact.includes(promptCompact.slice(0, 64)) &&
+                  compact.includes(promptCompact.slice(-64));
+              };
+              const userRoleSelector = '[data-message-author-role="user"], [data-author="user"], [data-role="user"]';
+              const userCandidateSelector = userRoleSelector + ', [data-testid*="user-message"], [data-testid*="user"]';
+              const userCandidates = [];
+              for (const root of roots) {
                 try {
-                  return Array.from(root.querySelectorAll('[data-message-author-role="user"], [data-testid*="user"]'))
-                    .some(node => normalizeForMatch(node.innerText || node.textContent || '').includes(promptMatch));
-                } catch (_) { return false; }
-              });
+                  for (const node of root.querySelectorAll(userCandidateSelector)) {
+                    if (!userCandidates.includes(node)) userCandidates.push(node);
+                  }
+                } catch (_) {}
+              }
+              const userPromptNodePresent = !!promptMatch && userCandidates.some(node =>
+                isPromptMatch(node.innerText || node.textContent || '')
+              );
               const sendStatus = String(window.__runeterraSendStatus || 'unknown');
               const roleSelector = '[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]';
               const turns = [];
@@ -370,7 +396,6 @@ class ChatGPTWebActivity : Activity() {
               }
               // Locate the exact user turn first, then read the assistant turn that follows it.
               // This avoids requiring the full page transcript to contain an exact prompt copy.
-              const userRoleSelector = '[data-message-author-role="user"], [data-author="user"], [data-role="user"]';
               const readAssistantBody = node => {
                 if (!node) return '';
                 let bodies = [];
@@ -396,7 +421,7 @@ class ChatGPTWebActivity : Activity() {
                   try { userNode = turns[i].querySelector(userRoleSelector); } catch (_) {}
                   if (!userNode || !visible(userNode)) continue;
                   const userText = normalizeForMatch(userNode.innerText || userNode.textContent || '');
-                  if (userText && userText.includes(promptMatch)) {
+                  if (userText && isPromptMatch(userText)) {
                     pairedPromptFound = true;
                     matchedTurnIndex = i;
                     pairMethod = 'matched-user-turn';
@@ -426,7 +451,7 @@ class ChatGPTWebActivity : Activity() {
                     for (let i = messages.length - 1; i >= 0; i--) {
                       if (!messages[i].matches(userRoleSelector)) continue;
                       const userText = normalizeForMatch(messages[i].innerText || messages[i].textContent || '');
-                      if (userText && userText.includes(promptMatch)) { at = i; break; }
+                      if (userText && isPromptMatch(userText)) { at = i; break; }
                     }
                     if (at >= 0) {
                       pairedPromptFound = true;
@@ -550,11 +575,14 @@ class ChatGPTWebActivity : Activity() {
                 .map(body => normalizeForMatch(body))
                 .filter(body => body.length > 0)
                 .sort((a,b) => b.length-a.length);
-              // Determine prompt presence from the transcript itself, not a brittle role selector.
-              const promptPresent = matchingTranscripts.length > 0 || pairedPromptFound || userPromptNodePresent;
+              // The full visible body is an additional fallback when role/test-id markup changes.
+              const bodyPromptPresent = !!promptMatch && diagnosticParts.some(body => isPromptMatch(body));
+              const promptPresent = matchingTranscripts.length > 0 || pairedPromptFound ||
+                userPromptNodePresent || bodyPromptPresent;
               const diagnosticText = matchingTranscripts.length
                 ? matchingTranscripts[0].body.slice(matchingTranscripts[0].at, matchingTranscripts[0].at + 150000)
-                : (pairedPromptFound ? (prompt + '\n' + pairedAnswer) : (userPromptNodePresent ? prompt : ''));
+                : (pairedPromptFound ? (prompt + '\n' + pairedAnswer) :
+                  ((userPromptNodePresent || bodyPromptPresent) ? prompt : ''));
               const assistantCount = roots.reduce((n, root) => {
                 try { return n + root.querySelectorAll(roleSelector).length; } catch (_) { return n; }
               }, 0);
@@ -566,6 +594,7 @@ class ChatGPTWebActivity : Activity() {
                 text: answer, submittedPrompt: prompt, promptPresent: promptPresent,
                 userPromptNodePresent: userPromptNodePresent,
                 pairedPromptFound: pairedPromptFound, pairedAnswer: pairedAnswer,
+                bodyPromptPresent: bodyPromptPresent, userCandidateCount: userCandidates.length,
                 pairMethod: pairMethod, matchedTurnIndex: matchedTurnIndex,
                 promptLength: promptMatch.length,
                 matchingTranscriptCount: matchingTranscripts.length,
@@ -593,14 +622,19 @@ class ChatGPTWebActivity : Activity() {
                 prompt.text?.toString().orEmpty()
             }.trim()
             val diagnosticText = data.optString("diagnosticText")
-            // Prefer an answer paired to the exact current user turn in DOM order.
-            // The transcript reader remains a fallback for markup variants.
+            // Use the strongest available source first. In v523 the DOM-selected
+            // assistant text was discarded when transcript matching failed.
             val pairedPromptFound = data.optBoolean("pairedPromptFound")
             val pairedAnswer = data.optString("pairedAnswer").trim()
-            val promptPresent = data.optBoolean("promptPresent") || pairedPromptFound
+            val domAnswer = data.optString("text").trim()
+            val promptPresent = data.optBoolean("promptPresent") || pairedPromptFound ||
+                data.optBoolean("bodyPromptPresent") || data.optBoolean("userPromptNodePresent")
+            val transcriptAnswer = if (promptPresent)
+                extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt) else ""
             var text = when {
                 pairedPromptFound && pairedAnswer.isNotBlank() -> pairedAnswer
-                promptPresent -> extractLatestAnswerFromDiagnostic(diagnosticText, submittedPrompt)
+                transcriptAnswer.isNotBlank() -> transcriptAnswer
+                promptPresent -> domAnswer
                 else -> ""
             }
             val sendStatus = data.optString("sendStatus", "unknown")
@@ -614,8 +648,9 @@ class ChatGPTWebActivity : Activity() {
             val bodyLength = data.optInt("bodyLength", 0)
             val method = data.optString("method", "none")
             val isNewAnswer = count > baselineAssistantCount || (text.isNotBlank() && text != baseline)
+            val currentAnswerDetected = promptPresent && text.isNotBlank() && isNewAnswer
 
-            if (text.isNotBlank() && (force || isNewAnswer)) {
+            if (text.isNotBlank() && (force || currentAnswerDetected)) {
                 result.text = text
                 if (text == lastText) stableCount++ else stableCount = 0
                 lastText = text
@@ -634,10 +669,15 @@ class ChatGPTWebActivity : Activity() {
                         } else {
                             "本轮回答读取完成：" + text.length + " 字符；方式=" + method
                         }
+                        val finishedAt = System.currentTimeMillis()
+                        recordSuccessfulDuration(finishedAt - requestStartedAt)
                         polling = false
+                        resendInProgress = false
                         handler.removeCallbacks(pollTask)
                         val callback = worldRequestCallback
                         worldRequestCallback = null
+                        activePromptText = ""
+                        requestStartedAt = 0L
                         callback?.invoke(text)
                     } else {
                         status.text = if (streaming) {
@@ -652,9 +692,14 @@ class ChatGPTWebActivity : Activity() {
                 status.text = "未找到助手回答：提问命中=" + promptPresent +
                     "，提问节点命中=" + data.optBoolean("userPromptNodePresent") +
                     "，本轮用户消息匹配=" + pairedPromptFound +
+                    "，页面正文命中=" + data.optBoolean("bodyPromptPresent") +
+                    "，用户节点候选=" + data.optInt("userCandidateCount") +
+                    "，DOM回答字符=" + domAnswer.length +
                     "，配对方式=" + data.optString("pairMethod") +
                     "，匹配轮次=" + data.optInt("matchedTurnIndex") +
                     "，候选回答字符=" + data.optInt("pairedAnswerLength") +
+                    "，自动重发=" + resendAttempts + "/" + maxResendAttempts +
+                    "，当前阈值秒=" + (currentRetryThresholdMs / 1000) +
                     "，提问长度=" + data.optInt("promptLength") +
                     "，匹配记录数=" + data.optInt("matchingTranscriptCount") +
                     "，诊断文本=" + data.optInt("diagnosticTextLength") +
@@ -664,17 +709,31 @@ class ChatGPTWebActivity : Activity() {
                     "，元素=" + elements + "；方式=" + method +
                     "；页面=" + data.optString("url") + "；预览=" + preview +
                     "；框架=" + data.optJSONArray("iframeInfo")
-            } else if (!force && System.currentTimeMillis() - pollStartedAt > maxPollDurationMs) {
+            } else if (!force && !resendInProgress && resendAttempts < maxResendAttempts &&
+                requestStartedAt > 0L &&
+                System.currentTimeMillis() - requestStartedAt >= currentRetryThresholdMs &&
+                (!promptPresent || !currentAnswerDetected)) {
+                status.text = "超过历史平均耗时阈值（" + (currentRetryThresholdMs / 1000) +
+                    "秒），提问命中=" + promptPresent + "，答案命中=" + currentAnswerDetected +
+                    "；启动自动重发。"
+                resendCurrentPrompt()
+            } else if (!force && requestStartedAt > 0L &&
+                System.currentTimeMillis() - requestStartedAt > maxPollDurationMs) {
                 polling = false
+                resendInProgress = false
                 handler.removeCallbacks(pollTask)
-                status.text = "等待超时（3分钟）：没有检测到本轮新回答。请检查网页是否仍在生成、网络是否正常，然后点击“读取最新回答”查看诊断。"
-                worldRequestCallback?.invoke("【ChatGPT网页等待超时】3分钟内没有检测到本轮完整回答。")
+                status.text = "等待超时（3分钟）：自动重发 " + resendAttempts +
+                    " 次后仍没有检测到本轮完整回答。请检查网页、网络及诊断日志。"
+                worldRequestCallback?.invoke("【ChatGPT网页等待超时】自动重发 " + resendAttempts + " 次后仍未检测到本轮完整回答。")
                 worldRequestCallback = null
+                activePromptText = ""
+                requestStartedAt = 0L
             } else if (!force && text.isNotBlank() && !isNewAnswer) {
                 status.text = "已读取到旧回答，继续等待本轮新回答……"
             } else if (!force && !promptPresent) {
-                status.text = "提问尚未出现在 ChatGPT 对话记录中，暂不读取预览内容；发送状态=" + sendStatus +
-                    "；正在确认自动发送是否成功……"
+                status.text = "暂未可靠定位本轮提问；发送状态=" + sendStatus +
+                    "；等待阈值=" + (currentRetryThresholdMs / 1000) + "秒；自动重发=" +
+                    resendAttempts + "/" + maxResendAttempts + "……"
             } else if (!force && text.isBlank()) {
                 status.text = "已确认提问进入对话，正在等待完整回答…… assistant节点=" + count +
                     "；DOM根=" + roots + "；Shadow=" + shadowHosts + "；iframe=" + frames
