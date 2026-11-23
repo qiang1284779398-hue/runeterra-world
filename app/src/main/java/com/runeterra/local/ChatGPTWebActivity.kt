@@ -45,16 +45,31 @@ class ChatGPTWebActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CookieManager.getInstance().setAcceptCookie(true)
+        val night = android.graphics.Color.rgb(10, 17, 31)
+        val panel = android.graphics.Color.rgb(19, 31, 49)
+        val pale = android.graphics.Color.rgb(235, 240, 246)
+        val muted = android.graphics.Color.rgb(190, 205, 219)
+        val gold = android.graphics.Color.rgb(221, 187, 114)
+        fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+        fun surface(color: Int, stroke: Int) = android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(12).toFloat()
+            setStroke(dp(1), stroke)
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(12, 12, 12, 8)
+            setPadding(dp(12), dp(10), dp(12), dp(8))
+            setBackgroundColor(night)
         }
         status = TextView(this).apply {
             text = "正在打开 ChatGPT。请在下方网页中手动登录；这是应用内独立网页会话。"
-            textSize = 13f
-            setPadding(4, 4, 4, 8)
+            textSize = 14f
+            setTextColor(pale)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = surface(panel, android.graphics.Color.rgb(62, 91, 119))
         }
         web = WebView(this).apply {
+            setBackgroundColor(android.graphics.Color.WHITE)
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
             settings.loadsImagesAutomatically = true
@@ -79,6 +94,11 @@ class ChatGPTWebActivity : Activity() {
         }
         prompt = EditText(this).apply {
             hint = "输入要发送给 ChatGPT 的内容"
+            setHintTextColor(muted)
+            setTextColor(pale)
+            textSize = 15f
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = surface(panel, android.graphics.Color.rgb(88, 117, 143))
             setText("请只回复：网页自动收发测试成功")
             minLines = 2
             maxLines = 4
@@ -86,10 +106,18 @@ class ChatGPTWebActivity : Activity() {
         val controls = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         val send = Button(this).apply {
             text = "自动填写并发送"
+            isAllCaps = false
+            setTextColor(android.graphics.Color.rgb(22, 31, 43))
+            background = surface(gold, android.graphics.Color.rgb(245, 220, 164))
+            minHeight = dp(48)
             setOnClickListener { sendPrompt() }
         }
         val read = Button(this).apply {
             text = "直接提取回答"
+            isAllCaps = false
+            setTextColor(pale)
+            background = surface(panel, android.graphics.Color.rgb(88, 117, 143))
+            minHeight = dp(48)
             setOnClickListener {
                 status.text = "已收到点击：正在从网页回答区域直接提取文本（不操作复制按钮、不读取剪贴板）……"
                 readLatest(force = true)
@@ -100,8 +128,10 @@ class ChatGPTWebActivity : Activity() {
         result = TextView(this).apply {
             text = "提取结果\\n点击“直接提取回答”后，答案会显示在这里"
             textSize = 14f
+            setTextColor(pale)
             setTextIsSelectable(true)
-            setPadding(4, 8, 4, 8)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = surface(panel, android.graphics.Color.rgb(62, 91, 119))
         }
         root.addView(status)
         root.addView(web, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
