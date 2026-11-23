@@ -32,14 +32,8 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         requestNotificationPermission()
-        // A方案默认使用现有 ChatGPT 网页会话，不要求配置 Python 后端、Letta 或智谱 API Key。
+        // 首次启动不替用户决定 AI 大脑；由用户明确选择智谱或 ChatGPT 网页会话。
         val providerDefaults = getSharedPreferences("zhipu_secure", MODE_PRIVATE)
-        if (!providerDefaults.getBoolean("runeterra_a_scheme_autoselected", false)) {
-            providerDefaults.edit()
-                .putString("world_ai_provider", "chatgpt")
-                .putBoolean("runeterra_a_scheme_autoselected", true)
-                .apply()
-        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(36, 48, 36, 24)
@@ -102,7 +96,8 @@ class MainActivity : Activity() {
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("选择世界人物 AI 推理方案")
                     .setSingleChoiceItems(arrayOf("智谱 GLM（API，后台直连）", "ChatGPT（网页会话，开始世界时自动连接）"), current) { dialog, which ->
-                        providerPrefs.edit().putString("world_ai_provider", if (which == 1) "chatgpt" else "zhipu").apply()
+                        providerPrefs.edit().putString("world_ai_provider", if (which == 1) "chatgpt" else "zhipu")
+                            .putBoolean("world_ai_provider_selected", true).apply()
                         refreshProviderLabel()
                         Toast.makeText(this@MainActivity, if (which == 1)
                             "已切换 ChatGPT。开始世界时会自动打开网页桥接；首次需要登录一次。" else "已切换智谱 GLM。", Toast.LENGTH_LONG).show()
@@ -145,6 +140,23 @@ class MainActivity : Activity() {
         }
         setContentView(root)
         refresh()
+        if (!providerDefaults.getBoolean("world_ai_provider_selected", false)) {
+            AlertDialog.Builder(this)
+                .setTitle("选择世界的 AI 大脑")
+                .setMessage("智谱需要配置 API Key；GPT 网页需要登录一次。以后可在主界面随时切换。")
+                .setCancelable(false)
+                .setItems(arrayOf("智谱 GLM（API）", "GPT 网页会话（使用已登录账号）")) { dialog, which ->
+                    val selected = if (which == 1) "chatgpt" else "zhipu"
+                    providerDefaults.edit().putString("world_ai_provider", selected)
+                        .putBoolean("world_ai_provider_selected", true).apply()
+                    worldAiProvider.text = if (selected == "chatgpt")
+                        "世界人物 AI 方案：ChatGPT 网页会话" else "世界人物 AI 方案：智谱 GLM"
+                    Toast.makeText(this, if (selected == "chatgpt")
+                        "已选择 GPT 网页大脑；首次需要登录一次。" else "已选择智谱大脑；请在智谱设置页保存 API Key。", Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                }
+                .show()
+        }
     }
 
     private fun showObservationConsole() {
