@@ -197,6 +197,37 @@ class CognitiveState(TypedDict, total=False):
     trace: list[dict[str, Any]]
 
 
+
+def is_generic_refusal(output: str) -> bool:
+    """Detect boilerplate refusals, not reasoned in-character disagreement."""
+    try:
+        start, end = output.find("{"), output.rfind("}")
+        obj = json.loads(output[start:end + 1]) if start >= 0 and end > start else {}
+    except Exception:
+        obj = {}
+    reason = str(obj.get("reason", "") or obj.get("decision_reason", "")).strip()
+    combined = " ".join(str(obj.get(k, "")) for k in ("thought", "reason", "decision", "intent", "action")) + " " + output
+    markers = ("这件事与我当前的判断或原则不符", "不符合我的价值观", "不符合我的立场", "我决定暂不接受", "我选择拒绝执行", "与我的原则不符", "我不能接受这件事")
+    if not any(marker in combined for marker in markers):
+        return False
+    return len(reason) < 28 or any(x in reason for x in ("原则不符", "价值观不符", "立场不符", "我不接受", "不愿意", "不符合我的判断"))
+
+
+def repair_generic_refusal(llm: ChatOpenAI, system: str, prompt: str, output: str) -> str:
+    repair = prompt + """
+
+【决策质量复核】
+上次输出出现空泛拒绝表达。请重新完成同一个角色任务，不要机械服从，也不要机械拒绝。
+如果确实拒绝，必须给出与本轮具体事实、角色记忆、目标或关系相关的充分理由；
+如果没有这样的具体冲突，就作出符合角色个性和当前处境的实际决定。
+保留原有 JSON 字段，只输出 JSON。不要重复上一轮的空泛拒绝句式。
+上次输出（仅供识别问题，不要照抄）：
+""" + output[:2500]
+    result = llm.invoke([SystemMessage(content=system), HumanMessage(content=repair)])
+    return result.content if isinstance(result.content, str) else json.dumps(result.content, ensure_ascii=False)
+
+
+
 def build_graph():
     llm = model()
 
@@ -231,7 +262,7 @@ def build_graph():
 當前情境：{state['prompt']}
 輸出：當前目標、優先行動、所需條件、風險、如果無法行動的替代方案。不得虛構世界狀態。
 """
-        result = llm.invoke([SystemMessage(content="你是人物规划器，给出可执行、保守且符合角色目标的计划。"), HumanMessage(content=prompt)])
+        result = llm.invoke([SystemMessage(content="你是人物规划器。保持中立，不预设角色应该拒绝或服从。优先寻找符合角色目标且在当前条件下可执行的具体行动；只有存在明确障碍时才提出替代方案。不得把抽象原则、泛化风险或谨慎本身当作停止行动的理由。"), HumanMessage(content=prompt)])
         return {"plan": str(result.content), "trace": state.get("trace", []) + [{"stage": "generative_agents_planning", "ok": True}]}
 
     def act_node(state: CognitiveState) -> dict[str, Any]:
@@ -244,16 +275,25 @@ Letta 持久记忆：{state.get('memories','')}
 本轮计划：{state.get('plan','')}
 世界日：{state['day']}
 当前世界输入：{state['prompt']}
-请生成角色此刻的最终决定。保留现有项目要求的 JSON 字段，不要输出 Markdown 或隐藏思维链。
+请独立评估当前输入并生成角色此刻的最终决定。保留现有项目要求的全部 JSON 字段，不要输出 Markdown 或隐藏思维链。\n【决策质量要求】\n1. 不得把“这不符合我的原则/价值观/立场”“我暂不接受”等空泛句式当作完整决定或完整理由。\n2. 不要默认拒绝，也不要默认服从。先判断请求是否可理解、是否可行、是否与角色真实目标/经历冲突。\n3. 若可行且没有具体冲突，给出角色视角下的实际行动或明确下一步，不要用抽象顾虑代替行动。\n4. 若确实拒绝，必须在 reason 中指出具体冲突的事实、记忆、承诺、目标或现实风险，不能编造记忆。\n5. 允许接受、拒绝、协商、延迟、反抗、改变主意、主动行动。角色可以违抗命令，世界引擎负责处理后果，不要擅自替天道裁决。\n6. thought 必须是针对本轮情境的独立判断摘要，不能只是重复人物设定或拒绝模板。
 """
         result = llm.invoke([SystemMessage(content=system), HumanMessage(content=prompt)])
         output = result.content if isinstance(result.content, str) else json.dumps(result.content, ensure_ascii=False)
-        return {"output": output, "trace": state.get("trace", []) + [{"stage": "zhipu_final_decision", "ok": True}]}
+        trace = state.get("trace", []) + [{"stage": "zhipu_final_decision", "ok": True}]
+        if is_generic_refusal(output):
+            repaired = repair_generic_refusal(llm, system, prompt, output)
+            if repaired.strip():
+                output = repaired
+                trace.append({"stage": "decision_quality_repair", "ok": not is_generic_refusal(output), "generic_refusal_remaining": is_generic_refusal(output)})
+        return {"output": output, "trace": trace}
 
     def memory_commit_node(state: CognitiveState) -> dict[str, Any]:
+        output = state.get("output", "")
+        if is_generic_refusal(output):
+            return {"trace": state.get("trace", []) + [{"stage": "letta_memory_commit", "ok": False, "reason": "generic_refusal_not_committed"}]}
         letta_store_experience(
             state["actor_key"], state["actor_name"], state["day"],
-            "反思：" + state.get("reflection", "") + "\n计划：" + state.get("plan", "") + "\n最终决定与行动：" + state.get("output", ""),
+            "反思：" + state.get("reflection", "") + "\n计划：" + state.get("plan", "") + "\n最终决定与行动：" + output,
         )
         return {"trace": state.get("trace", []) + [{"stage": "letta_memory_commit", "ok": True}]}
 
