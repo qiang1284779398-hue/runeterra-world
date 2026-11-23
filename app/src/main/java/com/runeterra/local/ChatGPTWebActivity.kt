@@ -102,6 +102,7 @@ class ChatGPTWebActivity : Activity() {
             return
         }
         val quoted = JSONObject.quote(message)
+        web.evaluateJavascript("window.__runeterraLastPrompt = " + quoted + ";", null)
         val script = """
             (function() {
               const text = $quoted;
@@ -231,7 +232,7 @@ class ChatGPTWebActivity : Activity() {
               const turns = [];
               for (const root of roots) {
                 let nodes = [];
-                try { nodes = Array.from(root.querySelectorAll('[data-message-author-role="assistant"]')); } catch (_) {}
+                try { nodes = Array.from(root.querySelectorAll('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]')); } catch (_) {}
                 for (const el of nodes) {
                   if (seenNodes.has(el) || !visible(el)) continue;
                   seenNodes.add(el);
@@ -239,23 +240,27 @@ class ChatGPTWebActivity : Activity() {
                   if (txt) assistantNodes.push({text:txt, el:el});
                 }
                 let turnNodes = [];
-                try { turnNodes = Array.from(root.querySelectorAll('[data-testid^="conversation-turn-"]')); } catch (_) {}
-                for (const el of turnNodes) if (visible(el)) turns.push(el);
+                try { turnNodes = Array.from(root.querySelectorAll('[data-testid^="conversation-turn-"], [data-testid*="conversation-turn"]')); } catch (_) {}
+                for (const el of turnNodes) if (visible(el) && !turns.includes(el)) turns.push(el);
               }
               let chosen = assistantNodes.length ? assistantNodes[assistantNodes.length - 1] : null;
               let method = chosen ? 'assistant-role+markdown' : 'none';
-              // Some ChatGPT layouts expose a conversation turn before the role
-              // attribute is attached. Use it only if it explicitly contains an
-              // assistant marker, avoiding accidental capture of the user prompt.
+              // Fallback for ChatGPT layouts where the assistant role attribute is absent.
+              // Inspect newest conversation turns, explicitly reject user-marked turns
+              // and the exact prompt last sent from this app.
               if (!chosen && turns.length) {
                 for (let i = turns.length - 1; i >= 0; i--) {
                   const turn = turns[i];
-                  let assistant = null;
-                  try { assistant = turn.querySelector('[data-message-author-role="assistant"]'); } catch (_) {}
-                  if (assistant) {
-                    const txt = contentOf(assistant);
-                    if (txt) { chosen = {text:txt, el:assistant}; method='conversation-turn-assistant'; break; }
-                  }
+                  const userNode = turn.querySelector('[data-message-author-role="user"], [data-author="user"], [data-role="user"]');
+                  const assistantNode = turn.querySelector('[data-message-author-role="assistant"], [data-author="assistant"], [data-role="assistant"]');
+                  if (userNode && !assistantNode) continue;
+                  const txt = contentOf(turn);
+                  if (!txt || txt.length < 2) continue;
+                  if (window.__runeterraLastPrompt && txt.trim() === window.__runeterraLastPrompt.trim()) continue;
+                  if (window.__runeterraLastPrompt && txt.includes(window.__runeterraLastPrompt.trim()) && txt.length <= window.__runeterraLastPrompt.trim().length + 12) continue;
+                  chosen = {text:txt, el:turn};
+                  method = assistantNode ? 'turn-with-assistant-marker' : 'latest-non-user-conversation-turn';
+                  break;
                 }
               }
               const stop = roots.some(root => {
