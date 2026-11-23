@@ -254,16 +254,16 @@ object WorldAIProvider {
   val app=context.applicationContext
   val p=app.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
   if(p.getString("world_ai_provider","zhipu")=="chatgpt") {
-   val chatPrompt="【系统角色与输出规范】\\n"+systemPrompt+
-    "\\n\\n【本轮人物任务】\\n"+prompt+
-    "\\n\\n【硬性要求】只输出一个完整、合法的JSON对象；不得输出Markdown代码围栏、解释、道歉或要求补充问题。必须保留任务要求的字段，thought必须是自然、具体的第一人称人物思考。"
+   val chatPrompt="【系统角色与输出规范】\n"+systemPrompt+
+    "\n\n【本轮人物任务】\n"+prompt+
+    "\n\n【硬性要求】只输出一个完整、合法的JSON对象；不得输出Markdown代码围栏、解释、道歉或要求补充问题。必须保留任务要求的字段，thought必须是自然、具体的第一人称人物思考。"
    ChatGPTWorldBridge.ask(chatPrompt) { first ->
     if(hasCharacterJson(first)) {
      callback(first)
     } else {
-     val retry="【输出校正】上一次ChatGPT网页回答未通过人物JSON校验。请重新完成完整任务，不要道歉、不要要求补充问题、不要机械拒绝或机械服从。只输出合法JSON对象。\\n\\n【系统要求】\\n"+systemPrompt+
-      "\\n\\n【原始人物任务】\\n"+prompt+
-      "\\n\\n【上次无效输出，仅供避免重复】\\n"+first.take(2200)
+     val retry="【输出校正】上一次ChatGPT网页回答未通过人物JSON校验。请重新完成完整任务，不要道歉、不要要求补充问题、不要机械拒绝或机械服从。只输出合法JSON对象。\n\n【系统要求】\n"+systemPrompt+
+      "\n\n【原始人物任务】\n"+prompt+
+      "\n\n【上次无效输出，仅供避免重复】\n"+first.take(2200)
      ChatGPTWorldBridge.ask(retry) { second ->
       if(hasCharacterJson(second)) callback(second)
       else callback("【ChatGPT网页决策失败】连续两次未生成有效人物JSON。首次输出："+first.take(600)+"；重试输出："+second.take(900))
