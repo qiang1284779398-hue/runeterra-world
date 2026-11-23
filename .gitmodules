@@ -1,0 +1,3 @@
+[submodule "backend/vendor/generative_agents"]
+	path = backend/vendor/generative_agents
+	url = https://github.com/joonspk-research/generative_agents.git
