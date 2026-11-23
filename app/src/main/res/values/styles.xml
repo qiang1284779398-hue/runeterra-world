@@ -6,6 +6,11 @@
         <item name="android:statusBarColor">#091321</item>
         <item name="android:navigationBarColor">#080D18</item>
         <item name="android:windowBackground">#0A111F</item>
+        <item name="android:textColorPrimary">#EBF0F6</item>
+        <item name="android:textColorSecondary">#BECDDB</item>
+        <item name="android:textColor">#EBF0F6</item>
+        <item name="android:editTextColor">#EBF0F6</item>
+        <item name="android:textColorHint">#AFC0D1</item>
         <item name="android:alertDialogTheme">@style/Theme.Runeterra.Dialog</item>
         <item name="android:dialogTheme">@style/Theme.Runeterra.Dialog</item>
     </style>
