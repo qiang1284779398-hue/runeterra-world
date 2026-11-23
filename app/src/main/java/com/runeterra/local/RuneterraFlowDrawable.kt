@@ -120,8 +120,4 @@ class RuneterraFlowDrawable : Drawable() {
         return changed
     }
 
-    override fun unscheduleSelf(what: Runnable) {
-        if (what === frame) scheduled = false
-        super.unscheduleSelf(what)
-    }
 }
