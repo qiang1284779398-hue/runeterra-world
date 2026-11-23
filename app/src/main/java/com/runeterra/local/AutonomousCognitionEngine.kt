@@ -91,7 +91,9 @@ object AutonomousCognitionEngine {
 
     private fun chooseHeroAction(prompt: String): String {
         if (listOf("平民遇险", "保护村民", "救援", "有人受伤", "袭击平民").any(prompt::contains)) return "aid"
-        if (listOf("拒绝", "不愿参与", "违背信念", "不应接受").any(prompt::contains)) return "decline_event"
+        // Do not match the generic word "拒绝": the character prompt itself explains that
+        // refusal is an available option, which previously made every fallback turn decline.
+        if (listOf("明确拒绝邀请", "拒绝这项邀请", "拒绝当前提议", "拒绝加入行动", "我不愿参与这次事件").any(prompt::contains)) return "decline_event"
         if (listOf("训练", "修炼", "提升能力", "磨练").any(prompt::contains)) return "train"
         if (listOf("谈判", "交涉", "结盟", "外交", "沟通").any(prompt::contains)) return "negotiate"
         if (listOf("调查", "真相", "线索", "探索").any(prompt::contains)) return "investigate"
@@ -110,7 +112,7 @@ object AutonomousCognitionEngine {
             "socialize", "negotiate" -> "我需要认真考虑与他人的关系，通过交流确认彼此的立场。"
             "investigate_world", "investigate", "investigate_event" -> "目前掌握的信息还不充分，我应先调查并核实线索，避免轻率判断。"
             "join_event" -> "这件事可能影响周围的人，我需要先评估风险，再决定如何参与。"
-            "decline_event" -> "这件事与我当前的判断或原则不符，我决定暂不接受。"
+            "decline_event" -> "我决定不参加这次提议；这只是当前处境下的选择，之后若出现新证据或条件变化，我会重新评估。"
             else -> "目前没有足够依据贸然行动，我先观察眼前变化，维持当前安排。"
         }
         val belief = Regex("信念[:：]([^；。\\n]+)").find(prompt)?.groupValues?.getOrNull(1)?.take(100).orEmpty()
