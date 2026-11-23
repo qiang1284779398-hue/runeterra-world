@@ -1,0 +1,28 @@
+<resources>
+    <style name="Theme.Runeterra" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">serif</item>
+        <item name="android:colorAccent">#DDBB72</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">#091321</item>
+        <item name="android:navigationBarColor">#080D18</item>
+        <item name="android:windowBackground">#0A111F</item>
+        <item name="android:alertDialogTheme">@style/Theme.Runeterra.Dialog</item>
+        <item name="android:dialogTheme">@style/Theme.Runeterra.Dialog</item>
+    </style>
+    <style name="Theme.Runeterra.Dialog" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:colorAccent">#DDBB72</item>
+        <item name="android:windowBackground">@drawable/runeterra_dialog_background</item>
+        <item name="android:backgroundDimAmount">0.72</item>
+        <item name="android:textColorPrimary">#E8EDF3</item>
+        <item name="android:textColorSecondary">#A9BBCB</item>
+        <item name="android:fontFamily">serif</item>
+        <item name="android:buttonBarPositiveButtonStyle">@style/Runeterra.Dialog.Button</item>
+        <item name="android:buttonBarNegativeButtonStyle">@style/Runeterra.Dialog.Button</item>
+        <item name="android:buttonBarNeutralButtonStyle">@style/Runeterra.Dialog.Button</item>
+    </style>
+    <style name="Runeterra.Dialog.Button" parent="@android:style/Widget.Material.Button.Borderless">
+        <item name="android:textColor">#DDBB72</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:minHeight">48dp</item>
+    </style>
+</resources>
