@@ -110,7 +110,7 @@ $recent
             for (i in start until raw.length) {
                 val ch = raw[i]
                 if (quoted) {
-                    if (escaped) escaped = false else if (ch == '\\\\') escaped = true else if (ch == '"') quoted = false
+                    if (escaped) escaped = false else if (ch == '\\') escaped = true else if (ch == '"') quoted = false
                 } else when (ch) {
                     '"' -> quoted = true
                     '{' -> depth++
