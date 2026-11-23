@@ -26,8 +26,8 @@ ZHIPU_MODEL = os.getenv("ZHIPU_MODEL", "glm-5.3-flashx")
 
 app = FastAPI(title="Runeterra Cognitive Backend", version="0.1.0")
 _db_lock = threading.Lock()
-_actor_locks: dict[str, threading.Lock] = {}\n_letta_locks: dict[str, threading.Lock] = {}
-_db_bootstrap = db()\n_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))\n_checkpointer.setup()
+_actor_locks: dict[str, threading.Lock] = {}
+_letta_locks: dict[str, threading.Lock] = {}
 
 
 def db() -> sqlite3.Connection:
@@ -37,6 +37,11 @@ def db() -> sqlite3.Connection:
     conn.execute("CREATE TABLE IF NOT EXISTS traces (id INTEGER PRIMARY KEY AUTOINCREMENT, actor_key TEXT, day INTEGER, trace_json TEXT, created_at TEXT)")
     conn.commit()
     return conn
+
+
+_db_bootstrap = db()
+_checkpointer = SqliteSaver(sqlite3.connect(DB_PATH, check_same_thread=False))
+_checkpointer.setup()
 
 
 def auth(token: str | None) -> None:
