@@ -98,9 +98,17 @@ def get_or_create_letta_agent(actor_key: str, display_name: str) -> str:
 
 
 def letta_recall(actor_key: str, display_name: str, query: str) -> str:
-    agent_id = get_or_create_letta_agent(actor_key, display_name)
+    world_key = actor_key.split(":", 1)[0]
+    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
     payload = {
-        "messages": [{"role": "user", "content": "作为长期记忆管理员，请根据该角色的持久记忆检索与当前情境有关的经历、人物关系、承诺、目标和教训。只返回有依据的记忆；没有就明确说没有。\n当前情境：\n" + query[:10000]}],
+        "messages": [{
+            "role": "user",
+            "content": (
+                f"只检索角色ID={actor_key}的记忆，不得引用其他角色经历。"
+                "作为长期记忆管理员，请检索与当前情境有关的经历、人物关系、承诺、目标和教训。"
+                "只返回有依据的记忆；没有就明确说没有。\n当前情境：\n" + query[:10000]
+            ),
+        }],
         "streaming": False,
         "max_steps": 3,
     }
@@ -125,8 +133,15 @@ def letta_recall(actor_key: str, display_name: str, query: str) -> str:
 
 
 def letta_store_experience(actor_key: str, display_name: str, day: int, experience: str) -> None:
-    world_key = actor_key.split(":", 1)[0]\n    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")\n    payload = {\n        "messages": [{\n            "role": "user",\n            "content": (\n                f"只允许写入角色ID={actor_key}的独立记忆空间。请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
-                f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\\n"
+    world_key = actor_key.split(":", 1)[0]
+    agent_id = get_or_create_letta_agent(world_key, "世界记忆管理员")
+    payload = {
+        "messages": [{
+            "role": "user",
+            "content": (
+                f"只允许写入角色ID={actor_key}的独立记忆空间。"
+                "请将以下已发生的世界经历写入该角色的长期记忆。区分事实和推测，"
+                f"保留人物关系、承诺、行动及结果，不要虚构。第{day}日经历：\n"
                 + experience[:10000]
             ),
         }],
@@ -143,7 +158,6 @@ def letta_store_experience(actor_key: str, display_name: str, day: int, experien
         response.raise_for_status()
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Letta memory write failed: {exc}") from exc
-
 
 class ThinkRequest(BaseModel):
     world_id: str = Field(min_length=1, max_length=100)
