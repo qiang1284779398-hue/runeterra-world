@@ -18,7 +18,7 @@ object WorldAIProvider {
  private const val ALIAS="runeterra_zhipu_aes"
  private const val ENDPOINT="https://open.bigmodel.cn/api/paas/v4/chat/completions"
 
- fun isAvailable(context:Context)=isConfigured(context)||ResidentAI.isLoaded()
+ fun isAvailable(context:Context)=isConfigured(context)||isBackendConfigured(context)||ResidentAI.isLoaded()\n private fun isBackendConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("cognitive_backend_url",null)?.isNotBlank()==true
  private fun isConfigured(context:Context)=context.applicationContext.getSharedPreferences(PREFS,Context.MODE_PRIVATE).getString("key_data",null)?.isNotBlank()==true
 
  private fun decryptStored(context:Context,dataKey:String,ivKey:String):String {
