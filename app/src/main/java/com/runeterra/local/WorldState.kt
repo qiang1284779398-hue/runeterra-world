@@ -3090,6 +3090,7 @@ private fun craftBonus(region:String):Int = when(region) {
                                 }
                                 else -> latest.mindMemory.add("行动结果：经过评估，决定暂时维持当前生活与职业。")
                             }
+                            CognitiveArchitecture.recordOutcome(context,cognitiveKey,day,action,latest.mindMemory.lastOrNull().orEmpty())
                             while(latest.mindMemory.size>120) latest.mindMemory.removeAt(0)
                             val latestPopulation=people(p).map { if(it.id==latest.id) latest else it }
                             savePeople(p,latestPopulation)
@@ -3236,7 +3237,8 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                             }
                             else -> "决定维持当前安排"
                         }
-                        heroNow.lastThoughtDay=day
+                        CognitiveArchitecture.recordOutcome(context,cognitiveKey,day,action,outcome)
+                         heroNow.lastThoughtDay=day
                         heroNow.memory.add("第"+day+"日："+thought)
                         heroNow.history.add("第"+day+"日｜思考："+thought+"｜意图："+heroNow.intent+"｜行动："+action+"｜结果："+outcome)
                         while(heroNow.memory.size>100) heroNow.memory.removeAt(0)
