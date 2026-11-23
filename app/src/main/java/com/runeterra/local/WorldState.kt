@@ -178,7 +178,8 @@ object WorldEngine {
         // The rule-based fallback is only a no-model simulation. Never let it overwrite or imitate local-LLM cognition.
         if(ResidentAI.isLoaded()) return
         if(day%30L!=0L)return
-        pop.filter{it.alive}.forEach { r ->
+        val selectedIds=p.getStringSet(KEY_RESIDENT_THINKING_POOL,emptySet())?.toSet() ?: emptySet()
+        pop.filter{it.alive && it.id.toString() in selectedIds}.forEach { r ->
             // Preserve the resident's latest private LLM cognition instead of replacing it with fallback heuristics.
             if(r.currentThought.contains("AI人物推理") || r.currentThought.contains("本地模型推理")) return@forEach
             val market=markets[r.region]
@@ -2843,16 +2844,20 @@ private fun craftBonus(region:String):Int = when(region) {
 
     fun setThinkingPool(context: Context, heroes: Boolean, selected: Set<String>) {
         val key = if (heroes) KEY_HERO_THINKING_POOL else KEY_RESIDENT_THINKING_POOL
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putStringSet(key, selected.toMutableSet()).apply()
-        // Reset the relevant cursor so a changed pool takes effect immediately and fairly.
+        val prefs=context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val aliveKeys=if(heroes) heroAgents(prefs).filter { it.alive }.map { it.name }.toSet()
+            else people(prefs).filter { it.alive }.map { it.id.toString() }.toSet()
+        val validSelection=selected.filter { it in aliveKeys }.toSet()
+        prefs.edit().putStringSet(key, validSelection).apply()
+        // Reset cursor so the first selected person is scheduled promptly.
         val cursorKey = if (heroes) KEY_HERO_AI_CURSOR else KEY_AI_CURSOR
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt(cursorKey, 0).apply()
+        prefs.edit().putInt(cursorKey, 0).apply()
     }
 
     fun localAiStatus(context:Context):String {
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
-        val heroes=heroAgents(p).count { it.alive }
-        val residents=people(p).count { it.alive }
+        val heroes=selectedThinkingPool(context,true).size
+        val residents=selectedThinkingPool(context,false).size
         val success=p.getLong(KEY_AI_SUCCESS_COUNT,0L)
         val failure=p.getLong(KEY_AI_FAILURE_COUNT,0L)
         val active=p.getString(KEY_AI_ACTIVE_TARGET,"").orEmpty()
@@ -2895,7 +2900,10 @@ private fun craftBonus(region:String):Int = when(region) {
         if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return false
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val population=people(p)
-        val living=population.filter { it.alive }
+        val selected=selectedThinkingPool(context,false)
+        // Only explicit selections may enter the autonomous AI queue. An empty pool
+        // means zero residents are eligible; it must never fall back to everyone.
+        val living=population.filter { it.alive && it.id.toString() in selected }
         if(living.isEmpty()) return false
         val cursor=p.getInt(KEY_AI_CURSOR,0).let { if(it<0) 0 else it%living.size }
         val r=living[cursor]
@@ -3155,12 +3163,12 @@ private fun craftBonus(region:String):Int = when(region) {
         if(!WorldAIProvider.isAvailable(context) || localInferenceBusy) return false
         val p=context.getSharedPreferences(PREFS,Context.MODE_PRIVATE)
         val all=heroAgents(p)
-        // Every living hero receives the same private reasoning channel as residents.
-        val active=all.filter { it.alive }
+        // Heroes are scheduled only when explicitly selected by the user.
+        val selected=selectedThinkingPool(context,true)
+        val active=all.filter { it.alive && it.name in selected }
         if(active.isEmpty()) return false
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val day=p.getLong(KEY_DAY,1L)
-        // Round-robin among the three selected heroes only.
         val hero=active[cursor]
         p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
