@@ -323,22 +323,21 @@ class ChatGPTWebActivity : Activity() {
             val data = try { JSONObject(encoded ?: "{}") } catch (_: Exception) { JSONObject() }
             var text = data.optString("text").trim()
             val diagnosticText = data.optString("diagnosticText")
-            // Fallback: parse the visible diagnostic transcript with the exact
-            // submitted prompt as an anchor. The captured group begins AFTER the
-            // prompt, so the user's question is never returned as part of the answer.
-            if (text.isBlank()) {
-                val submittedPrompt = prompt.text?.toString()?.trim().orEmpty()
-                if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
-                    val pattern = Regex(
-                        Regex.escape(submittedPrompt) + "\\s*([\\s\\S]{1,8000})$"
-                    )
-                    val match = pattern.findAll(diagnosticText).lastOrNull()
-                    if (match != null) {
-                        text = match.groupValues[1]
-                            .replace(Regex("(?im)^\\s*(ChatGPT 可能会犯错.*|AI 也可能会犯错.*|Message ChatGPT.*)$"), "")
-                            .replace(Regex("\\n{3,}"), "\\n\\n")
-                            .trim()
-                    }
+            // Prefer the diagnostic transcript over fragile ChatGPT DOM selectors.
+            // Match the latest occurrence of the exact submitted prompt and capture
+            // only the text after it, which excludes the user's question.
+            val submittedPrompt = prompt.text?.toString()?.trim().orEmpty()
+            if (submittedPrompt.isNotEmpty() && diagnosticText.isNotBlank()) {
+                val pattern = Regex(
+                    Regex.escape(submittedPrompt) + "\\s*([\\s\\S]{1,8000})$"
+                )
+                val match = pattern.findAll(diagnosticText).lastOrNull()
+                if (match != null) {
+                    val fromDiagnostic = match.groupValues[1]
+                        .replace(Regex("(?im)^\\s*(ChatGPT 可能会犯错.*|AI 也可能会犯错.*|Message ChatGPT.*)$"), "")
+                        .replace(Regex("\\n{3,}"), "\\n\\n")
+                        .trim()
+                    if (fromDiagnostic.isNotBlank()) text = fromDiagnostic
                 }
             }
             val streaming = data.optBoolean("streaming")
