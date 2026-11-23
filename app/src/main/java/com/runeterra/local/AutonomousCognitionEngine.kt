@@ -15,9 +15,9 @@ object AutonomousCognitionEngine {
 
     fun prepare(context: Context, actor: String): String {
         val p = prefs(context)
-        val skills = runCatching { JSONArray(p.getString("\${key(actor)}_skills", "[]") ?: "[]") }.getOrDefault(JSONArray())
+        val skills = runCatching { JSONArray(p.getString("${key(actor)}_skills", "[]") ?: "[]") }.getOrDefault(JSONArray())
         val learned = (0 until skills.length()).mapNotNull { skills.optJSONObject(it)?.optString("name")?.takeIf { it.isNotBlank() } }
-        return "【自主技能库】\n已沉淀技能：\${learned.takeLast(12).joinToString("、").ifBlank { "尚无经多次验证的稳定技能" }}\n技能只在真实行动结果反复支持后形成；技能是建议，不得覆盖当前事实、角色意愿或天道规则。"
+        return "【自主技能库】\n已沉淀技能：${learned.takeLast(12).joinToString("、").ifBlank { "尚无经多次验证的稳定技能" }}\n技能只在真实行动结果反复支持后形成；技能是建议，不得覆盖当前事实、角色意愿或天道规则。"
     }
 
     fun recordOutcome(context: Context, actor: String, day: Long, action: String, outcome: String) {
@@ -28,7 +28,7 @@ object AutonomousCognitionEngine {
         if (!good) return
         val p = prefs(context)
         val k = key(actor)
-        val skills = runCatching { JSONArray(p.getString("\${k}_skills", "[]") ?: "[]") }.getOrDefault(JSONArray())
+        val skills = runCatching { JSONArray(p.getString("${k}_skills", "[]") ?: "[]") }.getOrDefault(JSONArray())
         var found: JSONObject? = null
         for (i in 0 until skills.length()) {
             val item = skills.optJSONObject(i) ?: continue
@@ -38,7 +38,7 @@ object AutonomousCognitionEngine {
         item.put("successes", item.optInt("successes") + 1).put("lastDay", day).put("lastEvidence", outcome.take(260))
         if (item.optInt("successes") >= 3) item.put("validated", true)
         while (skills.length() > 32) skills.remove(0)
-        p.edit().putString("\${k}_skills", skills.toString()).apply()
+        p.edit().putString("${k}_skills", skills.toString()).apply()
     }
 
     private fun skillName(action: String): String = when (action.trim().lowercase()) {
