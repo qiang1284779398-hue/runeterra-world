@@ -321,7 +321,12 @@ ${SelfModelEngine.prepare(context,actorKey)}
 ${MotivationEngine.prepare(context,actorKey)}
 ${IdentityEvolutionEngine.prepare(context,actorKey)}
 区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向。人格可以稳定，也可以被经历改变：强烈的亲历可以当场动摇信念，动摇、犹豫、自我怀疑都是真实状态，可以如实写入 belief 或 identity_change 并注明尚在动摇，不必等到彻底想通；也不得为了显得不同而无依据地改变。每轮JSON除原有字段外必须包含：self_view（自我理解，简短字符串）、self_assessment（自我评价，简短字符串）、strengths（数组，最多3项）、limitations（数组，最多3项）、self_facts（有事实依据的数组，最多3项）、self_confidence（0至100整数）、motives（对象，survival/autonomy/belonging/mastery/justice/curiosity六项均为0至100整数）、new_goal（仅在确有新长期方向时填写，不要把短期意图当成长目标）、long_term_goal（可选长期目标）、goal_reason（目标缘由）、goal_priority（0至100整数）、goal_status（active/completed/paused/abandoned）、goal_progress（0至100整数）、next_step（目标下一步），values（核心价值数组，最多5项）；长期目标默认保持连续，不得每轮随意改写或覆盖；但当经历形成新的执念、教训或内心冲突时，可以新增目标与旧目标并存甚至冲突，并写明缘由；identity_change和identity_change_reason在有真实经历支持变化或动摇时填写（动摇也可填写并注明），否则留空。不输出隐藏思维链。"""
-        return originalPrompt+"\n\n"+add+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt,day)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
+        // Stagnation intervention: duplicate detection used to only lower a score.
+        // When the previous turn was flagged as a near-repeat, this turn's prompt
+        // says so plainly and demands a change of method — detection with teeth.
+        val lastEval=CognitiveStore.read(p,"${k}_last_evaluation")
+        val stagnation=if(lastEval.optBoolean("duplicateThought")) "\n【停滞警告】你上一轮的想法与之前高度重复，且没有产生新的世界结果。这一轮必须改变：换一个能真正执行的方法、降低目标，或明确暂时放下这件事；不许再复述同一个计划。" else ""
+        return originalPrompt+"\n\n"+add+stagnation+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt,day)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
     fun capture(context:Context,actorKey:String,day:Long,raw:String):Evaluation {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val obj=extractObject(raw);val thought=obj?.optString("thought").orEmpty().trim();val norm=normalize(thought)
         val prev=(maxOf(0,a.length()-6) until a.length()).mapNotNull{a.optJSONObject(it)}.map{normalize(it.optString("thought"))}.filter{it.isNotBlank()};val duplicate=norm.isNotBlank()&&prev.any{similarity(norm,it)>=0.88};val missing=thought.isBlank();val score=when{missing->0;duplicate->35;a.length()==0->70;else->90}
         // Seed boredom for legacy saves from the actor's current same-action streak,

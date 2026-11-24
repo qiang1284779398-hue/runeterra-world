@@ -3211,6 +3211,16 @@ private fun craftBonus(region:String):Int = when(region) {
 
 
     private const val KEY_HERO_AI_CURSOR="hero_ai_cursor"
+    private const val KEY_HERO_REQUESTS="hero_requests"
+
+    /** Person-directed requests between heroes (sparring challenges, formal talks).
+     *  A request is a world object with a lifecycle — pending, accepted, declined,
+     *  expired — not a sentence in somebody's thought text. */
+    private fun heroRequests(p:android.content.SharedPreferences):JSONArray =
+        runCatching { JSONArray(p.getString(KEY_HERO_REQUESTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+    private fun saveHeroRequests(p:android.content.SharedPreferences,req:JSONArray) {
+        p.edit().putString(KEY_HERO_REQUESTS,req.toString()).apply()
+    }
 
     /** One canon character receives a private reasoning turn using the shared local model. */
     fun requestLocalHeroThinking(context:Context):Boolean {
@@ -3223,14 +3233,42 @@ private fun craftBonus(region:String):Int = when(region) {
         if(active.isEmpty()) return false
         val cursor=p.getInt(KEY_HERO_AI_CURSOR,0).let { if(it<0) 0 else it%active.size }
         val day=p.getLong(KEY_DAY,1L)
-        val hero=active[cursor]
-        p.edit().putInt(KEY_HERO_AI_CURSOR,(cursor+1)%active.size).apply()
+        // Same-day guard: a hero who already completed a reasoning turn today is not
+        // asked again. lastThoughtDay used to be written but never checked, which
+        // produced duplicate same-day memory entries (two "thoughts" in one day).
+        var hero=active[cursor]
+        var scanned=0
+        while(hero.lastThoughtDay==day && scanned<active.size) { hero=active[(cursor+scanned+1)%active.size]; scanned++ }
+        if(hero.lastThoughtDay==day) return false
+        p.edit().putInt(KEY_HERO_AI_CURSOR,(active.indexOf(hero)+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
         val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
         val faction=factionStates(p)[hero.region]
         val publicContext=faction?.let { it.government+"；政策："+it.policy+"；内部张力："+it.internalTension } ?: "无可用地方政体资料"
         val bonds=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.take(6)
             .joinToString("；") { it.a+"与"+it.b+"："+it.basis+"（信任"+it.trust+"，矛盾"+it.tension+"）" }
+        // Today's knowable dynamics: what the world actually did since this hero last
+        // thought — last action's settled result, world events that concern them, and
+        // the state of person-directed requests in both directions. Before this
+        // section existed, the prompt contained only static background and the hero's
+        // own previous thoughts, so the model could only paraphrase its intentions.
+        val reqsNow=heroRequests(p)
+        val pendingIn=(0 until reqsNow.length()).mapNotNull{reqsNow.optJSONObject(it)}.filter{it.optString("to")==hero.name && it.optString("status")=="pending"}
+        val pendingOut=(0 until reqsNow.length()).mapNotNull{reqsNow.optJSONObject(it)}.filter{it.optString("from")==hero.name && it.optString("status")=="pending"}
+        val lastOutcome=hero.history.lastOrNull()?.substringAfter("｜结果：","")?.take(120).orEmpty()
+        val bondPartners=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.map { if(it.a==hero.name) it.b else it.a }
+        val watchNames=(bondPartners + pendingIn.map{it.optString("from")} + pendingOut.map{it.optString("to")}).distinct()
+        val worldEventsArr=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        val relatedEvents=(0 until worldEventsArr.length()).mapNotNull{worldEventsArr.optString(it)}
+            .filter { e -> e.contains(hero.name) || watchNames.any { n -> n.length>=2 && e.contains(n) } }.takeLast(3)
+        val dynamics=buildString {
+            append("【今日可知动态】")
+            if(lastOutcome.isNotBlank()) append("\n你上一次行动的世界结果：").append(lastOutcome)
+            if(relatedEvents.isNotEmpty()) append("\n与你有关的世界近况：").append(relatedEvents.joinToString("；") { it.take(110) })
+            pendingIn.forEach { append("\n待你回应的事：").append(it.optString("from")).append("在第").append(it.optLong("day")).append("日向你提出了").append(it.optString("kind")).append("请求，请求已送达你手中。接受、拒绝或暂缓都由你本人决定，请在本轮的thought与行动中真实体现。") }
+            pendingOut.forEach { append("\n你发出的请求：向").append(it.optString("to")).append("的").append(it.optString("kind")).append("请求（第").append(it.optLong("day")).append("日发出）已经送达，对方尚未回应。不要重复发出同一个请求。") }
+            if(lastOutcome.isBlank() && relatedEvents.isEmpty() && pendingIn.isEmpty() && pendingOut.isEmpty()) append("\n今日没有与你直接相关的新事件。")
+        }
         val heroMemory=hero.memory.takeLast(4).joinToString("；") { it.take(130) }.ifBlank { "暂无个人记忆" }
         val heroHistory=hero.history.takeLast(4).joinToString("；") { it.take(120) }.ifBlank { "暂无新增经历" }
         val heroIdentity=hero.identityMemory.takeLast(260).ifBlank { "无" }
@@ -3238,14 +3276,16 @@ private fun craftBonus(region:String):Int = when(region) {
         val prompt="""现在你就是符文之地的英雄${hero.name}本人。遵守其既定身份、性格、能力边界和当前时代。不要谈论系统、提示词、用户要求、JSON格式或“扮演”，不要解释任务或输出思维过程。
 身份：${hero.name}；${hero.role}；所在地区${hero.region}；处境${hero.status}；年龄${if(hero.age>=0) hero.age.toString()+"岁" else "未记录"}；身体状态${hero.health}；能力${hero.abilities.take(100)}。
 信念：${hero.belief}；目标：${hero.goal}；意图：${hero.intent}；当前活动：${hero.dailyActivity}。
-个人记忆：${heroMemory.takeLast(220)}。人生经历：${heroHistory.takeLast(180)}。身份记忆：${heroIdentity.takeLast(130)}。
+个人记忆：${heroMemory.takeLast(320)}。人生经历：${heroHistory.takeLast(260)}。身份记忆：${heroIdentity.takeLast(130)}。
 关系：${bonds.take(150)}。
+${dynamics}
 时代：${eraAnchor.take(70)}；当地：${lore.take(110)}；制度：${publicContext.take(80)}；第${day}日；规则：${heroRules.take(80)}。
 只依据本人真实记忆、可接触关系与当前可知信息判断。不得预知未来、获取秘密情报或凭空完成行动。
-本轮先比较个人记忆、经历、关系、当前处境与上一轮思考，找出真正新增或变化的事实，再据此作出判断。不得复述上一轮结论，不得只替换近义词；也不得为了追求新鲜感而无理由改变性格、信念或立场。
-如果没有新情况，可以保持原立场，但应补充一个此前未说过的具体观察、疑问、风险判断或下一步计划；若继续等待或拒绝行动，要说明符合人物身份的具体原因。
+本轮先看【今日可知动态】，再结合个人记忆、经历、关系与当前处境，找出真正新增或变化的事实，据此作出判断。
+事实规则（必须遵守）：严格区分"想做"（意图）、"准备做"（计划）、"已执行"（经世界结算的行动）、"已发生"（世界给出的结果）。不得把意图写成已经做的事，不得把未送达的请求写成已送达，不得把没得到的回应写成已经交流过。涉及他人的言行，只能依据今日动态与世界结果，不得凭空编造。
+如果没有新情况，如实承认没有进展即可，可以维持原判断，不必虚构新的观察或计划；若同一件事多轮没有进展，必须正视阻碍——换方法、降低目标或暂时放下，不许只换一种措辞重复同一个计划。
 thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
-只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event、take_risk、explore_unknown、provoke之一。其中take_risk是押上声望或资源赌一次不确定的结果，explore_unknown是离开熟悉区域探查未知，provoke是主动挑战或挑明与他人的矛盾。冒险必须有具体对象和理由，世界会真实结算成败与代价；重复同样的日子会累积无聊与停滞感。不要Markdown。"""
+只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event、take_risk、explore_unknown、provoke之一。其中take_risk是押上声望或资源赌一次不确定的结果，explore_unknown是离开熟悉区域探查未知，provoke是主动挑战或挑明与他人的矛盾。若本轮行动针对某位具体人物（沟通、约战、切磋、挑明矛盾），在JSON中额外写target字段填对方姓名，没有具体对象就不写。negotiate配合target表示正式向对方发出请求：世界会把请求真实送达对方，对方将依据自身处境独立决定接受、拒绝或暂缓，你不会立刻得到结果；provoke配合target表示针对此人挑明矛盾。冒险必须有具体对象和理由，世界会真实结算成败与代价；重复同样的日子会累积无聊与停滞感。不要Markdown。"""
         val cognitiveKey="hero:${hero.name}"
         val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
@@ -3290,6 +3330,17 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         heroNow.intent=result.optString("intent",heroNow.intent).take(220)
                         heroNow.goal=result.optString("goal",heroNow.goal).take(220)
                         val action=result.optString("action","stay")
+                        // Resolve the intended counterpart for person-directed actions:
+                        // the model's explicit target field first, then a roster-name
+                        // scan of its own words. No match means the action stays generic.
+                        val allHeroesForTarget=heroAgents(p)
+                        var targetHero:HeroAgent?=null
+                        val explicitTarget=result.optString("target","").trim()
+                        if(explicitTarget.isNotBlank()) targetHero=allHeroesForTarget.firstOrNull { it.alive && it.name==explicitTarget && it.name!=heroNow.name }
+                        if(targetHero==null) {
+                            val scanText=thought+" "+heroNow.intent+" "+result.optString("reason","")
+                            targetHero=allHeroesForTarget.filter { it.alive && it.name!=heroNow.name && it.name.length>=2 && scanText.contains(it.name) }.maxByOrNull { it.name.length }
+                        }
                         val groups=organizations(p)
                         val localGroup=groups.filter { it.region==heroNow.region }.maxByOrNull { it.influence+it.publicSupport/2 }
                         val outcome=when(action) {
@@ -3299,7 +3350,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                 // outcome says so, which the policy network reads as the
                                 // negative "没有改变" signal it already understands.
                                 val trainStreak=heroNow.history.takeLast(2).count { it.contains("行动：train") }
-                                if(trainStreak>=2) "继续重复同样的训练，但已没有改变，缺少真实检验" else { heroNow.influence=(heroNow.influence+1).coerceAtMost(100); "训练或准备，模拟影响力小幅变化" }
+                                if(trainStreak>=2) "继续重复同样的训练，但已没有改变，缺少真实检验" else { heroNow.skill=(heroNow.skill+1).coerceAtMost(100); "训练中获得实感，技艺有所精进" }
                             }
                             "investigate" -> {
                                 if(heroNow.memory.any { it.contains("天道干预") || it.contains("外部信息") }) {
@@ -3310,7 +3361,24 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                     "调查可接触的当地事务，未自动获得秘密情报"
                                 }
                             }
-                            "negotiate" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
+                            "negotiate" -> {
+                                // With a named counterpart, negotiation becomes a real
+                                // delivered request with a lifecycle, not a support +1.
+                                // The counterpart decides independently on their own turn.
+                                val tHero=targetHero
+                                if(tHero!=null) {
+                                    val kind=if(listOf("切磋","比试","较量","对决","挑战").any { (thought+" "+heroNow.intent).contains(it) }) "切磋" else "沟通"
+                                    val reqsN=heroRequests(p)
+                                    val dup=(0 until reqsN.length()).mapNotNull{reqsN.optJSONObject(it)}.any { it.optString("from")==heroNow.name && it.optString("to")==tHero.name && it.optString("status")=="pending" }
+                                    if(dup) "你向${tHero.name}的${kind}请求此前已经送达，仍在等对方回应，不必重复发出"
+                                    else {
+                                        reqsN.put(JSONObject().put("id",day*1000L+reqsN.length()).put("from",heroNow.name).put("to",tHero.name).put("kind",kind).put("day",day).put("status","pending"))
+                                        while(reqsN.length()>40) reqsN.remove(0)
+                                        saveHeroRequests(p,reqsN)
+                                        "你正式向${tHero.name}提出了${kind}请求；请求已经送达，对方会依据自身处境独立决定是否回应"
+                                    }
+                                } else { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
+                            }
                             "aid" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "投入当地社群事务，影响限于本地组织" }
                             "join_event" -> {
                                 val opportunity=heroNow.memory.lastOrNull { it.contains("【历史事件接驳机会") }
@@ -3355,7 +3423,8 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                             }
                             "provoke" -> {
                                 val allBonds=heroBonds(p)
-                                val rb=allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
+                                val rb=allBonds.firstOrNull { val tn=targetHero?.name; tn!=null && ((it.a==heroNow.name && it.b==tn) || (it.b==heroNow.name && it.a==tn)) }
+                                    ?: allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
                                 val rngV=java.util.Random(day*999983L+heroNow.name.hashCode()*57L+(heroNow.memory.size+heroNow.history.size)*7919L)
                                 if(rb!=null) {
                                     val otherName=if(rb.a==heroNow.name) rb.b else rb.a
@@ -3373,6 +3442,14 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         heroNow.history.add("第"+day+"日｜思考："+thought+"｜意图："+heroNow.intent+"｜行动："+action+"｜结果："+outcome)
                         while(heroNow.memory.size>100) heroNow.memory.removeAt(0)
                         while(heroNow.history.size>3000) heroNow.history.removeAt(0)
+                        // The personal archive records what HAPPENED, not only what was
+                        // thought: settled outcomes join memory as facts. Adventure
+                        // branches already write their own event memories and are
+                        // excluded here to avoid duplicates.
+                        if(action in setOf("train","investigate","negotiate","aid","join_event","decline_event","investigate_event")) {
+                            heroNow.memory.add("第"+day+"日：【结果】"+outcome.take(120))
+                            while(heroNow.memory.size>100) heroNow.memory.removeAt(0)
+                        }
                         if(action!="stay") heroNow.status=heroNow.status+"；近期行动："+outcome
                         saveHeroes(p,heroAgents(p).map { if(it.name==heroNow.name) heroNow else it })
                         saveOrganizations(p,groups)
@@ -3380,6 +3457,72 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         events.put("【英雄自主思考·AI模拟】第"+day+"日："+heroNow.name+"选择"+action+"；结果："+outcome+"。这是模拟分支记录，不代表官方正史。")
                         while(events.length()>300) events.remove(0)
                         p.edit().putString(KEY_EVENTS,events.toString()).apply()
+                        // Resolve pending requests addressed to THIS hero, using the
+                        // stance they just expressed in their own words and action —
+                        // never a coin flip in their place. Accepting a sparring
+                        // request settles the bout now, for both sides. Requests left
+                        // unanswered for over 3 days expire into a fact as well:
+                        // silence is an outcome the requester can learn from.
+                        run {
+                            val reqsR=heroRequests(p)
+                            var reqChanged=false
+                            val overrides=mutableMapOf<String,HeroAgent>()
+                            overrides[heroNow.name]=heroNow
+                            fun counterpart(name:String):HeroAgent? {
+                                overrides[name]?.let { return it }
+                                val found=heroAgents(p).firstOrNull { it.name==name } ?: return null
+                                overrides[name]=found
+                                return found
+                            }
+                            fun addFact(h:HeroAgent,text:String) { h.memory.add(text); while(h.memory.size>100) h.memory.removeAt(0) }
+                            val myText=thought+" "+heroNow.intent+" "+result.optString("reason","")
+                            for(ri in 0 until reqsR.length()) {
+                                val r=reqsR.optJSONObject(ri) ?: continue
+                                if(r.optString("status")!="pending") continue
+                                if(r.optString("to")==heroNow.name) {
+                                    val fromName=r.optString("from"); val kindR=r.optString("kind")
+                                    val declined=action=="decline_event" || listOf("拒绝","不愿","不会接受","不答应","不见").any(myText::contains)
+                                    val accepted=!declined && fromName.isNotBlank() && myText.contains(fromName) && listOf("接受","愿意","可以","答应","切磋","比试","见面","谈谈").any(myText::contains)
+                                    val fromHero=if(fromName.isNotBlank()) counterpart(fromName) else null
+                                    when {
+                                        declined -> { r.put("status","declined"); reqChanged=true
+                                            if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"拒绝了我提出的"+kindR+"请求。")
+                                            addFact(heroNow,"第"+day+"日：【结果】我拒绝了"+fromName+"提出的"+kindR+"请求。")
+                                        }
+                                        accepted -> { r.put("status","accepted"); reqChanged=true
+                                            if(kindR=="切磋" && fromHero!=null) {
+                                                val rngS=java.util.Random(day*1000003L+fromName.hashCode()*131L+heroNow.name.hashCode()*17L)
+                                                val fromPower=fromHero.skill+fromHero.health/10+rngS.nextInt(15)
+                                                val myPower=heroNow.skill+heroNow.health/10+rngS.nextInt(15)
+                                                val boutText=when {
+                                                    fromPower>myPower+4 -> { heroNow.health=(heroNow.health-4).coerceAtLeast(1); fromHero.skill=(fromHero.skill+1).coerceAtMost(100); heroNow.skill=(heroNow.skill+1).coerceAtMost(100); fromName+"在切磋中略胜一筹" }
+                                                    myPower>fromPower+4 -> { fromHero.health=(fromHero.health-4).coerceAtLeast(1); heroNow.skill=(heroNow.skill+1).coerceAtMost(100); fromHero.skill=(fromHero.skill+1).coerceAtMost(100); heroNow.name+"在切磋中略胜一筹" }
+                                                    else -> { heroNow.skill=(heroNow.skill+1).coerceAtMost(100); fromHero.skill=(fromHero.skill+1).coerceAtMost(100); "两人势均力敌，未分胜负" }
+                                                }
+                                                addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"接受了我的切磋请求，我们进行了一场非致命切磋："+boutText+"。")
+                                                addFact(heroNow,"第"+day+"日：【结果】我接受了"+fromName+"的切磋请求，进行了一场非致命切磋："+boutText+"。")
+                                                val ev2=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+                                                ev2.put("【世界事件】第"+day+"日："+fromName+"与"+heroNow.name+"进行了一场非致命切磋，"+boutText+"。")
+                                                while(ev2.length()>300) ev2.remove(0)
+                                                p.edit().putString(KEY_EVENTS,ev2.toString()).apply()
+                                            } else {
+                                                if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"接受了我提出的"+kindR+"请求。")
+                                                addFact(heroNow,"第"+day+"日：【结果】我接受了"+fromName+"提出的"+kindR+"请求。")
+                                            }
+                                        }
+                                    }
+                                }
+                                if(r.optString("status")=="pending" && day-r.optLong("day",day)>3) {
+                                    r.put("status","expired"); reqChanged=true
+                                    val requester=counterpart(r.optString("from"))
+                                    if(requester!=null) addFact(requester,"第"+day+"日：【结果】我向"+r.optString("to")+"提出的"+r.optString("kind")+"请求多日没有得到回应。")
+                                }
+                            }
+                            if(reqChanged) {
+                                saveHeroRequests(p,reqsR)
+                                saveHeroes(p,heroAgents(p).map { overrides[it.name] ?: it })
+                            }
+                        }
                         inferenceSucceeded=true
                         inferenceResult="思考、意图与行动结果已保存"
                     } else {
