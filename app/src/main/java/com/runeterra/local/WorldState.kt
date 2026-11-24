@@ -2951,7 +2951,7 @@ private fun craftBonus(region:String):Int = when(region) {
 当地情况：${localLore.take(110)}；${publicInstitutions.take(90)}；近期事件：${localEvents.take(100).ifBlank { "无" }}。
 第${day}日；时代：${eraAnchor.take(70)}；规则：${publicRules.take(90)}。
 只思考眼前最重要的一件具体事情。必须考虑这个人的真实处境；可以害怕、犹豫、拒绝改变或什么也不做。thought必须是第一人称的自然中文，1至2句，约30至70字，不能复述上面资料，也不能空喊口号。
-只输出一个简短JSON对象，字段：thought、belief、intent、goal、action、new_job、target_id。action只能是stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world之一。不要Markdown。"""
+只输出一个简短JSON对象，字段：thought、belief、intent、goal、action、new_job、target_id。action只能是stay、seek_food、seek_work、change_job、ask_help、practice_skill、socialize、investigate_world、discuss_world、take_risk、explore_unknown、provoke之一。其中take_risk是把钱财或安全押在不确定的机会上，explore_unknown是离开熟悉范围探索未知，provoke是主动挑衅、质问或挑战他人。冒险必须有具体对象和理由，世界会真实结算成败与代价，不会凭空给好处；同样，重复同样的日子会累积无聊与停滞感。不要Markdown。"""
         val cognitiveKey="resident:${r.id}"
         val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
@@ -3129,6 +3129,52 @@ private fun craftBonus(region:String):Int = when(region) {
                                         savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; other.id -> other; else -> person } })
                                     } else latest.mindMemory.add("行动结果：想要结识的人不在可接触范围内，或双方条件不适合建立友谊；没有改变关系。")
                                 }
+                                "take_risk" -> {
+                                    val rngR=java.util.Random(day*1000003L+latest.id*97L)
+                                    if(latest.coins>=4 && latest.health>=30 && latest.travelDaysRemaining<=0) {
+                                        val stake=minOf(latest.coins/4,10).coerceAtLeast(1)
+                                        latest.coins-=stake
+                                        val roll=rngR.nextInt(100)
+                                        when {
+                                            roll<42 -> { val gain=stake*2; latest.coins+=stake+gain; latest.morale=(latest.morale+6).coerceAtMost(100); recordLife(latest,day,"押下${stake}枚金币尝试一次不确定的投机，成功获利${gain}枚金币；这次冒险得到了回报。","resident_risk_action"); latest.mindMemory.add("行动结果：冒险投机成功，押下${stake}枚金币获利${gain}枚；我记住了承担风险的回报。") }
+                                            roll<54 -> { latest.health=(latest.health-8).coerceAtLeast(1); latest.morale=(latest.morale-8).coerceAtLeast(0); recordLife(latest,day,"押下${stake}枚金币冒险失败，不仅损失金币，还在冲突中受伤，为这次冒险付出了代价。","resident_risk_action"); latest.mindMemory.add("行动结果：冒险失败，损失${stake}枚金币并受伤；这次代价让我重新掂量风险。") }
+                                            else -> { latest.morale=(latest.morale-5).coerceAtLeast(0); recordLife(latest,day,"押下${stake}枚金币尝试投机，失败并损失了这笔钱。","resident_risk_action"); latest.mindMemory.add("行动结果：冒险失败，损失${stake}枚金币；钱没有了，但这次经历是真实的。") }
+                                        }
+                                    } else latest.mindMemory.add("行动结果：想冒一次险，但金币、健康或旅途状态不允许，只能作罢。")
+                                }
+                                "explore_unknown" -> {
+                                    val rngE=java.util.Random(day*1000033L+latest.id*131L)
+                                    if(latest.health>=30 && latest.travelDaysRemaining<=0 && latest.food>=1) {
+                                        latest.food-=1
+                                        when(rngE.nextInt(100)) {
+                                            in 0..34 -> { latest.food+=2; recordLife(latest,day,"离开熟悉的聚居地探索周边未知区域，发现了可食用的野果与一处安全水源，带回了补给。","resident_exploration"); latest.mindMemory.add("行动结果：探索未知区域并获得补给；外面的世界并非只有危险。") }
+                                            in 35..59 -> { latest.goal="探索聚居地之外的未知区域"; recordLife(latest,day,"离开熟悉范围探索未知，在远处发现了此前不知道的道路与地貌，心中多了一个一直牵挂的方向。","resident_exploration"); latest.mindMemory.add("行动结果：探索中发现了新的道路与地貌；我开始想亲自弄清那一带的情况。") }
+                                            in 60..79 -> { latest.health=(latest.health-10).coerceAtLeast(1); recordLife(latest,day,"探索未知区域时遭遇危险，受伤后勉强返回；这次探索付出了代价。","resident_exploration"); latest.mindMemory.add("行动结果：探索未知时受伤，未能获得什么；未知确实有代价。") }
+                                            else -> { recordLife(latest,day,"离开聚居地探索周边未知区域，走了很远，但没有发现决定性的东西。","resident_exploration"); latest.mindMemory.add("行动结果：探索未知区域，没有特别发现，但熟悉的地界之外确实还有世界。") }
+                                        }
+                                    } else latest.mindMemory.add("行动结果：想去探索未知，但健康、口粮或旅途状态不允许。")
+                                }
+                                "provoke" -> {
+                                    val other=people(p).firstOrNull { it.id!=latest.id && it.alive && it.region==latest.region && it.settlement==latest.settlement }
+                                    if(other!=null && latest.health>=25) {
+                                        val rngP=java.util.Random(day*999983L+latest.id*57L+other.id)
+                                        if(latest.skill>=other.skill+8 || rngP.nextInt(100)<35) {
+                                            latest.morale=(latest.morale+6).coerceAtMost(100)
+                                            recordLife(latest,day,"在公开场合向${other.name}挑明积压已久的矛盾并占据上风；这段关系从此公开紧张。","resident_confrontation")
+                                            recordLife(other,day,"被${latest.name}当众挑衅并落了下风，这段梁子记下了。","resident_confrontation")
+                                            latest.mindMemory.add("行动结果：我向${other.name}挑明了矛盾并占了上风；退让到此为止，但这个敌人是真实的。")
+                                            other.mindMemory.add("关系变化：${latest.name}当众挑衅了我，这件事我记下了。")
+                                        } else {
+                                            latest.health=(latest.health-7).coerceAtLeast(1); latest.morale=(latest.morale-6).coerceAtLeast(0)
+                                            recordLife(latest,day,"主动挑衅${other.name}却没能占到便宜，反而在冲突中受伤，付出了代价。","resident_confrontation")
+                                            recordLife(other,day,"遭到${latest.name}的挑衅并予以回击，对方没能得逞。","resident_confrontation")
+                                            latest.mindMemory.add("行动结果：挑衅${other.name}失败并受伤；冲动有它的价格。")
+                                            other.mindMemory.add("关系变化：${latest.name}挑衅了我，被我挡了回去。")
+                                        }
+                                        while(other.mindMemory.size>120) other.mindMemory.removeAt(0)
+                                        savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; other.id -> other; else -> person } })
+                                    } else latest.mindMemory.add("行动结果：想把矛盾挑明，但身边没有合适的对象，或身体状态不允许。")
+                                }
                                 else -> latest.mindMemory.add("行动结果：经过评估，决定暂时维持当前生活与职业。")
                             }
                             CognitiveArchitecture.recordOutcome(context,cognitiveKey,day,action,latest.mindMemory.lastOrNull().orEmpty())
@@ -3191,7 +3237,7 @@ private fun craftBonus(region:String):Int = when(region) {
 本轮先比较个人记忆、经历、关系、当前处境与上一轮思考，找出真正新增或变化的事实，再据此作出判断。不得复述上一轮结论，不得只替换近义词；也不得为了追求新鲜感而无理由改变性格、信念或立场。
 如果没有新情况，可以保持原立场，但应补充一个此前未说过的具体观察、疑问、风险判断或下一步计划；若继续等待或拒绝行动，要说明符合人物身份的具体原因。
 thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
-只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event之一。不要Markdown。"""
+只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event、take_risk、explore_unknown、provoke之一。其中take_risk是押上声望或资源赌一次不确定的结果，explore_unknown是离开熟悉区域探查未知，provoke是主动挑战或挑明与他人的矛盾。冒险必须有具体对象和理由，世界会真实结算成败与代价；重复同样的日子会累积无聊与停滞感。不要Markdown。"""
         val cognitiveKey="hero:${hero.name}"
         val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
@@ -3274,6 +3320,35 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                     heroNow.memory.add("第${day}日：我开始通过自己能够接触的人与渠道核实历史事件；尚未获得超出渠道范围的情报。")
                                     "开始核实相关历史事件，尚未自动获得秘密情报"
                                 } else "没有可核实的历史事件机会，维持原有安排"
+                            }
+                            "take_risk" -> {
+                                val rngH=java.util.Random(day*1000003L+heroNow.name.hashCode()*97L)
+                                val rollH=rngH.nextInt(100)
+                                when {
+                                    rollH<45 -> { heroNow.influence=(heroNow.influence+3).coerceAtMost(100); heroNow.memory.add("第${day}日：我押上声望与资源赌了一次，结果成功并得到了回报；承担风险并非毫无意义。"); "冒险押注成功，获得实际回报，影响力上升" }
+                                    rollH<63 -> { heroNow.influence=(heroNow.influence-3).coerceAtLeast(0); heroNow.health=(heroNow.health-6).coerceAtLeast(1); heroNow.memory.add("第${day}日：我冒险押注失败，不仅损失了影响力，还为此受伤，付出了代价。"); "冒险押注失败并受伤，付出了代价" }
+                                    else -> { heroNow.influence=(heroNow.influence-2).coerceAtLeast(0); heroNow.memory.add("第${day}日：我冒险押注失败，损失了部分筹码；这次经历是真实的教训。"); "冒险押注失败，损失了部分资源" }
+                                }
+                            }
+                            "explore_unknown" -> {
+                                val rngX=java.util.Random(day*1000033L+heroNow.name.hashCode()*131L)
+                                when(rngX.nextInt(100)) {
+                                    in 0..39 -> { heroNow.memory.add("第${day}日：我离开熟悉区域探查未知，发现了值得继续追查的线索；未知并非空无一物。"); "探索未知区域并获得新的线索，发现了值得追查的方向" }
+                                    in 40..64 -> { heroNow.health=(heroNow.health-8).coerceAtLeast(1); heroNow.memory.add("第${day}日：探索未知区域时遭遇危险并受伤，被迫撤回；未知有它的价格。"); "探索未知时遭遇危险并受伤，付出了代价" }
+                                    else -> { heroNow.memory.add("第${day}日：我探查了熟悉范围之外的区域，尚无定论，但视野确实打开了。"); "探索了未知区域，尚无定论" }
+                                }
+                            }
+                            "provoke" -> {
+                                val allBonds=heroBonds(p)
+                                val rb=allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
+                                val rngV=java.util.Random(day*999983L+heroNow.name.hashCode()*57L)
+                                if(rb!=null) {
+                                    val otherName=if(rb.a==heroNow.name) rb.b else rb.a
+                                    if(rngV.nextInt(100)<45) { heroNow.influence=(heroNow.influence+2).coerceAtMost(100); rb.tension=(rb.tension+10).coerceAtMost(100); saveHeroBonds(p,allBonds); heroNow.memory.add("第${day}日：我主动向${otherName}挑明立场并占据上风；矛盾从此公开化，这个敌人是真实的。"); "主动挑战${otherName}并占据上风，矛盾公开化" }
+                                    else { heroNow.influence=(heroNow.influence-2).coerceAtLeast(0); heroNow.health=(heroNow.health-5).coerceAtLeast(1); rb.tension=(rb.tension+12).coerceAtMost(100); saveHeroBonds(p,allBonds); heroNow.memory.add("第${day}日：我挑衅${otherName}却没能得逞，反而受伤；冲动有它的价格。"); "挑衅${otherName}失败并受伤，付出了代价" }
+                                } else if(localGroup!=null) {
+                                    localGroup.publicSupport=(localGroup.publicSupport-2).coerceAtLeast(0); heroNow.influence=(heroNow.influence+1).coerceAtMost(100); heroNow.memory.add("第${day}日：我公开挑战了当地势力的安排，支持者与反对者都看清了我的立场。"); "公开挑战当地势力，立场挑明但树敌"
+                                } else "想把矛盾挑明，但眼下没有合适的对象"
                             }
                             else -> "决定维持当前安排"
                         }

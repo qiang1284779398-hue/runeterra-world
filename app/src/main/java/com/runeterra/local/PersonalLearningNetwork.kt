@@ -14,16 +14,23 @@ import kotlin.math.tanh
 object PersonalLearningNetwork {
     private const val INPUT = 16
     private const val HIDDEN = 12
-    private const val ACTIONS = 9
+    // 12 slots: the original 9 tendencies plus take_risk / explore_unknown / provoke.
+    // Saved models with 9 rows still load: read() fills missing rows from the seeded fallback.
+    private const val ACTIONS = 12
     private const val MAX_REPLAY = 48
     private const val LR = 0.018f
+    // Policy learning may join decisions after a handful of verified outcomes;
+    // the old 24-update gate left most actors on fixed rules for their whole lives.
+    private const val MIN_UPDATES_FOR_CHOICE = 4
     private val actionNames = listOf(
         "stay", "seek_food", "seek_work", "change_job", "ask_help",
-        "practice_skill", "socialize", "investigate_world", "discuss_world"
+        "practice_skill", "socialize", "investigate_world", "discuss_world",
+        "take_risk", "explore_unknown", "provoke"
     )
     private val heroActions = listOf(
         "stay", "train", "investigate", "negotiate", "aid",
-        "join_event", "decline_event", "investigate_event", "wait"
+        "join_event", "decline_event", "investigate_event", "wait",
+        "take_risk", "explore_unknown", "provoke"
     )
 
     private data class Model(
@@ -105,6 +112,9 @@ object PersonalLearningNetwork {
             "decline_event" -> 6
             "investigate_event" -> 7
             "wait" -> 8
+            "take_risk" -> 9
+            "explore_unknown", "explore" -> 10
+            "provoke", "challenge" -> 11
             else -> 0
         }
         return when (normalized) {
@@ -117,6 +127,9 @@ object PersonalLearningNetwork {
             "socialize", "negotiate" -> 6
             "investigate_world", "investigate", "investigate_event" -> 7
             "discuss_world", "join_event" -> 8
+            "take_risk" -> 9
+            "explore_unknown", "explore" -> 10
+            "provoke", "challenge" -> 11
             else -> 0
         }
     }
@@ -153,11 +166,17 @@ object PersonalLearningNetwork {
         }
         val idx = actionIndex(action, actor)
         val replay = runCatching { JSONArray(p.getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
-        replay.put(JSONObject().put("day", day).put("x", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }).put("action", idx).put("reward", reward.toDouble()))
+        // Exploration bonus: the first verified attempts at an action tendency this actor
+        // has never tried earn a small novelty bonus, so the policy does not collapse onto
+        // the first safe routine that happened to pay off.
+        val triedBefore = (0 until replay.length()).any { replay.optJSONObject(it)?.optInt("action", -1) == idx }
+        val noveltyBonus = if (!triedBefore && idx != 0) 0.12f else 0f
+        val finalReward = (reward + noveltyBonus).coerceIn(-1f, 1f)
+        replay.put(JSONObject().put("day", day).put("x", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }).put("action", idx).put("reward", finalReward.toDouble()))
         while (replay.length() > MAX_REPLAY) replay.remove(0)
         val model = read(c, actor)
         val previous = encodeModel(model)
-        train(model, x, idx, reward)
+        train(model, x, idx, finalReward)
         // Small replay update over recent real outcomes to reduce forgetting.
         if (replay.length() % 4 == 0) {
             val sample = replay.optJSONObject((replay.length() - 1 - 3).coerceAtLeast(0))
@@ -167,7 +186,7 @@ object PersonalLearningNetwork {
             }
         }
         model.updates++
-        model.baseline = model.baseline * 0.9f + reward * 0.1f
+        model.baseline = model.baseline * 0.9f + finalReward * 0.1f
         if (finite(model)) {
             p.edit().putString("${key}_previous_model", previous).apply()
             save(c, actor, model)
@@ -175,8 +194,8 @@ object PersonalLearningNetwork {
             p.edit().putString("${key}_model", previous).apply()
         }
         p.edit().putString("${key}_replay", replay.toString())
-            .putString("${key}_last_learning", JSONObject().put("day", day).put("action", action).put("reward", reward.toDouble()).put("updates", model.updates).toString()).apply()
-        return "专属网络已更新：第${model.updates}次；奖励${"%.2f".format(java.util.Locale.US, reward)}；经验池${replay.length()}条"
+            .putString("${key}_last_learning", JSONObject().put("day", day).put("action", action).put("reward", finalReward.toDouble()).put("updates", model.updates).toString()).apply()
+        return "专属网络已更新：第${model.updates}次；奖励${"%.2f".format(java.util.Locale.US, finalReward)}；经验池${replay.length()}条"
     }
     private fun train(m: Model, x: FloatArray, action: Int, reward: Float) {
         val (h, probs) = forward(m, x)
@@ -202,7 +221,7 @@ object PersonalLearningNetwork {
     /** Returns a learned action only after enough actor-specific verified feedback exists. */
     fun autonomousChoice(c: Context, actor: String, prompt: String): String? {
         val model = read(c, actor)
-        if (model.updates < 24) return null
+        if (model.updates < MIN_UPDATES_FOR_CHOICE) return null
         val (_, probabilities) = forward(model, encode(prompt))
         val ranked = probabilities.indices.sortedByDescending { probabilities[it] }
         val best = ranked.firstOrNull() ?: return null
@@ -217,6 +236,6 @@ object PersonalLearningNetwork {
         val m = read(c, actor)
         val replay = runCatching { JSONArray(prefs(c).getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
         val last = runCatching { JSONObject(prefs(c).getString("${key}_last_learning", "{}") ?: "{}") }.getOrDefault(JSONObject())
-        return "策略网络：共享基础先验 + 角色专属可训练MLP\n价值网络：已启用（预测行动长期回报）\n角色参数隔离：是\n独立训练次数：${m.updates}\n离线自主决策：${if (m.updates >= 24) "达到候选门槛，仍需通过上下文置信度检查" else "继续积累真实行动反馈（至少24次更新）"}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}\n参数安全检查：有限值与权重范围校验"
+        return "策略网络：共享基础先验 + 角色专属可训练MLP\n价值网络：已启用（预测行动长期回报）\n角色参数隔离：是\n独立训练次数：${m.updates}\n离线自主决策：${if (m.updates >= MIN_UPDATES_FOR_CHOICE) "达到候选门槛，仍需通过上下文置信度检查" else "继续积累真实行动反馈（至少${MIN_UPDATES_FOR_CHOICE}次更新）"}\n经验回放：${replay.length()}条\n最近奖励：${last.optDouble("reward", 0.0)}\n参数版本：${m.updates}\n参数安全检查：有限值与权重范围校验"
     }
 }

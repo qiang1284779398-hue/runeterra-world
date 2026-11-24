@@ -71,6 +71,12 @@ object WorldAIProvider {
  private fun isGenericRefusal(obj:JSONObject):Boolean {
   val reason=obj.optString("reason",obj.optString("decision_reason","")).trim()
   val combined=listOf("thought","reason","decision","intent","action").joinToString(" "){obj.optString(it,"")}
+  // Memory-grounded hesitation is real cognition, not boilerplate refusal: a character
+  // who hesitates because of a specific past day, event or experience must not be
+  // filtered out and retried into either compliance or a blander answer.
+  val memoryMarkers=listOf("上次","曾经","那次","上回","当年","此前","以往","那天","记得")
+  val referencesMemory=memoryMarkers.any(combined::contains) || Regex("第\\s*\\d+\\s*[日天]").containsMatchIn(combined)
+  if(referencesMemory && reason.length>=12)return false
   val markers=listOf("这件事与我当前的判断或原则不符","不符合我的价值观","不符合我的立场","我决定暂不接受","我选择拒绝执行","与我的原则不符","我不能接受这件事")
   if(markers.none(combined::contains))return false
   return reason.length<28 || listOf("原则不符","价值观不符","立场不符","我不接受","不愿意","不符合我的判断").any(reason::contains)

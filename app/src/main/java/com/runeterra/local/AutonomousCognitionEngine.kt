@@ -50,6 +50,9 @@ object AutonomousCognitionEngine {
         "socialize", "negotiate" -> "建立关系与沟通"
         "investigate_world", "investigate", "investigate_event" -> "调查与信息核实"
         "join_event" -> "参与公共事件"
+        "take_risk" -> "承担风险争取机会"
+        "explore_unknown" -> "探索未知区域"
+        "provoke" -> "挑衅与正面对抗"
         else -> "谨慎等待与观察"
     }
 
@@ -61,16 +64,38 @@ object AutonomousCognitionEngine {
 
     fun offlineFallback(context: Context, actor: String, actorName: String, prompt: String, diagnostic: String = ""): String {
         val hero = actor.startsWith("hero:")
-        val action = if (hero) chooseHeroAction(prompt) else chooseResidentAction(prompt)
+        val ruleAction = if (hero) chooseHeroAction(prompt) else chooseResidentAction(prompt)
         val learned = PersonalLearningNetwork.autonomousChoice(context, actor, prompt)
-        val selected = learned?.let { normalizeAction(it, hero) } ?: action
-        val reason = if (learned != null) "结合本人过往行动反馈选择已学习的策略。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}" else "外部模型不可用，依据当前可见处境、基本需求和已知目标作出有限的本地判断。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
+        // Boredom break: when the rules would default to another day of staying put but the
+        // actor has repeated the same routine for a long stretch, accumulated boredom can
+        // push them toward exploration or a calculated risk instead. Basic needs and
+        // danger still win: this only replaces the "stay" default, never survival actions.
+        var boredomBreak = false
+        val fallbackAction = if (learned == null && ruleAction == "stay") {
+            val boredom = MotivationEngine.boredomLevel(context, actor)
+            if (boredom >= 55) {
+                val rng = java.util.Random(prompt.hashCode().toLong() * 31L + actor.hashCode().toLong())
+                val chance = (boredom - 40) / 100.0
+                if (rng.nextDouble() < chance) {
+                    boredomBreak = true
+                    val risk = MotivationEngine.riskTolerance(context, actor)
+                    val pool = if (hero) listOf("explore_unknown", "investigate", "take_risk") else listOf("explore_unknown", "investigate_world", "take_risk")
+                    if (risk >= 60 && rng.nextDouble() < 0.45) "take_risk" else pool[rng.nextInt(2)]
+                } else ruleAction
+            } else ruleAction
+        } else ruleAction
+        val selected = learned?.let { normalizeAction(it, hero) } ?: fallbackAction
+        val reason = when {
+            learned != null -> "结合本人过往行动反馈选择已学习的策略。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
+            boredomBreak -> "同样的日子重复太久，无聊与停滞感累积到了临界点，决定主动打破惯例，去做一件不一样的事，哪怕结果不确定。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
+            else -> "外部模型不可用，依据当前可见处境、基本需求和已知目标作出有限的本地判断。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
+        }
         return buildResponse(actor, actorName, prompt, selected, reason, if (learned != null) "personal_policy_offline" else "bounded_offline_rules")
     }
 
     private fun normalizeAction(action: String, hero: Boolean): String {
-        val allowed = if (hero) setOf("stay", "train", "investigate", "negotiate", "aid", "join_event", "decline_event", "investigate_event")
-            else setOf("stay", "seek_food", "seek_work", "change_job", "ask_help", "practice_skill", "socialize", "investigate_world", "discuss_world")
+        val allowed = if (hero) setOf("stay", "train", "investigate", "negotiate", "aid", "join_event", "decline_event", "investigate_event", "take_risk", "explore_unknown", "provoke")
+            else setOf("stay", "seek_food", "seek_work", "change_job", "ask_help", "practice_skill", "socialize", "investigate_world", "discuss_world", "take_risk", "explore_unknown", "provoke")
         return if (action in allowed) action else "stay"
     }
 
@@ -113,6 +138,9 @@ object AutonomousCognitionEngine {
             "investigate_world", "investigate", "investigate_event" -> "目前掌握的信息还不充分，我应先调查并核实线索，避免轻率判断。"
             "join_event" -> "这件事可能影响周围的人，我需要先评估风险，再决定如何参与。"
             "decline_event" -> "我决定不参加这次提议；这只是当前处境下的选择，之后若出现新证据或条件变化，我会重新评估。"
+            "take_risk" -> "机会难得，代价也在可承受范围内。与其继续原地踏步，我愿意押上一部分筹码赌一次结果。"
+            "explore_unknown" -> "熟悉的范围里已经没有什么新东西了。我想去看看未知的地方，哪怕只是为了确认那里到底有什么。"
+            "provoke" -> "有些事退让解决不了。我决定正面挑明立场，哪怕会因此树敌或付出代价。"
             else -> "目前没有足够依据贸然行动，我先观察眼前变化，维持当前安排。"
         }
         val belief = Regex("信念[:：]([^；。\\n]+)").find(prompt)?.groupValues?.getOrNull(1)?.take(100).orEmpty()
@@ -127,6 +155,9 @@ object AutonomousCognitionEngine {
             "investigate_world", "investigate", "investigate_event" -> "调查并核实信息"
             "join_event" -> "评估后参与当前事件"
             "decline_event" -> "拒绝当前提议"
+            "take_risk" -> "承担风险争取一次机会"
+            "explore_unknown" -> "离开熟悉范围探索未知"
+            "provoke" -> "正面对抗并挑明立场"
             else -> "处理当前最重要的事情"
         }
         val out = JSONObject().put("thought", thought).put("belief", belief.ifBlank { "依据亲身经历与当前处境形成判断" })
