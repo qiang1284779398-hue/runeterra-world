@@ -3,6 +3,15 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Decode the committed debug keystore (base64 text form) at configuration time;
+// the stableDebug signing config below points at the decoded file.
+val runeterraEncodedKeystore = file("debug.keystore.b64")
+val runeterraDecodedKeystore = file("debug.keystore")
+if (runeterraEncodedKeystore.exists() &&
+    (!runeterraDecodedKeystore.exists() || runeterraEncodedKeystore.lastModified() > runeterraDecodedKeystore.lastModified())) {
+    runeterraDecodedKeystore.writeBytes(java.util.Base64.getDecoder().decode(runeterraEncodedKeystore.readText().trim()))
+}
+
 android {
     namespace = "com.runeterra.local"
     compileSdk = 35
@@ -13,6 +22,23 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "0.2.0"
+    }
+
+    // One fixed debug signing key for every build. CI runners used to sign with
+    // their own ephemeral debug keystore, so each build had a different signature
+    // and Android refused to install it over the previous version. The keystore
+    // itself is committed as debug.keystore.b64 (a debug-only key for this local
+    // app) and decoded by the script above at configuration time.
+    signingConfigs {
+        create("stableDebug") {
+            storeFile = file("debug.keystore")
+            storePassword = "runeterra"
+            keyAlias = "runeterra-debug"
+            keyPassword = "runeterra"
+        }
+    }
+    buildTypes {
+        debug { signingConfig = signingConfigs.getByName("stableDebug") }
     }
 
     compileOptions {
