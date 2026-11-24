@@ -1,3 +1,5 @@
+import java.util.Base64
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -9,7 +11,7 @@ val runeterraEncodedKeystore = file("debug.keystore.b64")
 val runeterraDecodedKeystore = file("debug.keystore")
 if (runeterraEncodedKeystore.exists() &&
     (!runeterraDecodedKeystore.exists() || runeterraEncodedKeystore.lastModified() > runeterraDecodedKeystore.lastModified())) {
-    runeterraDecodedKeystore.writeBytes(java.util.Base64.getDecoder().decode(runeterraEncodedKeystore.readText().trim()))
+    runeterraDecodedKeystore.writeBytes(Base64.getDecoder().decode(runeterraEncodedKeystore.readText().trim()))
 }
 
 android {
