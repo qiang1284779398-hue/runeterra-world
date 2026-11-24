@@ -66,35 +66,62 @@ object AutonomousCognitionEngine {
         val hero = actor.startsWith("hero:")
         val ruleAction = if (hero) chooseHeroAction(prompt) else chooseResidentAction(prompt)
         val learned = PersonalLearningNetwork.autonomousChoice(context, actor, prompt)
-        // Boredom break: when the rules would default to another day of staying put but the
-        // actor has repeated the same routine for a long stretch, accumulated boredom can
-        // push them toward exploration or a calculated risk instead. Basic needs and
-        // danger still win: this only replaces the "stay" default, never survival actions.
+        fun number(label: String): Int? = Regex("$label\\s*(\\d+)").find(prompt)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        // Hard survival layer: the learned policy may advise, but it may never override
+        // imminent starvation, critical health or active danger. A starving resident
+        // does not provoke a neighbour because a network said so. (Deliberate,
+        // reasoned self-endangerment by the character's own online decision is a
+        // different path and is not blocked here.)
+        val survivalAction: String? = if (!hero) {
+            val food = number("口粮"); val health = number("健康")
+            when {
+                health != null && health < 35 -> "stay"
+                (food != null && food <= 1) || listOf("饥饿", "缺少食物", "口粮不足").any(prompt::contains) -> "seek_food"
+                ruleAction == "ask_help" -> "ask_help"
+                else -> null
+            }
+        } else if (ruleAction == "aid") "aid" else null
+        // Boredom break: accumulated boredom can replace a MONOTONOUS rule action —
+        // not only "stay". A hero whose prompt mentions training every day gets "train"
+        // from the rules, and v1's stay-only replacement let that loop run forever.
+        // Survival actions and deliberate refusals are never replaced.
         var boredomBreak = false
-        val fallbackAction = if (learned == null && ruleAction == "stay") {
+        val breakAction: String? = if (survivalAction == null && learned == null) {
             val boredom = MotivationEngine.boredomLevel(context, actor)
-            if (boredom >= 55) {
-                val rng = java.util.Random(prompt.hashCode().toLong() * 31L + actor.hashCode().toLong())
-                val chance = (boredom - 40) / 100.0
+            val lastAct = MotivationEngine.lastAction(context, actor)
+            val protectedActions = setOf("seek_food", "ask_help", "aid", "decline_event")
+            val replaceable = ruleAction !in protectedActions && (ruleAction == "stay" || (lastAct.isNotBlank() && ruleAction == lastAct))
+            if (boredom >= 55 && replaceable) {
+                // The seed varies by world day and by a persisted per-actor call
+                // sequence, so re-asking with an identical prompt does not replay one
+                // frozen random sequence (v1 seeded on prompt+actor only, which made
+                // every same-prompt call decide identically, even across days).
+                val p = prefs(context); val k = key(actor)
+                val seq = p.getInt("${k}_fbseq", 0) + 1
+                p.edit().putInt("${k}_fbseq", seq).apply()
+                val day = Regex("第\\s*(\\d+)\\s*日").find(prompt)?.groupValues?.getOrNull(1)?.toLongOrNull() ?: 0L
+                val rng = java.util.Random(day * 1000003L + actor.hashCode().toLong() * 31L + seq * 7919L)
+                val chance = ((boredom - 40) / 60.0).coerceIn(0.25, 0.85)
                 if (rng.nextDouble() < chance) {
                     boredomBreak = true
                     val risk = MotivationEngine.riskTolerance(context, actor)
                     val pool = if (hero) listOf("explore_unknown", "investigate", "take_risk") else listOf("explore_unknown", "investigate_world", "take_risk")
                     if (risk >= 60 && rng.nextDouble() < 0.45) "take_risk" else pool[rng.nextInt(2)]
-                } else ruleAction
-            } else ruleAction
-        } else ruleAction
-        val selected = learned?.let { normalizeAction(it, hero) } ?: fallbackAction
+                } else null
+            } else null
+        } else null
+        val selected = survivalAction ?: learned?.let { normalizeAction(it, hero) } ?: breakAction ?: ruleAction
         val reason = when {
+            survivalAction != null -> "当前处境涉及基本生存与安全，先处理生存需求，其余倾向暂缓。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
             learned != null -> "结合本人过往行动反馈选择已学习的策略。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
             boredomBreak -> "同样的日子重复太久，无聊与停滞感累积到了临界点，决定主动打破惯例，去做一件不一样的事，哪怕结果不确定。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
             else -> "外部模型不可用，依据当前可见处境、基本需求和已知目标作出有限的本地判断。${if (diagnostic.isNotBlank()) " 云端诊断：${diagnostic.take(240)}" else ""}"
         }
-        return buildResponse(actor, actorName, prompt, selected, reason, if (learned != null) "personal_policy_offline" else "bounded_offline_rules")
+        return buildResponse(actor, actorName, prompt, selected, reason, if (learned != null && survivalAction == null) "personal_policy_offline" else "bounded_offline_rules")
     }
 
     private fun normalizeAction(action: String, hero: Boolean): String {
-        val allowed = if (hero) setOf("stay", "train", "investigate", "negotiate", "aid", "join_event", "decline_event", "investigate_event", "take_risk", "explore_unknown", "provoke")
+        val allowed = if (hero) setOf("stay", "train", "investigate", "negotiate", "aid", "join_event", "decline_event", "investigate_event", "wait", "take_risk", "explore_unknown", "provoke")
             else setOf("stay", "seek_food", "seek_work", "change_job", "ask_help", "practice_skill", "socialize", "investigate_world", "discuss_world", "take_risk", "explore_unknown", "provoke")
         return if (action in allowed) action else "stay"
     }
@@ -147,6 +174,7 @@ object AutonomousCognitionEngine {
         val goal = Regex("(?:目标|自主目标)[:：]([^；。\\n]+)").find(prompt)?.groupValues?.getOrNull(1)?.take(100).orEmpty()
         val intent = when (action) {
             "stay" -> "观察并维持当前安排"
+            "wait" -> "等待时机，暂不表态"
             "seek_food" -> "寻找食物与补给"
             "seek_work" -> "寻找谋生机会"
             "ask_help", "aid" -> "寻求援助并处理眼前危险"

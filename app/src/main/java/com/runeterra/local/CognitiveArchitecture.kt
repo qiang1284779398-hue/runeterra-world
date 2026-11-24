@@ -33,15 +33,24 @@ object SelfModelEngine {
         CognitiveStore.values(o.optJSONArray("strengths")).forEach{CognitiveStore.add(st,it)}
         CognitiveStore.values(o.optJSONArray("limitations")).forEach{CognitiveStore.add(li,it)}
         CognitiveStore.values(o.optJSONArray("self_facts")).forEach{CognitiveStore.add(fa,it,40)}
-        // Subtraction: when a newly admitted limitation textually collides with an
-        // existing strength, that strength stops being a settled fact and is marked
-        // contested, so the self-model can lose beliefs, not only accumulate them.
-        val ct=s.optJSONArray("contested")?:JSONArray()
+        // Subtraction with due process: when a newly admitted limitation textually
+        // collides with an existing strength, the strength collects a doubt vote.
+        // Two independent collisions contest it (it leaves the settled strengths and
+        // is shown as wavering); a later re-assertion without collision heals a vote.
+        // One stray sentence can no longer permanently rewrite the self-model.
+        val votes=s.optJSONObject("contestedVotes")?:JSONObject()
+        CognitiveStore.values(s.optJSONArray("contested")).forEach { if(!votes.has(it)) votes.put(it,2) }
+        val asserted=CognitiveStore.values(o.optJSONArray("strengths"))
         val limitTexts=CognitiveStore.values(li)
+        val collided=mutableSetOf<String>()
         CognitiveStore.values(st).forEach { strength ->
             val grams=(0 until strength.length-1).map { strength.substring(it,it+2) }.toSet()
-            if(grams.size>=2 && limitTexts.any { lim -> grams.count { g -> lim.contains(g) }>=2 }) CognitiveStore.add(ct,strength,12)
+            if(grams.size>=2 && limitTexts.any { lim -> grams.count { g -> lim.contains(g) }>=2 }) collided.add(strength)
         }
+        collided.forEach { votes.put(it, votes.optInt(it,0)+1) }
+        asserted.filter { it !in collided }.forEach { if(votes.has(it)) votes.put(it,(votes.optInt(it,0)-1).coerceAtLeast(0)) }
+        val ct=JSONArray(); CognitiveStore.values(st).filter { votes.optInt(it,0)>=2 }.forEach { ct.put(it) }
+        s.put("contestedVotes",votes)
         if(o.has("self_confidence"))s.put("confidence",o.optInt("self_confidence",50).coerceIn(0,100))
         s.put("strengths",st).put("limits",li).put("facts",fa).put("contested",ct).put("updatedDay",day);p.edit().putString("${k}_self",s.toString()).apply()
     }
@@ -91,12 +100,21 @@ $goals
         return buildString {
             append("\n内在状态：无聊度$boredom/100；风险偏好$risk/100。")
             if(conflicts.isNotEmpty()) append("当前内心冲突：").append(conflicts.joinToString("；")).append("。冲突不需要立刻解决，它会真实影响你的选择。")
-            if(boredom>=60) append("你已经在同样的日子里重复太久，无聊正在累积：今天可以认真考虑做一件不一样的事——探索未知、冒一次可承受的风险，或把一直回避的冲突挑明。")
+            if(boredom>=55) append("你已经在同样的日子里重复太久，无聊正在累积：今天可以认真考虑做一件不一样的事——探索未知、冒一次可承受的风险，或把一直回避的冲突挑明。")
         }
     }
 
     fun boredomLevel(c:Context,a:String):Int = load(c,a).optInt("boredom",0)
     fun riskTolerance(c:Context,a:String):Int = load(c,a).optInt("riskTolerance",50)
+    fun lastAction(c:Context,a:String):String = load(c,a).optString("lastAction","")
+
+    /** Legacy saves have no boredom field: seed it from the actor's current same-action streak so a long routine does not restart from zero after the upgrade. No-op once boredom exists. */
+    fun seedBoredom(c:Context,a:String,streak:Int) {
+        val p=CognitiveStore.prefs(c); val k=CognitiveStore.key(a); val s=load(c,a)
+        if(s.has("boredom")) return
+        s.put("boredom", minOf(streak*6,80))
+        p.edit().putString("${k}_motives",s.toString()).apply()
+    }
 
     /** Risk appetite is sculpted by lived outcomes of risky actions: wins embolden, losses teach caution, asymmetrically. */
     fun onOutcome(c:Context,a:String,day:Long,action:String,outcome:String) {
@@ -106,23 +124,24 @@ $goals
         var rt=s.optInt("riskTolerance",50)
         val negative=listOf("失败","受伤","损失","被拒绝","无法","死亡","被捕","代价")
         val positive=listOf("成功","获得","发现","改善","赢得","回报","建立")
-        rt=when {
-            negative.any(outcome::contains) && !positive.any(outcome::contains) -> (rt-6).coerceAtLeast(5)
-            positive.any(outcome::contains) -> (rt+4).coerceAtMost(95)
-            else -> rt
-        }
+        // Decomposed scoring: gains and costs are counted separately, so "succeeded
+        // but got hurt" nets out slightly negative instead of reading as pure success.
+        val delta=(if(positive.any(outcome::contains)) 4 else 0) + (if(negative.any(outcome::contains)) -6 else 0)
+        rt=(rt+delta).coerceIn(5,95)
         s.put("riskTolerance",rt)
         p.edit().putString("${k}_motives",s.toString()).apply()
     }
 
-    /** Goals that emerge from the actor's own accumulated memory (e.g. an unresolved knot found by reflection), not from a single turn's whim. */
-    fun addEmergentGoal(c:Context,a:String,day:Long,goal:String,reason:String,priority:Int) {
+    /** Goals that emerge from the actor's own accumulated memory (e.g. an unresolved knot found by reflection), not from a single turn's whim. They carry a concrete next step so the goal is actionable, not decorative. */
+    fun addEmergentGoal(c:Context,a:String,day:Long,goal:String,reason:String,priority:Int,nextStep:String="") {
         val s=load(c,a)
         val gs=s.optJSONArray("goals")?:JSONArray()
+        fun grams(t:String):Set<String>{val x=t.filter{!it.isWhitespace()};return if(x.length<2) setOf(x) else (0 until x.length-1).map { x.substring(it,it+2) }.toSet()}
+        val gg=grams(goal)
         val already=(0 until gs.length()).mapNotNull { gs.optJSONObject(it) }
-            .any { it.optString("status","active")=="active" && it.optString("goal").take(8)==goal.take(8) }
+            .any { it.optString("status","active")=="active" && run { val og=grams(it.optString("goal")); val u=(gg+og).size; u>0 && gg.intersect(og).size.toDouble()/u>=0.5 } }
         if(already) return
-        val o=JSONObject().put("new_goal",goal).put("goal_reason",reason).put("goal_priority",priority)
+        val o=JSONObject().put("new_goal",goal).put("goal_reason",reason).put("goal_priority",priority).put("next_step",nextStep)
         capture(c,a,day,o)
     }
 
@@ -210,6 +229,13 @@ $goals
             s.put("boredom",boredom).put("lastAction",act)
         }
         if(!s.has("riskTolerance")) s.put("riskTolerance",50)
+        // Gentle mean reversion on quiet days: an extreme risk attitude formed in one
+        // hot streak slowly relaxes toward the character's baseline instead of
+        // sticking at the clamp forever. Risky days themselves are exempt.
+        if(act !in setOf("take_risk","explore_unknown","provoke")) {
+            val rt0=s.optInt("riskTolerance",50)
+            if(kotlin.math.abs(rt0-50)>20) s.put("riskTolerance", rt0 + if(rt0>50) -1 else 1)
+        }
         while(gs.length()>24)gs.remove(0)
         s.put("drives",d).put("goals",gs).put("updatedDay",day)
         p.edit().putString("${k}_motives",s.toString()).apply()
@@ -220,37 +246,51 @@ $goals
 
 object IdentityEvolutionEngine {
     private fun load(c:Context,a:String)=CognitiveStore.read(CognitiveStore.prefs(c),"${CognitiveStore.key(a)}_identity")
-    private fun similarBelief(a:String,b:String):Boolean { val x=a.filter{!it.isWhitespace()}.toSet(); val y=b.filter{!it.isWhitespace()}.toSet(); val u=(x+y).size; return u>0 && x.intersect(y).size.toDouble()/u>=0.5 }
+    private fun similarBelief(a:String,b:String):Boolean { fun grams(s:String):Set<String>{val t=s.filter{!it.isWhitespace()};return if(t.length<2) setOf(t) else (0 until t.length-1).map { t.substring(it,it+2) }.toSet()}; val x=grams(a); val y=grams(b); val u=(x+y).size; return u>0 && x.intersect(y).size.toDouble()/u>=0.5 }
     fun prepare(c:Context,a:String):String {val s=load(c,a);val h=s.optJSONArray("history")?:JSONArray();val recent=(maxOf(0,h.length()-4) until h.length()).mapNotNull{h.optJSONObject(it)?.optString("change")}.joinToString("；").ifBlank{"尚无身份转折"}
-        val pending=s.optString("pendingBelief"); val wavering=(pending.isNotBlank() && (s.optInt("pendingCount",0)>0 || s.optInt("beliefEvidence",0)>0))
+        val candsP=s.optJSONArray("beliefCandidates")?:JSONArray()
+        val topCand=(0 until candsP.length()).mapNotNull{candsP.optJSONObject(it)}.maxByOrNull{it.optInt("count",0)}
+        val pending=topCand?.optString("belief").orEmpty(); val pendingCount=topCand?.optInt("count",0)?:0
+        val wavering=(pending.isNotBlank() && pendingCount>=1) || (s.optString("pendingBelief").isNotBlank() && s.optInt("pendingCount",0)>0)
         val former=CognitiveStore.values(s.optJSONArray("formerBeliefs")).takeLast(2).joinToString("；")
         return """【身份演化】
 身份版本：${s.optInt("version",0)}
 核心价值：${CognitiveStore.values(s.optJSONArray("values")).takeLast(8).joinToString("、").ifBlank{"尚未明确"}}
-近期转变：$recent${if(wavering) "\n信念动摇中：你已不止一次冒出与既有信念不同的想法——「${pending.take(60)}」——尚未定论。动摇本身是真实状态，不必强行压回去，也不必立刻改口。" else ""}${if(former.isNotBlank()) "\n曾经的信念：$former" else ""}
+近期转变：$recent${if(wavering) "\n信念动摇中：你已不止一次冒出与既有信念不同的想法——「${(pending.ifBlank { s.optString("pendingBelief") }).take(60)}」——尚未定论。动摇本身是真实状态，不必强行压回去，也不必立刻改口。" else ""}${if(former.isNotBlank()) "\n曾经的信念：$former" else ""}
 人格变化往往始于动摇：一次强烈亲历可以当场动摇信念，先如实记录动摇，不必等到彻底想通；但无依据的反复横跳也不是成长。"""}
     fun capture(c:Context,a:String,day:Long,o:JSONObject?){if(o==null)return;val p=CognitiveStore.prefs(c);val k=CognitiveStore.key(a);val s=load(c,a);val values=s.optJSONArray("values")?:JSONArray();CognitiveStore.values(o.optJSONArray("values")).forEach{CognitiveStore.add(values,it,20)}
         val h=s.optJSONArray("history")?:JSONArray();val change=CognitiveStore.str(o,"identity_change");val reason=CognitiveStore.str(o,"identity_change_reason",500)
         if(change.isNotBlank()&&reason.isNotBlank()&&h.optJSONObject(h.length()-1)?.optString("change")!=change){h.put(JSONObject().put("day",day).put("change",change).put("reason",reason));s.put("version",s.optInt("version",0)+1)}
         val belief=CognitiveStore.str(o,"belief");val committed=s.optString("committedBelief")
-        if(belief.isNotBlank()&&committed.isBlank()){s.put("committedBelief",belief).put("pendingCount",0).put("beliefEvidence",0)}
+        if(belief.isNotBlank()&&committed.isBlank()){s.put("committedBelief",belief).put("pendingCount",0)}
         else if(belief.isNotBlank()&&belief!=committed){
-            // Belief change is evidence-based, not wording-based: the old rule required the
-            // exact same sentence twice in a row and erased every trace of wavering in
-            // between. Now wavering persists and accumulates — the same topic repeated,
-            // different doubts piling up, or one strong lived event can each tip a belief.
-            val candidate=s.optString("pendingBelief")
-            val sameTopic=candidate.isNotBlank() && (candidate==belief || similarBelief(candidate,belief))
-            val count=if(sameTopic)s.optInt("pendingCount",0)+1 else 1
-            val evidence=if(sameTopic)s.optInt("beliefEvidence",0) else s.optInt("beliefEvidence",0)+1
-            val strongEvent=change.isNotBlank()
-            s.put("pendingBelief",belief).put("pendingCount",count).put("beliefEvidence",evidence)
-            if(count>=2||evidence>=3||strongEvent){
+            // Evidence accumulates PER TOPIC, never in one global pool: doubts about
+            // three different subjects must not add up to one personality change
+            // (the v1 global counter allowed exactly that cross-topic pollution).
+            // Each wavering topic keeps its own candidate record with its own count.
+            val cands=s.optJSONArray("beliefCandidates")?:JSONArray()
+            var match:JSONObject?=null
+            for(ci in 0 until cands.length()){val cj=cands.optJSONObject(ci);if(cj!=null&&similarBelief(cj.optString("belief"),belief)){match=cj;break}}
+            val cand=match ?: JSONObject().put("belief",belief).put("count",0).put("firstDay",day).also{cands.put(it)}
+            cand.put("belief",belief).put("count",cand.optInt("count",0)+1).put("lastDay",day)
+            while(cands.length()>6){var wi=0;var wc=Int.MAX_VALUE;var wd=Long.MAX_VALUE;for(ci in 0 until cands.length()){val cj=cands.optJSONObject(ci)?:continue;val cc=cj.optInt("count",0);val cd=cj.optLong("lastDay",0);if(cc<wc||(cc==wc&&cd<wd)){wc=cc;wd=cd;wi=ci}};cands.remove(wi)}
+            s.put("beliefCandidates",cands)
+            // Consecutive same-wording path (kept from the original design).
+            val consec=if(s.optString("pendingBelief")==belief)s.optInt("pendingCount",0)+1 else 1
+            s.put("pendingBelief",belief).put("pendingCount",consec)
+            // A self-declared identity_change counts as a strong event only when its
+            // reason cites a concrete happening (being attacked, betrayed, saved,
+            // losing someone...), not merely a mood or an opinion.
+            val concrete=listOf("被","杀","死","伤","背叛","离开","失去","救","败","胜","发现")
+            val strongEvent=change.isNotBlank()&&reason.length>=10&&concrete.any(reason::contains)
+            if(cand.optInt("count",0)>=3||consec>=2||strongEvent){
                 val former=s.optJSONArray("formerBeliefs")?:JSONArray()
                 if(committed.isNotBlank())CognitiveStore.add(former,"曾相信：$committed（第${day}日因新经历改变）",12)
                 s.put("formerBeliefs",former)
-                h.put(JSONObject().put("day",day).put("change","信念调整").put("reason","此前：$committed；现在：$belief。"+when{strongEvent->"由具体经历当场触发。";evidence>=3->"多次动摇累积后逐渐形成。";else->"连续多轮表达一致。"}))
-                s.put("version",s.optInt("version",0)+1).put("committedBelief",belief).put("pendingCount",0).put("beliefEvidence",0)
+                h.put(JSONObject().put("day",day).put("change","信念调整").put("reason","此前：$committed；现在：$belief。"+when{strongEvent->"由具体经历当场触发。";cand.optInt("count",0)>=3->"同一主题的动摇多次累积后形成。";else->"连续多轮表达一致。"}))
+                s.put("version",s.optInt("version",0)+1).put("committedBelief",belief).put("pendingCount",0)
+                val rest=JSONArray();for(ci in 0 until cands.length()){val cj=cands.optJSONObject(ci);if(cj!=null&&cj!==cand)rest.put(cj)}
+                s.put("beliefCandidates",rest)
             }
         }
         else if(belief.isNotBlank())s.put("pendingCount",0)
@@ -281,9 +321,13 @@ ${SelfModelEngine.prepare(context,actorKey)}
 ${MotivationEngine.prepare(context,actorKey)}
 ${IdentityEvolutionEngine.prepare(context,actorKey)}
 区分亲历、转述、推测与未知；记住行动后果；允许主动产生目标、拒绝、等待或改变方向。人格可以稳定，也可以被经历改变：强烈的亲历可以当场动摇信念，动摇、犹豫、自我怀疑都是真实状态，可以如实写入 belief 或 identity_change 并注明尚在动摇，不必等到彻底想通；也不得为了显得不同而无依据地改变。每轮JSON除原有字段外必须包含：self_view（自我理解，简短字符串）、self_assessment（自我评价，简短字符串）、strengths（数组，最多3项）、limitations（数组，最多3项）、self_facts（有事实依据的数组，最多3项）、self_confidence（0至100整数）、motives（对象，survival/autonomy/belonging/mastery/justice/curiosity六项均为0至100整数）、new_goal（仅在确有新长期方向时填写，不要把短期意图当成长目标）、long_term_goal（可选长期目标）、goal_reason（目标缘由）、goal_priority（0至100整数）、goal_status（active/completed/paused/abandoned）、goal_progress（0至100整数）、next_step（目标下一步），values（核心价值数组，最多5项）；长期目标默认保持连续，不得每轮随意改写或覆盖；但当经历形成新的执念、教训或内心冲突时，可以新增目标与旧目标并存甚至冲突，并写明缘由；identity_change和identity_change_reason在有真实经历支持变化或动摇时填写（动摇也可填写并注明），否则留空。不输出隐藏思维链。"""
-        return originalPrompt+"\n\n"+add+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
+        return originalPrompt+"\n\n"+add+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt,day)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
     fun capture(context:Context,actorKey:String,day:Long,raw:String):Evaluation {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val obj=extractObject(raw);val thought=obj?.optString("thought").orEmpty().trim();val norm=normalize(thought)
         val prev=(maxOf(0,a.length()-6) until a.length()).mapNotNull{a.optJSONObject(it)}.map{normalize(it.optString("thought"))}.filter{it.isNotBlank()};val duplicate=norm.isNotBlank()&&prev.any{similarity(norm,it)>=0.88};val missing=thought.isBlank();val score=when{missing->0;duplicate->35;a.length()==0->70;else->90}
+        // Seed boredom for legacy saves from the actor's current same-action streak,
+        // so a 25-day routine does not restart from boredom 0 after the upgrade.
+        val streakSeed=run { val curAct=obj?.optString("action").orEmpty(); var n=if(curAct.isNotBlank())1 else 0; var si=a.length()-1; while(si>=0 && curAct.isNotBlank() && a.optJSONObject(si)?.optString("action")==curAct){n++;si--}; n }
+        MotivationEngine.seedBoredom(context,actorKey,streakSeed)
         SelfModelEngine.capture(context,actorKey,day,obj);MotivationEngine.capture(context,actorKey,day,obj);IdentityEvolutionEngine.capture(context,actorKey,day,obj)
         a.put(JSONObject().put("day",day).put("thought",thought.take(600)).put("belief",obj?.optString("belief").orEmpty().take(300)).put("goal",obj?.optString("goal").orEmpty().take(300)).put("intent",obj?.optString("intent").orEmpty().take(300)).put("action",obj?.optString("action").orEmpty().take(100)).put("reason",obj?.optString("reason").orEmpty().take(300)).put("outcome","").put("importance",episodeImportance(thought,obj?.optString("action").orEmpty(),obj?.optString("reason").orEmpty(),duplicate)).put("raw",raw.take(MAX_RAW)).put("duplicateThought",duplicate).put("continuityScore",score))
         while(a.length()>MAX_EPISODES)a.remove(0);val ed=p.edit().putString("${k}_episodes",a.toString()).putString("${k}_last_evaluation",JSONObject().put("day",day).put("duplicateThought",duplicate).put("missingThought",missing).put("continuityScore",score).toString()).putString("${k}_last_raw",raw.take(MAX_RAW))
@@ -291,11 +335,22 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         // not only by a fixed round count: quiet routine days may pass without deep
         // reflection, while a few heavy days in a row force one quickly.
         val lastEp=a.optJSONObject(a.length()-1)
-        val debt=p.getInt("${k}_reflection_debt",0)+(lastEp?.optInt("importance",3)?:3)
-        val reflectionResult=if(debt>=60||a.length()%5==0) buildReflection(a) else null
-        if(reflectionResult!=null){ed.putString("${k}_reflection",reflectionResult.text);ed.putInt("${k}_reflection_debt",0)}else ed.putInt("${k}_reflection_debt",debt)
+        // Fallback cadence uses a persistent episode sequence, NOT a.length()%5: once
+        // the pool is full the length is pinned at MAX_EPISODES (100, divisible by 5),
+        // which would make a length-based fallback fire on every single capture.
+        val seq=p.getInt("${k}_episode_seq",0)+1
+        ed.putInt("${k}_episode_seq",seq)
+        val sinceReflection=seq-p.getInt("${k}_last_reflection_seq",0)
+        // A long same-action streak is itself reflection-worthy: monotony accumulates
+        // "something is wrong" pressure even when each quiet day scores low importance.
+        var streak=0; val lastAct=lastEp?.optString("action").orEmpty()
+        if(lastAct.isNotBlank()){ var si=a.length()-1; while(si>=0 && a.optJSONObject(si)?.optString("action")==lastAct){streak++;si--} }
+        val streakBonus=if(streak>=5)(streak-4)*2 else 0
+        val debt=p.getInt("${k}_reflection_debt",0)+(lastEp?.optInt("importance",3)?:3)+streakBonus
+        val reflectionResult=if(debt>=60||sinceReflection>=5) buildReflection(a) else null
+        if(reflectionResult!=null){ed.putString("${k}_reflection",reflectionResult.text);ed.putInt("${k}_reflection_debt",0);ed.putInt("${k}_last_reflection_seq",seq)}else ed.putInt("${k}_reflection_debt",debt)
         ed.apply()
-        if(reflectionResult?.emergentGoal!=null)MotivationEngine.addEmergentGoal(context,actorKey,day,reflectionResult.emergentGoal,reflectionResult.emergentReason.orEmpty(),62)
+        if(reflectionResult?.emergentGoal!=null)MotivationEngine.addEmergentGoal(context,actorKey,day,reflectionResult.emergentGoal,reflectionResult.emergentReason.orEmpty(),62,reflectionResult.emergentNextStep.orEmpty())
         return Evaluation(duplicate,missing,score,when{missing->"缺少人物 thought 字段";duplicate->"与近期想法高度重复";else->"自我模型、内在动机与身份状态已更新"})}
     fun recordOutcome(context:Context,actorKey:String,day:Long,action:String,outcome:String){val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k)
         // Backfill must find the episode this outcome belongs to: the previous rule only
@@ -303,14 +358,14 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         // capture order or day alignment shifted, leaving episodes outcome-less forever.
         var target:JSONObject?=null
         var i=a.length()-1
-        while(i>=0 && i>=a.length()-4){val e=a.optJSONObject(i);if(e!=null && e.optLong("day",-1L)==day && e.optString("outcome").isBlank()){target=e;break};i--}
+        while(i>=0 && i>=a.length()-10){val e=a.optJSONObject(i);if(e!=null && e.optLong("day",-1L)==day && e.optString("outcome").isBlank()){target=e;break};i--}
         val last=target ?: a.optJSONObject(a.length()-1)?.takeIf{it.optLong("day",-1L)==day} ?: return
         last.put("action",action.take(100)).put("outcome",outcome.take(500))
         val strongOutcome=listOf("死亡","背叛","受伤","失败","成功","发现","获得","失去")
         if(strongOutcome.any(outcome::contains)) last.put("importance",(last.optInt("importance",3)+2).coerceAtMost(10))
         p.edit().putString("${k}_episodes",a.toString()).apply();PersonalLearningNetwork.recordOutcome(context,actorKey,day,action,outcome);AutonomousCognitionEngine.recordOutcome(context,actorKey,day,action,outcome);MotivationEngine.onOutcome(context,actorKey,day,action,outcome);WorldAIProvider.recordVerifiedOutcome(context,actorKey,day,action,outcome)}
     fun report(context:Context,actorKey:String):String{val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val e=CognitiveStore.read(p,"${k}_last_evaluation");val score=e.optInt("continuityScore",-1);val dup=e.optBoolean("duplicateThought");val reflection=p.getString("${k}_reflection","尚未生成").orEmpty();return "认知轮次：${a.length()}\n连续性评分：$score/100\n重复想法：$dup\n长期反思：$reflection\n\n"+SelfModelEngine.report(context,actorKey)+"\n\n"+MotivationEngine.report(context,actorKey)+"\n\n"+IdentityEvolutionEngine.report(context,actorKey)+"\n\n"+PersonalLearningNetwork.report(context,actorKey)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
-    private data class ReflectionResult(val text:String,val emergentGoal:String?,val emergentReason:String?)
+    private data class ReflectionResult(val text:String,val emergentGoal:String?,val emergentReason:String?,val emergentNextStep:String?)
     private fun episodeImportance(thought:String,action:String,reason:String,duplicate:Boolean):Int {
         val text=thought+" "+reason
         var score=3
@@ -320,11 +375,11 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         if(duplicate) score-=2
         return score.coerceIn(1,10)
     }
-    private fun emergentGoalFor(knot:String):Pair<String,String> = when {
-        listOf("训练","练习","身法","技艺","技能","掌控","变强").any(knot::contains) -> "把反复练习的心结变成一次真正的验证" to "同一件心事已反复出现多次，与其无限重复，不如用一次真实检验了断它，或者放下它去寻找新的道路。"
-        listOf("背叛","信任","朋友","关系","欺骗").any(knot::contains) -> "弄清一段反复困扰自己的关系" to "同一段关系在心中反复出现，回避不会让它消失，需要一次真正的面对或了断。"
-        listOf("离开","远方","未知","外面","探索").any(knot::contains) -> "亲自去看看一直牵挂的未知" to "对未知的牵挂反复出现，与其在原地猜测，不如亲自去确认一次。"
-        else -> "直面反复出现的心结" to "同一件心事已反复出现多次，它不会自己消失，需要采取一次真正的行动去推进或了断。"
+    private fun emergentGoalFor(knot:String):Triple<String,String,String> = when {
+        listOf("训练","练习","身法","技艺","技能","掌控","变强").any(knot::contains) -> Triple("把反复练习的心结变成一次真正的验证","同一件心事已反复出现多次，与其无限重复，不如用一次真实检验了断它，或者放下它去寻找新的道路。","今天不要再重复同样的练习：选择 take_risk 或 explore_unknown 做一次真实检验，或找一个真实对手、事件来验证所学。")
+        listOf("背叛","信任","朋友","关系","欺骗").any(knot::contains) -> Triple("弄清一段反复困扰自己的关系","同一段关系在心中反复出现，回避不会让它消失，需要一次真正的面对或了断。","今天主动推进一格：找当事人谈一次（socialize），或把矛盾挑明（provoke），不要再原地猜测。")
+        listOf("离开","远方","未知","外面","探索").any(knot::contains) -> Triple("亲自去看看一直牵挂的未知","对未知的牵挂反复出现，与其在原地猜测，不如亲自去确认一次。","今天选择 explore_unknown，亲自去确认一次那片未知。")
+        else -> Triple("直面反复出现的心结","同一件心事已反复出现多次，它不会自己消失，需要采取一次真正的行动去推进或了断。","今天选择一个与往日不同的动作，把心结推进一格，而不是再想一遍。")
     }
     private fun buildReflection(a:JSONArray):ReflectionResult {
         val all=(0 until a.length()).mapNotNull{a.optJSONObject(it)}
@@ -343,7 +398,8 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         // reflection must name it instead of splicing it away.
         var knotText:String?=null; var knotCount=0
         val thoughts=all.map{it.optString("thought")}.filter{it.isNotBlank()}
-        for(t in thoughts){ val n=normalize(t); val c=thoughts.count { similarity(n,normalize(it))>=0.6 }; if(c>knotCount){knotCount=c;knotText=t} }
+        val normalizedThoughts=thoughts.map{normalize(it)}
+        for(idx in thoughts.indices){ val n=normalizedThoughts[idx]; val c=normalizedThoughts.count { similarity(n,it)>=0.6 }; if(c>knotCount){knotCount=c;knotText=thoughts[idx]} }
         val knot=knotText
         val text=buildString{
             if(b.isNotEmpty())append("信念轨迹：").append(b.joinToString(" → ")).append("。")
@@ -354,10 +410,15 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
             if(isEmpty())append("目前经历不足以形成稳定反思。")
         }.take(1800)
         val emergent=if(knot!=null&&knotCount>=3) emergentGoalFor(knot) else null
-        return ReflectionResult(text,emergent?.first,emergent?.second)
+        return ReflectionResult(text,emergent?.first,emergent?.second,emergent?.third)
     }
     private fun readEpisodes(p:android.content.SharedPreferences,k:String)=runCatching{JSONArray(p.getString("${k}_episodes","[]")?:"[]")}.getOrDefault(JSONArray())
     private fun extractObject(raw:String):JSONObject?{val t=raw.replace(Regex("(?is)<think>.*?</think>"),"").trim();for(s in t.indices)if(t[s]=='{'){var d=0;var q=false;var e=false;for(i in s until t.length){val c=t[i];if(q){if(e)e=false else if(c=='\\')e=true else if(c=='"')q=false}else when(c){'"'->q=true;'{'->d++;'}'->{d--;if(d==0)return runCatching{JSONObject(t.substring(s,i+1))}.getOrNull()}}}};return null}
     private fun normalize(v:String)=Normalizer.normalize(v,Normalizer.Form.NFKC).lowercase().replace(Regex("[\\p{Punct}\\p{IsPunctuation}\\s，。！？；：、“”‘’（）【】]+"),"")
-    private fun similarity(a:String,b:String):Double{if(a.isBlank()||b.isBlank())return 0.0;if(a==b)return 1.0;val x=a.toSet();val y=b.toSet();val u=(x+y).size;return if(u==0)0.0 else x.intersect(y).size.toDouble()/u}
+    private fun similarity(a:String,b:String):Double{if(a.isBlank()||b.isBlank())return 0.0;if(a==b)return 1.0
+        // Bigram-set Jaccard: single-character sets overstate similarity for Chinese
+        // (shared high-frequency characters make unrelated sentences look alike);
+        // bigrams track wording and topic far better.
+        fun grams(s:String):Set<String> = if(s.length<2) setOf(s) else (0 until s.length-1).map { s.substring(it,it+2) }.toSet()
+        val x=grams(a);val y=grams(b);val u=(x+y).size;return if(u==0)0.0 else x.intersect(y).size.toDouble()/u}
 }

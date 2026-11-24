@@ -3130,7 +3130,7 @@ private fun craftBonus(region:String):Int = when(region) {
                                     } else latest.mindMemory.add("行动结果：想要结识的人不在可接触范围内，或双方条件不适合建立友谊；没有改变关系。")
                                 }
                                 "take_risk" -> {
-                                    val rngR=java.util.Random(day*1000003L+latest.id*97L)
+                                    val rngR=java.util.Random(day*1000003L+latest.id*97L+latest.mindMemory.size*7919L)
                                     if(latest.coins>=4 && latest.health>=30 && latest.travelDaysRemaining<=0) {
                                         val stake=minOf(latest.coins/4,10).coerceAtLeast(1)
                                         latest.coins-=stake
@@ -3143,7 +3143,7 @@ private fun craftBonus(region:String):Int = when(region) {
                                     } else latest.mindMemory.add("行动结果：想冒一次险，但金币、健康或旅途状态不允许，只能作罢。")
                                 }
                                 "explore_unknown" -> {
-                                    val rngE=java.util.Random(day*1000033L+latest.id*131L)
+                                    val rngE=java.util.Random(day*1000033L+latest.id*131L+latest.mindMemory.size*7919L)
                                     if(latest.health>=30 && latest.travelDaysRemaining<=0 && latest.food>=1) {
                                         latest.food-=1
                                         when(rngE.nextInt(100)) {
@@ -3155,9 +3155,10 @@ private fun craftBonus(region:String):Int = when(region) {
                                     } else latest.mindMemory.add("行动结果：想去探索未知，但健康、口粮或旅途状态不允许。")
                                 }
                                 "provoke" -> {
-                                    val other=people(p).firstOrNull { it.id!=latest.id && it.alive && it.region==latest.region && it.settlement==latest.settlement }
+                                    val provokeCandidates=people(p).filter { it.id!=latest.id && it.alive && it.region==latest.region && it.settlement==latest.settlement }
+                                    val other=provokeCandidates.firstOrNull { it.id !in latest.friendIds && it.id!=latest.partnerId && it.id !in latest.parentIds && it.id !in latest.childIds } ?: provokeCandidates.firstOrNull()
                                     if(other!=null && latest.health>=25) {
-                                        val rngP=java.util.Random(day*999983L+latest.id*57L+other.id)
+                                        val rngP=java.util.Random(day*999983L+latest.id*57L+other.id+latest.mindMemory.size*7919L)
                                         if(latest.skill>=other.skill+8 || rngP.nextInt(100)<35) {
                                             latest.morale=(latest.morale+6).coerceAtMost(100)
                                             recordLife(latest,day,"在公开场合向${other.name}挑明积压已久的矛盾并占据上风；这段关系从此公开紧张。","resident_confrontation")
@@ -3170,6 +3171,13 @@ private fun craftBonus(region:String):Int = when(region) {
                                             recordLife(other,day,"遭到${latest.name}的挑衅并予以回击，对方没能得逞。","resident_confrontation")
                                             latest.mindMemory.add("行动结果：挑衅${other.name}失败并受伤；冲动有它的价格。")
                                             other.mindMemory.add("关系变化：${latest.name}挑衅了我，被我挡了回去。")
+                                        }
+                                        // The world state must agree with the memory: a public
+                                        // confrontation breaks an existing friendship for real.
+                                        if(other.id in latest.friendIds) {
+                                            latest.friendIds.remove(other.id); other.friendIds.remove(latest.id)
+                                            latest.mindMemory.add("关系变化：与${other.name}的友谊就此破裂。")
+                                            other.mindMemory.add("关系变化：与${latest.name}的友谊就此破裂。")
                                         }
                                         while(other.mindMemory.size>120) other.mindMemory.removeAt(0)
                                         savePeople(p,people(p).map { person -> when(person.id) { latest.id -> latest; other.id -> other; else -> person } })
@@ -3285,7 +3293,14 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         val groups=organizations(p)
                         val localGroup=groups.filter { it.region==heroNow.region }.maxByOrNull { it.influence+it.publicSupport/2 }
                         val outcome=when(action) {
-                            "train" -> { heroNow.influence=(heroNow.influence+1).coerceAtMost(100); "训练或准备，模拟影响力小幅变化" }
+                            "train" -> {
+                                // Diminishing returns are a world fact, not a preference: the
+                                // third identical training day in a row stops paying and the
+                                // outcome says so, which the policy network reads as the
+                                // negative "没有改变" signal it already understands.
+                                val trainStreak=heroNow.history.takeLast(2).count { it.contains("行动：train") }
+                                if(trainStreak>=2) "继续重复同样的训练，但已没有改变，缺少真实检验" else { heroNow.influence=(heroNow.influence+1).coerceAtMost(100); "训练或准备，模拟影响力小幅变化" }
+                            }
                             "investigate" -> {
                                 if(heroNow.memory.any { it.contains("天道干预") || it.contains("外部信息") }) {
                                     heroNow.memory.add("第"+day+"日：开始独立核验收到的外部信息，区分亲历、传闻、推测与未知；尚未证明其真实性。")
@@ -3322,7 +3337,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                 } else "没有可核实的历史事件机会，维持原有安排"
                             }
                             "take_risk" -> {
-                                val rngH=java.util.Random(day*1000003L+heroNow.name.hashCode()*97L)
+                                val rngH=java.util.Random(day*1000003L+heroNow.name.hashCode()*97L+(heroNow.memory.size+heroNow.history.size)*7919L)
                                 val rollH=rngH.nextInt(100)
                                 when {
                                     rollH<45 -> { heroNow.influence=(heroNow.influence+3).coerceAtMost(100); heroNow.memory.add("第${day}日：我押上声望与资源赌了一次，结果成功并得到了回报；承担风险并非毫无意义。"); "冒险押注成功，获得实际回报，影响力上升" }
@@ -3331,7 +3346,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                 }
                             }
                             "explore_unknown" -> {
-                                val rngX=java.util.Random(day*1000033L+heroNow.name.hashCode()*131L)
+                                val rngX=java.util.Random(day*1000033L+heroNow.name.hashCode()*131L+(heroNow.memory.size+heroNow.history.size)*7919L)
                                 when(rngX.nextInt(100)) {
                                     in 0..39 -> { heroNow.memory.add("第${day}日：我离开熟悉区域探查未知，发现了值得继续追查的线索；未知并非空无一物。"); "探索未知区域并获得新的线索，发现了值得追查的方向" }
                                     in 40..64 -> { heroNow.health=(heroNow.health-8).coerceAtLeast(1); heroNow.memory.add("第${day}日：探索未知区域时遭遇危险并受伤，被迫撤回；未知有它的价格。"); "探索未知时遭遇危险并受伤，付出了代价" }
@@ -3341,7 +3356,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                             "provoke" -> {
                                 val allBonds=heroBonds(p)
                                 val rb=allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
-                                val rngV=java.util.Random(day*999983L+heroNow.name.hashCode()*57L)
+                                val rngV=java.util.Random(day*999983L+heroNow.name.hashCode()*57L+(heroNow.memory.size+heroNow.history.size)*7919L)
                                 if(rb!=null) {
                                     val otherName=if(rb.a==heroNow.name) rb.b else rb.a
                                     if(rngV.nextInt(100)<45) { heroNow.influence=(heroNow.influence+2).coerceAtMost(100); rb.tension=(rb.tension+10).coerceAtMost(100); saveHeroBonds(p,allBonds); heroNow.memory.add("第${day}日：我主动向${otherName}挑明立场并占据上风；矛盾从此公开化，这个敌人是真实的。"); "主动挑战${otherName}并占据上风，矛盾公开化" }

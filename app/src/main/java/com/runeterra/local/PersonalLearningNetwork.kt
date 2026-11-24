@@ -37,7 +37,10 @@ object PersonalLearningNetwork {
         val w1: Array<FloatArray>, val b1: FloatArray,
         val w2: Array<FloatArray>, val b2: FloatArray,
         val valueW: FloatArray, var valueB: Float = 0f,
-        var updates: Int = 0, var baseline: Float = 0f
+        var updates: Int = 0, var baseline: Float = 0f,
+        // Permanent per-slot record of which action tendencies have received real
+        // feedback. Persisted with the model; never evicted with the replay buffer.
+        var triedMask: Int = 0
     )
 
     private fun prefs(c: Context) = c.applicationContext.getSharedPreferences("runeterra_policy_learning", Context.MODE_PRIVATE)
@@ -61,17 +64,21 @@ object PersonalLearningNetwork {
             return FloatArray(size) { i -> a.optDouble(i, fallback[i].toDouble()).toFloat() }
         }
         val base = initial(actor)
+        val updates = raw.optInt("updates", 0)
+        // Migration: models saved before triedMask existed only ever trained the
+        // original 9 slots, so those bits are marked as tried when updates exist.
+        val triedMask = if (raw.has("triedMask")) raw.optInt("triedMask", 0) else if (updates > 0) 0x1FF else 0
         return Model(matrix("w1", HIDDEN, INPUT, base.w1), vector("b1", HIDDEN, base.b1),
             matrix("w2", ACTIONS, HIDDEN, base.w2), vector("b2", ACTIONS, base.b2),
-            vector("valueW", HIDDEN, base.valueW), raw.optDouble("valueB", 0.0).toFloat(), raw.optInt("updates", 0), raw.optDouble("baseline", 0.0).toFloat())
+            vector("valueW", HIDDEN, base.valueW), raw.optDouble("valueB", 0.0).toFloat(), updates, raw.optDouble("baseline", 0.0).toFloat(), triedMask)
     }
     private fun encodeModel(m: Model): String {
         fun matrix(v: Array<FloatArray>) = JSONArray().also { a -> v.forEach { row -> a.put(JSONArray().also { r -> row.forEach { r.put(it.toDouble()) } }) } }
         fun vector(v: FloatArray) = JSONArray().also { a -> v.forEach { a.put(it.toDouble()) } }
-        return JSONObject().put("w1", matrix(m.w1)).put("b1", vector(m.b1))
+        return JSONObject().put("v", 2).put("w1", matrix(m.w1)).put("b1", vector(m.b1))
             .put("w2", matrix(m.w2)).put("b2", vector(m.b2))
             .put("valueW", vector(m.valueW)).put("valueB", m.valueB.toDouble())
-            .put("updates", m.updates).put("baseline", m.baseline).toString()
+            .put("updates", m.updates).put("baseline", m.baseline).put("triedMask", m.triedMask).toString()
     }
     private fun save(c: Context, actor: String, m: Model) {
         prefs(c).edit().putString("${safeKey(actor)}_model", encodeModel(m)).apply()
@@ -137,22 +144,40 @@ object PersonalLearningNetwork {
         // Frozen shared base policy: same prior for every actor; personal residuals learn independently.
         return FloatArray(ACTIONS) { a -> (((a + 1) * 0.013f) * x[(a * 3) % INPUT]) }
     }
-    private fun guidance(c: Context, actor: String, prompt: String): String {
+    private fun guidance(c: Context, actor: String, prompt: String, day: Long): String {
         val x = encode(prompt)
         val m = read(c, actor)
         val (hidden, probs) = forward(m, x)
         val prior = sharedPrior(x)
         val scores = FloatArray(ACTIONS) { probs[it] + prior[it] }
         val top = scores.indices.sortedByDescending { scores[it] }.take(3)
-        prefs(c).edit().putString("${safeKey(actor)}_last_state", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }.toString()).apply()
+        val p = prefs(c)
+        val key = safeKey(actor)
+        val xJson = JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }
+        // Keep a short queue of recent decision states tagged by day, so an outcome
+        // trains against the state that actually produced it instead of whichever
+        // state happened to be stored last (the old single _last_state slot could
+        // mismatch state and outcome when decisions interleaved).
+        val states = runCatching { JSONArray(p.getString("${key}_states", "[]") ?: "[]") }.getOrDefault(JSONArray())
+        states.put(JSONObject().put("day", day).put("x", xJson))
+        while (states.length() > 4) states.remove(0)
+        p.edit().putString("${key}_last_state", xJson.toString()).putString("${key}_states", states.toString()).apply()
         val labels = if (actor.startsWith("hero:")) heroActions else actionNames
         return "【角色专属策略网络】共享基础策略已提供通用先验；本角色独立网络已训练${m.updates}次。候选行动倾向：${top.joinToString("、") { labels[it] }}。这些只是供本人权衡的建议，不是强制命令；必须结合角色目标、事实和天道规则自行决定。"
     }
-    fun prepare(c: Context, actor: String, prompt: String): String = guidance(c, actor, prompt)
+    fun prepare(c: Context, actor: String, prompt: String, day: Long = 0L): String = guidance(c, actor, prompt, day)
     fun recordOutcome(c: Context, actor: String, day: Long, action: String, outcome: String): String {
         val p = prefs(c)
         val key = safeKey(actor)
-        val stateJson = runCatching { JSONArray(p.getString("${key}_last_state", "[]") ?: "[]") }.getOrDefault(JSONArray())
+        // Prefer the decision state recorded for this outcome's day; fall back to the
+        // most recent state only when no day-tagged state exists.
+        val statesArr = runCatching { JSONArray(p.getString("${key}_states", "[]") ?: "[]") }.getOrDefault(JSONArray())
+        var matchedState: JSONArray? = null
+        for (i in statesArr.length() - 1 downTo 0) {
+            val e = statesArr.optJSONObject(i)
+            if (e != null && e.optLong("day", -1L) == day) { matchedState = e.optJSONArray("x"); break }
+        }
+        val stateJson = matchedState ?: runCatching { JSONArray(p.getString("${key}_last_state", "[]") ?: "[]") }.getOrDefault(JSONArray())
         if (stateJson.length() != INPUT) return "未训练：缺少本轮有效状态特征"
         val x = FloatArray(INPUT) { stateJson.optDouble(it, 0.0).toFloat() }
         val text = outcome.lowercase()
@@ -162,15 +187,20 @@ object PersonalLearningNetwork {
             negative.any { text.contains(it) } && positive.any { text.contains(it) } -> 0.15f
             negative.any { text.contains(it) } -> -0.45f
             positive.any { text.contains(it) } -> 0.65f
-            else -> 0.08f
+            // An outcome with no readable polarity is neutral evidence, not a small
+            // success; the old +0.08 default quietly rewarded everything.
+            else -> 0.0f
         }
         val idx = actionIndex(action, actor)
         val replay = runCatching { JSONArray(p.getString("${key}_replay", "[]") ?: "[]") }.getOrDefault(JSONArray())
-        // Exploration bonus: the first verified attempts at an action tendency this actor
-        // has never tried earn a small novelty bonus, so the policy does not collapse onto
-        // the first safe routine that happened to pay off.
-        val triedBefore = (0 until replay.length()).any { replay.optJSONObject(it)?.optInt("action", -1) == idx }
-        val noveltyBonus = if (!triedBefore && idx != 0) 0.12f else 0f
+        // Exploration bonus: the first verified attempt at an action tendency earns a
+        // small novelty bonus, so the policy does not collapse onto the first safe
+        // routine that happened to pay off. "First" is judged by the model's permanent
+        // triedMask, not the 48-entry replay buffer (which evicts and would re-pay the
+        // bonus), and a clearly failed attempt earns no bonus.
+        val maskBefore = read(c, actor).triedMask
+        val triedBefore = idx in 0 until ACTIONS && ((maskBefore shr idx) and 1) == 1
+        val noveltyBonus = if (!triedBefore && idx != 0 && reward >= 0f) 0.12f else 0f
         val finalReward = (reward + noveltyBonus).coerceIn(-1f, 1f)
         replay.put(JSONObject().put("day", day).put("x", JSONArray().also { a -> x.forEach { a.put(it.toDouble()) } }).put("action", idx).put("reward", finalReward.toDouble()))
         while (replay.length() > MAX_REPLAY) replay.remove(0)
@@ -186,6 +216,7 @@ object PersonalLearningNetwork {
             }
         }
         model.updates++
+        if (idx in 0 until ACTIONS) model.triedMask = model.triedMask or (1 shl idx)
         model.baseline = model.baseline * 0.9f + finalReward * 0.1f
         if (finite(model)) {
             p.edit().putString("${key}_previous_model", previous).apply()
@@ -223,9 +254,13 @@ object PersonalLearningNetwork {
         val model = read(c, actor)
         if (model.updates < MIN_UPDATES_FOR_CHOICE) return null
         val (_, probabilities) = forward(model, encode(prompt))
-        val ranked = probabilities.indices.sortedByDescending { probabilities[it] }
-        val best = ranked.firstOrNull() ?: return null
-        val second = ranked.getOrNull(1)?.let { probabilities[it] } ?: 0f
+        // Slots added in v2 (9-11) start from seeded random weights; until a slot has
+        // at least one real outcome recorded it must not win autonomous choice,
+        // otherwise an upgraded legacy actor could "decide" to provoke on noise.
+        val eligible = probabilities.indices.filter { it < 9 || ((model.triedMask shr it) and 1) == 1 }
+            .sortedByDescending { probabilities[it] }
+        val best = eligible.firstOrNull() ?: return null
+        val second = eligible.getOrNull(1)?.let { probabilities[it] } ?: 0f
         if (probabilities[best] < 0.14f || probabilities[best] - second < 0.018f) return null
         val labels = if (actor.startsWith("hero:")) heroActions else actionNames
         return labels.getOrNull(best)
