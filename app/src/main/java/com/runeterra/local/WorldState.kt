@@ -3221,6 +3221,26 @@ private fun craftBonus(region:String):Int = when(region) {
     private fun saveHeroRequests(p:android.content.SharedPreferences,req:JSONArray) {
         p.edit().putString(KEY_HERO_REQUESTS,req.toString()).apply()
     }
+    private const val KEY_HERO_REQUEST_COOLDOWNS="hero_request_cooldowns"
+    /** Pairs barred from new requests until a day, after a decline or an expiry,
+     *  so a requester cannot loop request → decline/expire → request forever. */
+    private fun heroCooldowns(p:android.content.SharedPreferences):JSONArray =
+        runCatching { JSONArray(p.getString(KEY_HERO_REQUEST_COOLDOWNS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+    private fun saveHeroCooldowns(p:android.content.SharedPreferences,c:JSONArray) {
+        p.edit().putString(KEY_HERO_REQUEST_COOLDOWNS,c.toString()).apply()
+    }
+    /** Parse a counterpart's structured decision. Accepts the English enum and
+     *  the Chinese words the model may use instead; anything else is no decision. */
+    private fun parseRespond(raw:String):String? {
+        val s=raw.trim().lowercase()
+        return when {
+            s.isBlank() -> null
+            s.contains("accept") || s.contains("接受") || s.contains("愿意") || s.contains("可以") -> "accept"
+            s.contains("decline") || s.contains("拒绝") || s.contains("不愿") || s.contains("不接受") -> "decline"
+            s.contains("defer") || s.contains("暂缓") || s.contains("以后再说") || s.contains("等等") -> "defer"
+            else -> null
+        }
+    }
 
     /** One canon character receives a private reasoning turn using the shared local model. */
     fun requestLocalHeroThinking(context:Context):Boolean {
@@ -3240,6 +3260,14 @@ private fun craftBonus(region:String):Int = when(region) {
         var scanned=0
         while(hero.lastThoughtDay==day && scanned<active.size) { hero=active[(cursor+scanned+1)%active.size]; scanned++ }
         if(hero.lastThoughtDay==day) return false
+        // Target priority: a hero who owes someone an answer gets their turn
+        // first, so a request reaches its counterpart well inside the 3-day
+        // expiry window instead of waiting on plain round-robin.
+        val reqsForSchedule=heroRequests(p)
+        val awaiting=active.firstOrNull { h -> h.lastThoughtDay!=day &&
+            (0 until reqsForSchedule.length()).mapNotNull{reqsForSchedule.optJSONObject(it)}
+                .any { it.optString("to")==h.name && it.optString("status")=="pending" } }
+        if(awaiting!=null) hero=awaiting
         p.edit().putInt(KEY_HERO_AI_CURSOR,(active.indexOf(hero)+1)%active.size).apply()
         val eraAnchor=timelineStatus(context)
         val lore=regionalLore.firstOrNull { it.name==hero.region }?.let { it.political+"；"+it.magic+"；"+it.forces+"；"+it.boundary } ?: "特殊领域，遵守人物既有设定"
@@ -3259,8 +3287,13 @@ private fun craftBonus(region:String):Int = when(region) {
         val bondPartners=heroBonds(p).filter { it.a==hero.name || it.b==hero.name }.map { if(it.a==hero.name) it.b else it.a }
         val watchNames=(bondPartners + pendingIn.map{it.optString("from")} + pendingOut.map{it.optString("to")}).distinct()
         val worldEventsArr=runCatching { JSONArray(p.getString(KEY_EVENTS,"[]") ?: "[]") }.getOrDefault(JSONArray())
+        // Only genuine world news reaches the prompt: a hero's own per-turn action
+        // logs ("【英雄自主思考…") are excluded (they are already in history), and
+        // so are other heroes' private action logs — showing them would leak
+        // information the character cannot legitimately know. Watch names are
+        // canonical roster names, so single-character names (劫, 慎) match here.
         val relatedEvents=(0 until worldEventsArr.length()).mapNotNull{worldEventsArr.optString(it)}
-            .filter { e -> e.contains(hero.name) || watchNames.any { n -> n.length>=2 && e.contains(n) } }.takeLast(3)
+            .filter { e -> !e.startsWith("【英雄自主思考") && (e.contains(hero.name) || watchNames.any { n -> n.isNotEmpty() && e.contains(n) }) }.takeLast(3)
         val dynamics=buildString {
             append("【今日可知动态】")
             if(lastOutcome.isNotBlank()) append("\n你上一次行动的世界结果：").append(lastOutcome)
@@ -3285,7 +3318,7 @@ ${dynamics}
 事实规则（必须遵守）：严格区分"想做"（意图）、"准备做"（计划）、"已执行"（经世界结算的行动）、"已发生"（世界给出的结果）。不得把意图写成已经做的事，不得把未送达的请求写成已送达，不得把没得到的回应写成已经交流过。涉及他人的言行，只能依据今日动态与世界结果，不得凭空编造。
 如果没有新情况，如实承认没有进展即可，可以维持原判断，不必虚构新的观察或计划；若同一件事多轮没有进展，必须正视阻碍——换方法、降低目标或暂时放下，不许只换一种措辞重复同一个计划。
 thought必须是第一人称自然中文，1至2句，约30至70字，体现${hero.name}的身份和具体处境。
-只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event、take_risk、explore_unknown、provoke之一。其中take_risk是押上声望或资源赌一次不确定的结果，explore_unknown是离开熟悉区域探查未知，provoke是主动挑战或挑明与他人的矛盾。若本轮行动针对某位具体人物（沟通、约战、切磋、挑明矛盾），在JSON中额外写target字段填对方姓名，没有具体对象就不写。negotiate配合target表示正式向对方发出请求：世界会把请求真实送达对方，对方将依据自身处境独立决定接受、拒绝或暂缓，你不会立刻得到结果；provoke配合target表示针对此人挑明矛盾。冒险必须有具体对象和理由，世界会真实结算成败与代价；重复同样的日子会累积无聊与停滞感。不要Markdown。"""
+只输出简短JSON：thought、belief、intent、goal、action、reason。action只能是stay、train、investigate、negotiate、aid、join_event、decline_event、investigate_event、take_risk、explore_unknown、provoke之一。其中take_risk是押上声望或资源赌一次不确定的结果，explore_unknown是离开熟悉区域探查未知，provoke是主动挑战或挑明与他人的矛盾。若本轮行动针对某位具体人物（沟通、约战、切磋、挑明矛盾），在JSON中额外写target字段填对方姓名，没有具体对象就不写。negotiate配合target表示正式向对方发出请求：世界会把请求真实送达对方，对方将依据自身处境独立决定接受、拒绝或暂缓，你不会立刻得到结果；provoke配合target表示针对此人挑明矛盾。若本轮你收到待回应的请求（见【今日可知动态】），必须在JSON中用respond字段写明你的决定——accept（接受）、decline（拒绝）或defer（暂缓），并用respond_to写对方姓名；没有待回应的请求就不写。没有respond字段时，请求视为暂缓，世界不会按你的话猜测决定。冒险必须有具体对象和理由，世界会真实结算成败与代价；重复同样的日子会累积无聊与停滞感。不要Markdown。"""
         val cognitiveKey="hero:${hero.name}"
         val cognitivePrompt=CognitiveArchitecture.prepare(context,cognitiveKey,day,prompt)
         localInferenceBusy=true
@@ -3343,6 +3376,11 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         }
                         val groups=organizations(p)
                         val localGroup=groups.filter { it.region==heroNow.region }.maxByOrNull { it.influence+it.publicSupport/2 }
+                        // Only a genuinely settled outcome may enter personal memory as a
+                        // 【结果】 fact. Branches that produce no world event (e.g. a
+                        // negotiation with no resolvable target) must not be recorded as
+                        // if something happened.
+                        var outcomeIsFact=true
                         val outcome=when(action) {
                             "train" -> {
                                 // Diminishing returns are a world fact, not a preference: the
@@ -3367,17 +3405,25 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                 // The counterpart decides independently on their own turn.
                                 val tHero=targetHero
                                 if(tHero!=null) {
-                                    val kind=if(listOf("切磋","比试","较量","对决","挑战").any { (thought+" "+heroNow.intent).contains(it) }) "切磋" else "沟通"
+                                    val kind=if(listOf("切磋","比试","较量","对决").any { (thought+" "+heroNow.intent).contains(it) }) "切磋" else "沟通"
                                     val reqsN=heroRequests(p)
                                     val dup=(0 until reqsN.length()).mapNotNull{reqsN.optJSONObject(it)}.any { it.optString("from")==heroNow.name && it.optString("to")==tHero.name && it.optString("status")=="pending" }
+                                    val cds=heroCooldowns(p)
+                                    val cooled=(0 until cds.length()).mapNotNull{cds.optJSONObject(it)}.any { it.optString("from")==heroNow.name && it.optString("to")==tHero.name && day<it.optLong("untilDay",0L) }
                                     if(dup) "你向${tHero.name}的${kind}请求此前已经送达，仍在等对方回应，不必重复发出"
+                                    else if(cooled) "你向${tHero.name}的${kind}请求此前刚被拒绝或过期不久，暂不宜重复提出"
                                     else {
                                         reqsN.put(JSONObject().put("id",day*1000L+reqsN.length()).put("from",heroNow.name).put("to",tHero.name).put("kind",kind).put("day",day).put("status","pending"))
-                                        while(reqsN.length()>40) reqsN.remove(0)
+                                        // Trim resolved records first; a pending request
+                                        // must never silently vanish from the store.
+                                        while(reqsN.length()>40) {
+                                            val resolvedIdx=(0 until reqsN.length()).firstOrNull { reqsN.optJSONObject(it)?.optString("status")!="pending" } ?: break
+                                            reqsN.remove(resolvedIdx)
+                                        }
                                         saveHeroRequests(p,reqsN)
                                         "你正式向${tHero.name}提出了${kind}请求；请求已经送达，对方会依据自身处境独立决定是否回应"
                                     }
-                                } else { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
+                                } else { outcomeIsFact=false; if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "尝试与当地相关组织沟通，谈判结果仍待后续验证" }
                             }
                             "aid" -> { if(localGroup!=null) localGroup.publicSupport=(localGroup.publicSupport+1).coerceAtMost(100); "投入当地社群事务，影响限于本地组织" }
                             "join_event" -> {
@@ -3423,8 +3469,13 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                             }
                             "provoke" -> {
                                 val allBonds=heroBonds(p)
-                                val rb=allBonds.firstOrNull { val tn=targetHero?.name; tn!=null && ((it.a==heroNow.name && it.b==tn) || (it.b==heroNow.name && it.a==tn)) }
-                                    ?: allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
+                                // With an explicit target, never redirect to a different
+                                // person: a provocation aimed at someone with no bond is
+                                // a non-event, not a fight with a stranger.
+                                val rb=if(targetHero!=null) allBonds.firstOrNull { val tn=targetHero.name; (it.a==heroNow.name && it.b==tn) || (it.b==heroNow.name && it.a==tn) }
+                                    else allBonds.firstOrNull { (it.a==heroNow.name || it.b==heroNow.name) && it.tension>=30 }
+                                if(targetHero!=null && rb==null) { outcomeIsFact=false; "想向${targetHero.name}挑明矛盾，但你们之间并无可挑明的旧怨" }
+                                else {
                                 val rngV=java.util.Random(day*999983L+heroNow.name.hashCode()*57L+(heroNow.memory.size+heroNow.history.size)*7919L)
                                 if(rb!=null) {
                                     val otherName=if(rb.a==heroNow.name) rb.b else rb.a
@@ -3433,6 +3484,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                 } else if(localGroup!=null) {
                                     localGroup.publicSupport=(localGroup.publicSupport-2).coerceAtLeast(0); heroNow.influence=(heroNow.influence+1).coerceAtMost(100); heroNow.memory.add("第${day}日：我公开挑战了当地势力的安排，支持者与反对者都看清了我的立场。"); "公开挑战当地势力，立场挑明但树敌"
                                 } else "想把矛盾挑明，但眼下没有合适的对象"
+                                }
                             }
                             else -> "决定维持当前安排"
                         }
@@ -3446,7 +3498,7 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                         // thought: settled outcomes join memory as facts. Adventure
                         // branches already write their own event memories and are
                         // excluded here to avoid duplicates.
-                        if(action in setOf("train","investigate","negotiate","aid","join_event","decline_event","investigate_event")) {
+                        if(outcomeIsFact && action in setOf("train","investigate","negotiate","aid","join_event","decline_event","investigate_event")) {
                             heroNow.memory.add("第"+day+"日：【结果】"+outcome.take(120))
                             while(heroNow.memory.size>100) heroNow.memory.removeAt(0)
                         }
@@ -3470,27 +3522,47 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                             overrides[heroNow.name]=heroNow
                             fun counterpart(name:String):HeroAgent? {
                                 overrides[name]?.let { return it }
-                                val found=heroAgents(p).firstOrNull { it.name==name } ?: return null
+                                val found=heroAgents(p).firstOrNull { it.name==name && it.alive } ?: return null
                                 overrides[name]=found
                                 return found
                             }
                             fun addFact(h:HeroAgent,text:String) { h.memory.add(text); while(h.memory.size>100) h.memory.removeAt(0) }
-                            val myText=thought+" "+heroNow.intent+" "+result.optString("reason","")
-                            for(ri in 0 until reqsR.length()) {
-                                val r=reqsR.optJSONObject(ri) ?: continue
-                                if(r.optString("status")!="pending") continue
-                                if(r.optString("to")==heroNow.name) {
-                                    val fromName=r.optString("from"); val kindR=r.optString("kind")
-                                    val declined=action=="decline_event" || listOf("拒绝","不愿","不会接受","不答应","不见").any(myText::contains)
-                                    val accepted=!declined && fromName.isNotBlank() && myText.contains(fromName) && listOf("接受","愿意","可以","答应","切磋","比试","见面","谈谈").any(myText::contains)
-                                    val fromHero=if(fromName.isNotBlank()) counterpart(fromName) else null
-                                    when {
-                                        declined -> { r.put("status","declined"); reqChanged=true
-                                            if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"拒绝了我提出的"+kindR+"请求。")
-                                            addFact(heroNow,"第"+day+"日：【结果】我拒绝了"+fromName+"提出的"+kindR+"请求。")
-                                        }
-                                        accepted -> { r.put("status","accepted"); reqChanged=true
-                                            if(kindR=="切磋" && fromHero!=null) {
+                            fun addCooldown(from:String,to:String,until:Long) {
+                                val cds=heroCooldowns(p)
+                                cds.put(JSONObject().put("from",from).put("to",to).put("untilDay",until))
+                                saveHeroCooldowns(p,cds)
+                            }
+                            // The decision comes from the structured respond field, never
+                            // from substring matching on free text: keyword parsing turned
+                            // refusals such as "我不想与劫切磋" into accepted bouts.
+                            // No respond field means defer — silence is not consent.
+                            val decision=parseRespond(result.optString("respond",""))
+                            val respondTo=result.optString("respond_to","").trim()
+                            val incoming=(0 until reqsR.length()).mapNotNull{reqsR.optJSONObject(it)}
+                                .filter { it.optString("to")==heroNow.name && it.optString("status")=="pending" }
+                            val decidedReq=when {
+                                decision==null -> null
+                                respondTo.isNotBlank() -> incoming.firstOrNull { it.optString("from")==respondTo }
+                                else -> incoming.firstOrNull()
+                            }
+                            if(decidedReq!=null && decision!=null) {
+                                val fromName=decidedReq.optString("from"); val kindR=decidedReq.optString("kind")
+                                val fromHero=if(fromName.isNotBlank()) counterpart(fromName) else null
+                                // A provocation aimed at the requester is itself a refusal.
+                                val declined=decision=="decline" || (action=="provoke" && targetHero?.name==fromName)
+                                val accepted=decision=="accept" && !declined
+                                when {
+                                    declined -> { decidedReq.put("status","declined"); reqChanged=true
+                                        addCooldown(fromName,heroNow.name,day+5)
+                                        if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"拒绝了我提出的"+kindR+"请求。")
+                                        addFact(heroNow,"第"+day+"日：【结果】我拒绝了"+fromName+"提出的"+kindR+"请求。")
+                                    }
+                                    accepted -> { decidedReq.put("status","accepted"); reqChanged=true
+                                        if(kindR=="切磋" && fromHero!=null) {
+                                            if(fromHero.region!=heroNow.region) {
+                                                addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"接受了我的切磋请求，但两人不在同一地区，切磋暂未成行。")
+                                                addFact(heroNow,"第"+day+"日：【结果】我接受了"+fromName+"的切磋请求，但两人不在同一地区，切磋暂未成行。")
+                                            } else {
                                                 val rngS=java.util.Random(day*1000003L+fromName.hashCode()*131L+heroNow.name.hashCode()*17L)
                                                 val fromPower=fromHero.skill+fromHero.health/10+rngS.nextInt(15)
                                                 val myPower=heroNow.skill+heroNow.health/10+rngS.nextInt(15)
@@ -3505,15 +3577,22 @@ thought必须是第一人称自然中文，1至2句，约30至70字，体现${he
                                                 ev2.put("【世界事件】第"+day+"日："+fromName+"与"+heroNow.name+"进行了一场非致命切磋，"+boutText+"。")
                                                 while(ev2.length()>300) ev2.remove(0)
                                                 p.edit().putString(KEY_EVENTS,ev2.toString()).apply()
-                                            } else {
-                                                if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"接受了我提出的"+kindR+"请求。")
-                                                addFact(heroNow,"第"+day+"日：【结果】我接受了"+fromName+"提出的"+kindR+"请求。")
                                             }
+                                        } else {
+                                            if(fromHero!=null) addFact(fromHero,"第"+day+"日：【结果】"+heroNow.name+"接受了我提出的"+kindR+"请求。")
+                                            addFact(heroNow,"第"+day+"日：【结果】我接受了"+fromName+"提出的"+kindR+"请求。")
                                         }
                                     }
                                 }
+                            }
+                            // Expiry sweep: runs on any hero's successful turn, for every
+                            // pending request, so a request to a hero who never thinks
+                            // still closes — and starts a cooldown against re-requests.
+                            for(ri in 0 until reqsR.length()) {
+                                val r=reqsR.optJSONObject(ri) ?: continue
                                 if(r.optString("status")=="pending" && day-r.optLong("day",day)>3) {
                                     r.put("status","expired"); reqChanged=true
+                                    addCooldown(r.optString("from"),r.optString("to"),day+5)
                                     val requester=counterpart(r.optString("from"))
                                     if(requester!=null) addFact(requester,"第"+day+"日：【结果】我向"+r.optString("to")+"提出的"+r.optString("kind")+"请求多日没有得到回应。")
                                 }

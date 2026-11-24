@@ -325,7 +325,7 @@ ${IdentityEvolutionEngine.prepare(context,actorKey)}
         // When the previous turn was flagged as a near-repeat, this turn's prompt
         // says so plainly and demands a change of method — detection with teeth.
         val lastEval=CognitiveStore.read(p,"${k}_last_evaluation")
-        val stagnation=if(lastEval.optBoolean("duplicateThought")) "\n【停滞警告】你上一轮的想法与之前高度重复，且没有产生新的世界结果。这一轮必须改变：换一个能真正执行的方法、降低目标，或明确暂时放下这件事；不许再复述同一个计划。" else ""
+        val stagnation=if(lastEval.optBoolean("duplicateThought")) "\n【停滞警告】你上一轮的想法与之前高度重复。这一轮必须改变：换一个能真正执行的方法、降低目标，或明确暂时放下这件事；不许再复述同一个计划。" else ""
         return originalPrompt+"\n\n"+add+stagnation+"\n\n"+PersonalLearningNetwork.prepare(context,actorKey,originalPrompt,day)+"\n\n"+AutonomousCognitionEngine.prepare(context,actorKey)}
     fun capture(context:Context,actorKey:String,day:Long,raw:String):Evaluation {val p=CognitiveStore.prefs(context);val k=CognitiveStore.key(actorKey);val a=readEpisodes(p,k);val obj=extractObject(raw);val thought=obj?.optString("thought").orEmpty().trim();val norm=normalize(thought)
         val prev=(maxOf(0,a.length()-6) until a.length()).mapNotNull{a.optJSONObject(it)}.map{normalize(it.optString("thought"))}.filter{it.isNotBlank()};val duplicate=norm.isNotBlank()&&prev.any{similarity(norm,it)>=0.88};val missing=thought.isBlank();val score=when{missing->0;duplicate->35;a.length()==0->70;else->90}
